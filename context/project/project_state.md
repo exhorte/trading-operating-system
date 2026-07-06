@@ -30,7 +30,9 @@ Build a Trading Operating System Algorithmique where:
 
 Phase 00 - AI Project Brain Bootstrap is closed (verified 2026-07-06: acceptance criteria met, lint baseline passes, project brain committed to git).
 
-The active phase is now Phase 01 - Frontend Foundation, starting with a design document per `.claude/commands/phase-start.md` before implementation.
+The active phase is now Phase 01 - Frontend Foundation.
+
+The Phase 01 technical design exists at `project/phases/phase-01-design.md` (2026-07-06) and is awaiting user validation before implementation, per `.claude/commands/phase-start.md`.
 
 ## Next Up
 
