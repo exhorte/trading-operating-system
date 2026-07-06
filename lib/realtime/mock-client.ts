@@ -1,0 +1,275 @@
+/**
+ * Mock implementation of the realtime gateway connection.
+ *
+ * It reproduces the exact behavior the future SignalR client must have
+ * (context/realtime/dashboard_realtime_model.md):
+ *   1. connect, 2. initial snapshot, 3. event stream + heartbeats,
+ *   4. stale on missed heartbeats, 5. snapshot resync after reconnect.
+ *
+ * A scripted outage runs periodically so every connection state is
+ * observable in the UI without touching the code.
+ */
+
+import { makeEnvelope, uuid } from "@/lib/mock/envelope";
+import {
+  mockAccount,
+  mockAgents,
+  mockAlerts,
+  mockExecutionReports,
+  mockMarketContext,
+  mockPnlCalendar,
+  mockPositions,
+  mockRisk,
+  mockSignals,
+} from "@/lib/mock/initial-snapshot";
+import type {
+  AgentHeartbeatPayload,
+  ExecutionReportPayload,
+  MarketContextUpdatedPayload,
+  MarketTickPayload,
+  SignalCreatedPayload,
+  SignalUpdatedPayload,
+} from "@/lib/contracts/events";
+import type { StrategySignal } from "@/lib/contracts/snapshots";
+import type { RealtimeClient } from "./client";
+import type { CockpitStore } from "./store";
+
+const TICK_INTERVAL_MS = 1_500;
+const HEARTBEAT_INTERVAL_MS = 3_000;
+const WATCHDOG_INTERVAL_MS = 2_000;
+const HEARTBEAT_STALE_AFTER_MS = 7_000;
+const CONTEXT_UPDATE_INTERVAL_MS = 12_000;
+const SIGNAL_INTERVAL_MS = 15_000;
+const CONNECTED_PERIOD_MS = 40_000;
+const STALE_PERIOD_MS = 10_000;
+const RECONNECT_PERIOD_MS = 4_000;
+
+export class MockRealtimeClient implements RealtimeClient {
+  private timers: ReturnType<typeof setTimeout>[] = [];
+
+  private stopped = false;
+
+  private heartbeatsSuspended = false;
+
+  private price = 3312.1;
+
+  private signalCounter = 15;
+
+  constructor(private readonly store: CockpitStore) {}
+
+  start(): void {
+    this.stopped = false;
+    this.store.setConnectionState("connecting");
+    this.after(600, () => this.goOnline(true));
+  }
+
+  stop(): void {
+    this.stopped = true;
+    for (const timer of this.timers) {
+      clearTimeout(timer);
+    }
+    this.timers = [];
+  }
+
+  private goOnline(initial: boolean): void {
+    this.store.setConnectionState("connected");
+    this.heartbeatsSuspended = false;
+    // Snapshot on connect, resync on every reconnect: same rule as SignalR later.
+    this.store.hydrate({
+      account: mockAccount(),
+      positions: mockPositions(),
+      risk: mockRisk(),
+      marketContext: mockMarketContext(),
+      signals: initial ? mockSignals() : this.store.getSnapshot().signals,
+      agents: mockAgents(),
+      executionReports: initial
+        ? mockExecutionReports()
+        : this.store.getSnapshot().executionReports,
+      pnlCalendar: mockPnlCalendar(),
+      alerts: mockAlerts(),
+      lastHeartbeatAt: new Date().toISOString(),
+    });
+
+    if (initial) {
+      this.every(TICK_INTERVAL_MS, () => this.emitTick());
+      this.every(HEARTBEAT_INTERVAL_MS, () => this.emitHeartbeat());
+      this.every(WATCHDOG_INTERVAL_MS, () => this.checkHeartbeat());
+      this.every(CONTEXT_UPDATE_INTERVAL_MS, () => this.emitContextUpdate());
+      this.every(SIGNAL_INTERVAL_MS, () => this.advanceSignals());
+    }
+    this.after(CONNECTED_PERIOD_MS, () => this.beginOutage());
+  }
+
+  /** Scripted degradation: heartbeats stop, watchdog marks stale, then reconnect. */
+  private beginOutage(): void {
+    this.heartbeatsSuspended = true;
+    this.after(STALE_PERIOD_MS, () => {
+      this.store.setConnectionState("reconnecting");
+      this.store.apply(makeEnvelope("agent.disconnected", "mock-gateway", {}));
+      this.after(RECONNECT_PERIOD_MS, () => this.goOnline(false));
+    });
+  }
+
+  private checkHeartbeat(): void {
+    const { connection, lastHeartbeatAt } = this.store.getSnapshot();
+    if (connection !== "connected" || !lastHeartbeatAt) {
+      return;
+    }
+    const age = Date.now() - new Date(lastHeartbeatAt).getTime();
+    if (age > HEARTBEAT_STALE_AFTER_MS) {
+      this.store.setConnectionState("stale");
+    }
+  }
+
+  private emitTick(): void {
+    if (this.heartbeatsSuspended) {
+      return;
+    }
+    this.price = Math.round((this.price + (Math.random() - 0.5) * 0.9) * 100) / 100;
+    this.store.apply(
+      makeEnvelope<MarketTickPayload>("market.tick", "mock-market-data", {
+        symbol: "XAUUSD",
+        bid: this.price,
+        ask: Math.round((this.price + 0.25) * 100) / 100,
+      }),
+    );
+  }
+
+  private emitHeartbeat(): void {
+    if (this.heartbeatsSuspended) {
+      return;
+    }
+    this.store.apply(
+      makeEnvelope<AgentHeartbeatPayload>("agent.heartbeat", "mt5-agent-001", {
+        agentId: "mt5-agent-001",
+        latencyMs: 30 + Math.round(Math.random() * 25),
+      }),
+    );
+  }
+
+  private emitContextUpdate(): void {
+    if (this.heartbeatsSuspended) {
+      return;
+    }
+    const context = this.store.getSnapshot().marketContext;
+    if (!context) {
+      return;
+    }
+    const smt = Math.random() > 0.5 ? 1 : 0;
+    this.store.apply(
+      makeEnvelope<MarketContextUpdatedPayload>(
+        "analysis.market_context.updated",
+        "mock-analysis-engine",
+        {
+          context: {
+            ...context,
+            score: 6 + smt + (Math.random() > 0.5 ? 1 : 0),
+            scoreBreakdown: context.scoreBreakdown.map((component) =>
+              component.label === "SMT" ? { ...component, score: smt } : component,
+            ),
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      ),
+    );
+  }
+
+  /** Progress a pending signal through risk review, or create a new one. */
+  private advanceSignals(): void {
+    if (this.heartbeatsSuspended) {
+      return;
+    }
+    const pending = this.store
+      .getSnapshot()
+      .signals.find((signal) => signal.status === "risk_review");
+
+    if (pending) {
+      const approved = pending.score >= 7;
+      this.store.apply(
+        makeEnvelope<SignalUpdatedPayload>(
+          approved ? "risk.command.approved" : "risk.command.rejected",
+          "mock-risk-engine",
+          {
+            signalId: pending.signalId,
+            status: approved ? "approved" : "rejected",
+            riskDecision: approved
+              ? `approved (risk-approval-${pending.signalId})`
+              : "rejected: score below threshold",
+          },
+          pending.signalId,
+        ),
+      );
+      if (approved) {
+        this.after(2_500, () => this.emitFillReport(pending));
+      }
+      return;
+    }
+
+    this.signalCounter += 1;
+    const side = Math.random() > 0.4 ? "buy" : "sell";
+    const signal: StrategySignal = {
+      signalId: `sig-${String(this.signalCounter).padStart(3, "0")}`,
+      symbol: "XAUUSD",
+      strategyId: Math.random() > 0.5 ? "ict-silver-bullet-v1" : "ict-fvg-continuation-v1",
+      side,
+      status: "risk_review",
+      score: 5 + Math.round(Math.random() * 4),
+      maxScore: 10,
+      contextSummary:
+        side === "buy"
+          ? "Sweep of session low + MSS, discount FVG retrace"
+          : "Buy-side sweep into premium, bearish displacement",
+      riskDecision: null,
+      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    this.store.apply(
+      makeEnvelope<SignalCreatedPayload>("strategy.signal.created", "mock-strategy-engine", {
+        signal,
+      }),
+    );
+  }
+
+  private emitFillReport(signal: StrategySignal): void {
+    if (this.heartbeatsSuspended) {
+      return;
+    }
+    this.store.apply(
+      makeEnvelope<ExecutionReportPayload>("execution.order.filled", "mt5-agent-001", {
+        report: {
+          reportId: uuid(),
+          commandId: `cmd-${signal.signalId}`,
+          correlationId: `corr-${signal.signalId}`,
+          accountId: "account-001",
+          agentId: "mt5-agent-001",
+          symbol: signal.symbol,
+          side: signal.side,
+          status: "filled",
+          detail: `Mock fill for ${signal.signalId}, TRADE_RETCODE_DONE`,
+          reportedAt: new Date().toISOString(),
+        },
+      }),
+    );
+  }
+
+  private after(ms: number, fn: () => void): void {
+    if (this.stopped) {
+      return;
+    }
+    this.timers.push(
+      setTimeout(() => {
+        if (!this.stopped) {
+          fn();
+        }
+      }, ms),
+    );
+  }
+
+  private every(ms: number, fn: () => void): void {
+    const loop = () => {
+      fn();
+      this.after(ms, loop);
+    };
+    this.after(ms, loop);
+  }
+}

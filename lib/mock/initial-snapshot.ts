@@ -1,0 +1,255 @@
+/**
+ * Deterministic-enough mock data used as the initial snapshot of every
+ * subscription group. Values are plausible for an FTMO-style XAUUSD account
+ * but carry no market meaning — the MOCK badge stays visible at all times.
+ */
+
+import type {
+  AccountSummary,
+  AgentStatus,
+  CockpitAlert,
+  ExecutionReport,
+  MarketContext,
+  PnlCalendarDay,
+  Position,
+  RiskStatus,
+  StrategySignal,
+} from "@/lib/contracts/snapshots";
+
+const now = () => new Date();
+
+function isoMinutesAgo(minutes: number): string {
+  return new Date(now().getTime() - minutes * 60_000).toISOString();
+}
+
+export function mockAccount(): AccountSummary {
+  return {
+    accountId: "account-001",
+    label: "FTMO Challenge 100k",
+    broker: "FTMO-Demo",
+    currency: "USD",
+    balance: 101_240.5,
+    equity: 101_512.3,
+    dailyPnl: 271.8,
+    dailyDrawdownPercent: 0.9,
+    totalDrawdownPercent: 2.4,
+    openRiskPercent: 1.0,
+  };
+}
+
+export function mockPositions(): Position[] {
+  return [
+    {
+      positionId: "pos-001",
+      accountId: "account-001",
+      symbol: "XAUUSD",
+      side: "buy",
+      volume: 0.2,
+      entryPrice: 3308.4,
+      currentPrice: 3312.1,
+      stopLoss: 3295.0,
+      takeProfit: 3335.0,
+      unrealizedPnl: 74.0,
+      rMultiple: 0.28,
+      strategyId: "ict-silver-bullet-v1",
+      openedAt: isoMinutesAgo(42),
+    },
+    {
+      positionId: "pos-002",
+      accountId: "account-001",
+      symbol: "XAUUSD",
+      side: "buy",
+      volume: 0.1,
+      entryPrice: 3310.9,
+      currentPrice: 3312.1,
+      stopLoss: 3301.5,
+      takeProfit: 3329.0,
+      unrealizedPnl: 12.0,
+      rMultiple: 0.13,
+      strategyId: "ict-fvg-continuation-v1",
+      openedAt: isoMinutesAgo(15),
+    },
+  ];
+}
+
+export function mockRisk(): RiskStatus {
+  return {
+    state: "normal",
+    dailyLossLimitPercent: 5.0,
+    dailyLossUsedPercent: 0.9,
+    maxDrawdownLimitPercent: 10.0,
+    maxDrawdownUsedPercent: 2.4,
+    maxTradesPerDay: 6,
+    tradesToday: 3,
+    consecutiveLosses: 1,
+    lockoutReason: null,
+    gates: [
+      { gateId: "gate-daily-loss", label: "Daily loss guard", state: "open", detail: "0.9% used of 5.0%" },
+      { gateId: "gate-total-dd", label: "Max drawdown guard", state: "open", detail: "2.4% used of 10.0%" },
+      { gateId: "gate-news", label: "News filter", state: "open", detail: "No high-impact event in window" },
+      { gateId: "gate-spread", label: "Spread gate", state: "open", detail: "2.1 pts < 4.0 pts limit" },
+      { gateId: "gate-session", label: "Session filter", state: "blocked", detail: "NY PM entries disabled" },
+    ],
+  };
+}
+
+export function mockMarketContext(): MarketContext {
+  return {
+    symbol: "XAUUSD",
+    timeframe: "M15",
+    bias: "bullish",
+    structureState: "Uptrend after MSS",
+    lastStructureEvent: "BOS above 3305.2 (M15)",
+    session: "new_york_am",
+    liquidityNote: "Asia low swept 08:42 UTC; buy-side pool above 3318.5",
+    pdArrayNote: "M15 FVG 3306.8-3309.1 respected; H1 OB at 3298.4 intact",
+    score: 7,
+    maxScore: 10,
+    scoreBreakdown: [
+      { label: "Structure", score: 2, maxScore: 3 },
+      { label: "Liquidity", score: 2, maxScore: 2 },
+      { label: "PD arrays", score: 2, maxScore: 3 },
+      { label: "Session", score: 1, maxScore: 1 },
+      { label: "SMT", score: 0, maxScore: 1 },
+    ],
+    updatedAt: isoMinutesAgo(1),
+  };
+}
+
+export function mockSignals(): StrategySignal[] {
+  return [
+    {
+      signalId: "sig-014",
+      symbol: "XAUUSD",
+      strategyId: "ict-silver-bullet-v1",
+      side: "buy",
+      status: "risk_review",
+      score: 8,
+      maxScore: 10,
+      contextSummary: "Sweep + MSS + M5 FVG retrace in NY AM window",
+      riskDecision: null,
+      expiresAt: new Date(now().getTime() + 4 * 60_000).toISOString(),
+      createdAt: isoMinutesAgo(2),
+    },
+    {
+      signalId: "sig-013",
+      symbol: "XAUUSD",
+      strategyId: "ict-fvg-continuation-v1",
+      side: "buy",
+      status: "reported",
+      score: 7,
+      maxScore: 10,
+      contextSummary: "H1 continuation from OB, aligned bias",
+      riskDecision: "approved (risk-approval-021)",
+      expiresAt: isoMinutesAgo(10),
+      createdAt: isoMinutesAgo(18),
+    },
+    {
+      signalId: "sig-012",
+      symbol: "XAUUSD",
+      strategyId: "ict-silver-bullet-v1",
+      side: "sell",
+      status: "rejected",
+      score: 5,
+      maxScore: 10,
+      contextSummary: "Counter-bias sweep, low score",
+      riskDecision: "rejected: score below threshold",
+      expiresAt: isoMinutesAgo(30),
+      createdAt: isoMinutesAgo(35),
+    },
+  ];
+}
+
+export function mockAgents(): AgentStatus[] {
+  return [
+    {
+      agentId: "mt5-agent-001",
+      accountId: "account-001",
+      platform: "MT5",
+      state: "connected",
+      latencyMs: 38,
+      lastHeartbeatAt: isoMinutesAgo(0),
+      version: "0.1.0-mock",
+    },
+  ];
+}
+
+export function mockExecutionReports(): ExecutionReport[] {
+  return [
+    {
+      reportId: "rep-034",
+      commandId: "cmd-021",
+      correlationId: "corr-sig-013",
+      accountId: "account-001",
+      agentId: "mt5-agent-001",
+      symbol: "XAUUSD",
+      side: "buy",
+      status: "filled",
+      detail: "0.10 lot @ 3310.90, TRADE_RETCODE_DONE",
+      reportedAt: isoMinutesAgo(15),
+    },
+    {
+      reportId: "rep-033",
+      commandId: "cmd-021",
+      correlationId: "corr-sig-013",
+      accountId: "account-001",
+      agentId: "mt5-agent-001",
+      symbol: "XAUUSD",
+      side: "buy",
+      status: "acknowledged",
+      detail: "Command accepted by agent",
+      reportedAt: isoMinutesAgo(16),
+    },
+    {
+      reportId: "rep-032",
+      commandId: "cmd-019",
+      correlationId: "corr-sig-011",
+      accountId: "account-001",
+      agentId: "mt5-agent-001",
+      symbol: "XAUUSD",
+      side: "buy",
+      status: "position_closed",
+      detail: "Closed +0.8R at partial target",
+      reportedAt: isoMinutesAgo(95),
+    },
+  ];
+}
+
+export function mockPnlCalendar(): PnlCalendarDay[] {
+  const days: PnlCalendarDay[] = [];
+  const today = now();
+  for (let i = 34; i >= 0; i -= 1) {
+    const d = new Date(today.getTime() - i * 86_400_000);
+    const weekday = d.getUTCDay();
+    if (weekday === 0 || weekday === 6) {
+      continue;
+    }
+    // Stable pseudo-random from the date so the calendar doesn't flicker.
+    const seed = Number(`${d.getUTCFullYear()}${d.getUTCMonth() + 1}${d.getUTCDate()}`);
+    const wave = Math.sin(seed);
+    const traded = Math.abs(Math.sin(seed * 3)) > 0.25;
+    days.push({
+      date: d.toISOString().slice(0, 10),
+      pnl: traded ? Math.round(wave * 620) : 0,
+      trades: traded ? Math.max(1, Math.round(Math.abs(wave) * 4)) : 0,
+    });
+  }
+  return days;
+}
+
+export function mockAlerts(): CockpitAlert[] {
+  return [
+    {
+      alertId: "alert-005",
+      severity: "warning",
+      message: "NY PM session entries are disabled by session filter",
+      raisedAt: isoMinutesAgo(6),
+    },
+    {
+      alertId: "alert-004",
+      severity: "info",
+      message: "Signal sig-014 entered risk review",
+      raisedAt: isoMinutesAgo(2),
+    },
+  ];
+}

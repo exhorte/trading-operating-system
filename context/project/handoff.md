@@ -52,6 +52,27 @@ Key handoff:
 - REST/HTTP remains allowed only for secondary workflows such as health, auth/bootstrap, static configuration, imports/exports, admin, and documentation.
 - Phase 01 dashboard should be designed around mock realtime subscriptions, not API polling.
 
+## 2026-07-06 - Phase 01 Implementation
+
+Phase 01 (Frontend Foundation) was designed, validated by the user (zero new runtime dependencies confirmed), implemented, and verified.
+
+Built:
+
+- `(cockpit)` route group: Command Center plus market-context, signals, positions, risk, journal, replay, agents, backtests, settings (stubs with honest empty states), `loading.tsx`, `error.tsx`
+- app shell: icon rail, collapsible sidebar, top command bar (MOCK badge, WebSocket status, inert emergency stop)
+- `lib/contracts/`: TypeScript mirrors of the realtime envelope, event families, and dashboard read models
+- `lib/realtime/`: `RealtimeClient` interface, `CockpitStore` reducer over enveloped events, `MockRealtimeClient` (snapshot + events + heartbeats + watchdog stale detection + scripted outage/resync), React provider/hooks
+- `lib/mock/`: enveloped XAUUSD/FTMO-style generators
+- 8 Command Center panels and the dark cockpit theme tokens
+
+Verified: lint and build pass (11 routes), production smoke test renders all panels and stub pages. The WS badge cycles connected → stale → reconnecting → connected roughly every 55s under `npm run dev`.
+
+Key handoff:
+
+- UI must keep depending on the `RealtimeClient`/`CockpitStore` seam; the future SignalR client replaces `MockRealtimeClient` without touching components.
+- `lib/contracts/` is the seed of Phase 02; keep it in sync with `context/realtime/event_contracts.md`.
+- Next recommended action: user visual walkthrough, then start Phase 02 (Domain Model MVP) with a design.
+
 ## 2026-07-06 - Phase 00 Verification And Closure
 
 Phase 00 was audited against its acceptance criteria and closed.

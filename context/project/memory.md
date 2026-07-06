@@ -27,7 +27,8 @@ Build the framework that lets many strategies, accounts, and execution connector
 - Adapted architecture to WebSocket/SignalR-first infrastructure.
 - Added realtime contracts and MT5 agent lifecycle documents.
 - Analyzed visual inspiration files and created the final interface specification.
-- Audited and closed Phase 00; committed the project brain to git; renamed visual reference images to `reference-*` names. Phase 01 (frontend foundation, design first) is the active phase.
+- Audited and closed Phase 00; committed the project brain to git; renamed visual reference images to `reference-*` names.
+- Designed (user-validated) and implemented Phase 01: cockpit shell, Command Center with 8 panels, typed realtime contracts, mock realtime client with scripted outage cycle, zero new dependencies. Next: Phase 02 (Domain Model MVP).
 
 ## Avoid
 

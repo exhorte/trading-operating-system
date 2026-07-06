@@ -53,3 +53,27 @@ Use mock data only until backend contracts are formalized.
 ## Notes For Claude
 
 Next.js version is newer than model training expectations. Read `node_modules/next/dist/docs/` before making framework-specific assumptions.
+
+## Completion Status
+
+Implemented on 2026-07-06 after design validation (`phase-01-design.md`).
+
+Delivered:
+
+- `(cockpit)` route group: Command Center plus 9 stub screens with honest empty states, `loading.tsx`, `error.tsx`
+- app shell: icon rail, collapsible sidebar, top command bar with MOCK badge, WebSocket status badge, inert emergency stop
+- `lib/contracts/`: envelope, event types, and dashboard read models mirroring `realtime/event_contracts.md`
+- `lib/realtime/`: `RealtimeClient` seam, `CockpitStore` (snapshot + events reducer), `MockRealtimeClient` with heartbeats, watchdog-driven stale detection, scripted outage/reconnect/resync cycle, React provider with `useSyncExternalStore`
+- `lib/mock/`: enveloped mock generators (XAUUSD / FTMO-style account)
+- 8 Command Center panels: KPI strip, risk status, market context, signal queue, agent health, positions table, P&L calendar, execution reports
+- dark cockpit theme tokens in `globals.css`, zero new runtime dependencies
+
+Verified:
+
+- `npm run lint` and `npm run build` pass (11 routes).
+- Production server smoke test: home page renders all panels; stub pages render empty states.
+- Connection lifecycle (connected → stale → reconnecting → resync) is scripted in `MockRealtimeClient`; observe it with `npm run dev` on the WS badge (~40s cycle).
+
+Remaining open:
+
+- Visual walkthrough by the user in `npm run dev` (client-side lifecycle was verified by code and SSR smoke test, not by a browser session).

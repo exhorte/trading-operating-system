@@ -28,28 +28,13 @@ Build a Trading Operating System Algorithmique where:
 
 ## Current Phase
 
-Phase 00 - AI Project Brain Bootstrap is closed (verified 2026-07-06: acceptance criteria met, lint baseline passes, project brain committed to git).
+Phase 00 - AI Project Brain Bootstrap: closed 2026-07-06.
 
-The active phase is now Phase 01 - Frontend Foundation.
-
-The Phase 01 technical design exists at `project/phases/phase-01-design.md` (2026-07-06) and is awaiting user validation before implementation, per `.claude/commands/phase-start.md`.
+Phase 01 - Frontend Foundation: implemented 2026-07-06 after validated design (`project/phases/phase-01-design.md`). The cockpit shell, Command Center, typed contracts, and mock realtime client exist; lint and build pass. Only a user visual walkthrough remains before declaring it fully closed.
 
 ## Next Up
 
-Phase 01 - Frontend foundation and dashboard shell.
-
-Claude should not start Phase 01 implementation until it has produced a short design aligned with:
-
-- `architecture/system_overview.md`
-- `engineering/stack.md`
-- `governance/quality_gates.md`
-- `project/phases/phase-01-frontend-foundation.md`
-- `frontend/frontend_plan.md`
-- `frontend/visual_reference_analysis.md`
-- `frontend/final_interface_spec.md`
-- `realtime/dashboard_realtime_model.md`
-- `realtime/event_contracts.md`
-- `knowledge/source_notes_index.md`
+Phase 02 - Domain Model MVP: formalize account/symbol/candle/trade/market-context/risk/signal models and the realtime envelope into reusable schemas. `lib/contracts/` from Phase 01 is the seed. Frontend conventions established in Phase 01 (components/shell, components/cockpit, components/ui, lib/realtime seam) are now project standards.
 
 ## Decisions Already Made
 
@@ -63,6 +48,8 @@ Claude should not start Phase 01 implementation until it has produced a short de
 - The final interface direction is a dark, dense, operational trading cockpit.
 - Visual references are inspiration only and must not be copied as TradeZella clones.
 - Phase 01 must model UI data as mock realtime subscriptions, not REST polling.
+- Phase 01 shipped with zero new runtime dependencies; shadcn/ui, TanStack Query, and chart libraries are deferred until their first real use case (validated 2026-07-06).
+- UI components depend on the `RealtimeClient` seam and `CockpitStore`, never on the mock client directly.
 
 ## Open Questions
 

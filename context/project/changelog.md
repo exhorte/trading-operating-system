@@ -48,16 +48,15 @@ This file tracks meaningful changes to the project brain and architecture.
 - Renamed visual reference images in `context/templates/` to descriptive `reference-*` names and updated `frontend/visual_reference_analysis.md`.
 - Closed Phase 00; Phase 01 - Frontend Foundation is now the active phase.
 
+### Added - Phase 01 Frontend Foundation
+
+- Added the Phase 01 technical design (`project/phases/phase-01-design.md`), validated by the user.
+- Implemented the cockpit shell (icon rail, sidebar, top command bar with MOCK and WebSocket badges).
+- Implemented the Command Center with 8 realtime panels and 9 stub screens with empty states.
+- Added `lib/contracts/` (envelope, events, read models), `lib/realtime/` (client seam, store, mock client, provider), `lib/mock/` (enveloped generators), and the dark cockpit theme.
+- Zero new runtime dependencies; lint and build pass with 11 routes.
+- Removed create-next-app boilerplate (homepage, public SVGs).
+
 ### Current Next Step
 
-Start Phase 01 by designing the frontend command center around:
-
-- dark dense trading cockpit
-- mock realtime subscriptions
-- WebSocket state
-- risk-first KPI strip
-- MT5 agent health
-- ICT/SMC market context
-- signal queue
-- execution reports
-- trade journal and future replay workspace
+User visual walkthrough of the Phase 01 cockpit (`npm run dev`), then start Phase 02 (Domain Model MVP) with a technical design that formalizes `lib/contracts/` into reusable platform schemas.
