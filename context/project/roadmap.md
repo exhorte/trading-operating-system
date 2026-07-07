@@ -1,6 +1,9 @@
 # Roadmap
 
-## Phase 00 - AI Project Brain Bootstrap
+Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
+As of 2026-07-07: Phase 00 Closed; Phases 01, 02, 03 Delivered (awaiting a single user review); Phase 04+ Planned.
+
+## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
 Create `.claude/` and `context/` so Claude Code can work with durable project memory.
 
@@ -14,7 +17,7 @@ Deliverables:
 - roadmap and phase system
 - governance and quality gates
 
-## Phase 01 - Frontend Foundation
+## Phase 01 - Frontend Foundation — Delivered (2026-07-06, awaiting review)
 
 Build the first dashboard shell in Next.js.
 
@@ -28,7 +31,7 @@ Deliverables:
 - mock trading data contracts
 - websocket client boundary and mock realtime event stream
 
-## Phase 02 - Domain Model MVP
+## Phase 02 - Domain Model MVP — Delivered (2026-07-07, awaiting review)
 
 Define platform contracts before real trading.
 
@@ -44,7 +47,7 @@ Deliverables:
 - realtime event envelope
 - command/ack/report contracts
 
-## Phase 03 - MT5 Agent Specification
+## Phase 03 - MT5 Agent Specification — Delivered (2026-07-07, awaiting review)
 
 Transform the existing EA into a future execution-agent specification.
 
