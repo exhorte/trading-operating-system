@@ -34,9 +34,11 @@ Phase 01 - Frontend Foundation: implemented 2026-07-06 after validated design (`
 
 Phase 02 - Domain Model MVP: implemented 2026-07-07 (`project/phases/phase-02-design.md`). Canonical portable schemas live in `lib/domain/`; `lib/contracts/` became the wire layer with full `EventPayloadMap` coverage; ADR 0004 records TypeScript as the MVP schema source. Lint, typecheck, and build pass with zero UI changes. Awaiting user review before closure (together with the Phase 01 visual walkthrough).
 
+Phase 03 - MT5 Agent Spec: specified 2026-07-07 (`project/phases/phase-03-design.md`). Deliverables: `context/realtime/mt5_wire_protocol.md`, `lib/contracts/mt5-wire.ts`, extended `mt5_agent_realtime_lifecycle.md`, ADR 0005. This is documentation + wire contracts only; the EA/sidecar/gateway are not built here. Awaiting user review before closure.
+
 ## Next Up
 
-Phase 03 - MT5 Agent Spec: specify the MT5 EA agent's realtime lifecycle (connect, auth, snapshot, heartbeat, command handling, reconciliation) against the Phase 02 schemas — see `project/phases/phase-03-mt5-agent-spec.md`. Alternatively, resolve the open question on the first realtime prototype (plain WebSocket in Node/Next vs waiting for ASP.NET Core SignalR) before agent work begins.
+Build the first realtime prototype against the Phase 03 spec: a WebSocket Gateway plus a mock/sidecar producer that speaks the lean MT5 wire protocol (`mt5-wire.ts`) in `observe` mode, wired end-to-end into the existing cockpit (dashboard side stays on the mock client / future SignalR). Decide where the gateway lives (a Node/Next WebSocket dev server now, or wait for the ASP.NET Core backend). Alternatively, close out Phases 01-03 with a user review first.
 
 ## Decisions Already Made
 
@@ -54,6 +56,8 @@ Phase 03 - MT5 Agent Spec: specify the MT5 EA agent's realtime lifecycle (connec
 - UI components depend on the `RealtimeClient` seam and `CockpitStore`, never on the mock client directly.
 - Canonical domain schemas are portable TypeScript in `lib/domain/` (ADR 0004); `lib/contracts/` is the wire layer and may depend on the domain, never the reverse.
 - Dashboard read models (`lib/contracts/snapshots.ts`) are projections for rendering, not domain models; both are legitimate payloads on different channels.
+- MT5 edge uses lean WSS+versioned JSON, not SignalR; a WebSocket Gateway translates it to the internal envelope. SignalR is dashboard-side only (ADR 0005).
+- The MT5 agent connects through an external sidecar bridge (EA never opens the WSS socket directly); execution runs in `observe`/`paper`/`live` modes, `observe` never touching the broker.
 
 ## Open Questions
 
@@ -61,4 +65,5 @@ Phase 03 - MT5 Agent Spec: specify the MT5 EA agent's realtime lifecycle (connec
 - Which auth approach will be selected first: local auth, Supabase Auth, Auth0, or Keycloak?
 - Will first market data be mocked, imported from MT5, or pulled from a market data provider?
 - Which symbol set is MVP: XAUUSD only, or XAUUSD plus EURUSD/GBPUSD/USDJPY?
-- Should the first realtime prototype use plain WebSocket in Node/Next for local development, or wait for the ASP.NET Core SignalR backend?
+- Where does the WebSocket Gateway first run: a Node/Next WebSocket dev server for local development, or wait for the ASP.NET Core backend? (The MT5-edge transport itself is settled — lean WSS+JSON via ADR 0005; SignalR is dashboard-side only.)
+- MVP symbol and account scope for the first agent prototype: XAUUSD single account is the working default, not yet formally confirmed.

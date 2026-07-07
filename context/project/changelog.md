@@ -68,6 +68,15 @@ This file tracks meaningful changes to the project brain and architecture.
 - Added `ADR 0004 - TypeScript Domain Schemas As Canonical Source (MVP)`.
 - No UI changes, no new dependencies; lint, typecheck, and build pass.
 
+### Added - Phase 03 MT5 Agent Specification
+
+- Added the Phase 03 technical design (`project/phases/phase-03-design.md`) capturing three user decisions: lean WSS+JSON MT5 edge with a translating WebSocket Gateway (SignalR dashboard-side only), full command loop gated by `observe`/`paper`/`live` execution modes, and an external sidecar bridge for MQL5 networking.
+- Added `context/realtime/mt5_wire_protocol.md` (lean edge protocol, examples, execution modes, gateway translation tables).
+- Added `lib/contracts/mt5-wire.ts` (canonical lean-edge TS types mirrored by the EA and gateway).
+- Extended `context/realtime/mt5_agent_realtime_lifecycle.md` with the sidecar topology and execution modes.
+- Added `ADR 0005 - MT5 Lean WebSocket Wire, Gateway Translation, Sidecar, Execution Modes`.
+- Documentation + wire contracts only; no EA/sidecar/gateway code. Lint and typecheck pass.
+
 ### Current Next Step
 
-User review of the Phase 01 cockpit (`npm run dev`) and the Phase 02 schemas, then Phase 03 (MT5 Agent Spec) — or first decide whether the first realtime prototype uses a Node/Next WebSocket server or waits for the ASP.NET Core SignalR backend.
+User review of the Phase 01 cockpit (`npm run dev`), Phase 02 schemas, and Phase 03 MT5 spec. Then build the first WebSocket Gateway + a mock sidecar/producer speaking the lean protocol in `observe` mode, once decided whether the gateway runs as a Node/Next dev server or waits for the ASP.NET Core backend.

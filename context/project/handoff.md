@@ -2,6 +2,27 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-07 - Phase 03 Specification
+
+Phase 03 (MT5 Agent Spec) was specified after the user fixed three load-bearing decisions (see `project/phases/phase-03-design.md`):
+
+1. Two transport worlds: MT5 edge speaks lean WSS + versioned JSON; a .NET WebSocket Gateway translates to the internal `Envelope<T>` + domain models; SignalR is dashboard-side only.
+2. Full command loop from sprint 1, gated by execution modes `observe` (SIMULATED, no broker) → `paper` (demo) → `live` (FTMO); same code, config-only switch; backend `ExecutionAdapter` abstraction.
+3. External sidecar bridge for MQL5 networking (EA ↔ sidecar over pipe/socket; sidecar ↔ gateway over WSS).
+
+Built (documentation + wire contracts only — no EA/sidecar/gateway code in this repo):
+
+- `context/realtime/mt5_wire_protocol.md` — lean edge protocol, examples, execution modes, inbound/outbound gateway translation tables.
+- `lib/contracts/mt5-wire.ts` — canonical lean-edge TS types (`Mt5*Message`/`Mt5*Command`, `Mt5ExecutionMode`, inbound/outbound unions). Lint + typecheck pass; not imported anywhere yet.
+- `context/realtime/mt5_agent_realtime_lifecycle.md` — extended with sidecar topology and execution modes.
+- `context/adr/0005-mt5-lean-wire-and-gateway.md`.
+
+Key handoff:
+
+- The lean edge protocol is intentionally simpler than the internal envelope; the gateway is the adapter. Keep `mt5-wire.ts` and the internal `lib/contracts`/`lib/domain` in sync via the mapping tables.
+- `time` at the edge is epoch **milliseconds** (refined from the user's seconds example) so ticks stay ordered; the gateway converts to ISO.
+- Next recommended action: build the first WebSocket Gateway + a mock sidecar/producer speaking `mt5-wire.ts` in `observe` mode, end-to-end into the cockpit — after deciding whether the gateway runs as a Node/Next dev server or waits for ASP.NET Core. Or close Phases 01-03 with a user review first.
+
 ## 2026-07-07 - Phase 02 Implementation
 
 Phase 02 (Domain Model MVP) was designed (`project/phases/phase-02-design.md`) and implemented in direct continuation at the user's request ("analyse where we stopped and continue").

@@ -4,6 +4,16 @@
 
 Define how the MT5 EA agent connects to the platform through WebSocket-first infrastructure.
 
+Phase 03 (ADR 0005) fixed the concrete shape: the EA speaks lean versioned JSON (`context/realtime/mt5_wire_protocol.md`) to a local **sidecar bridge**, which holds the WSS connection to the **WebSocket Gateway**; the gateway translates to the internal `Envelope<T>`. Execution is gated by modes (`observe` → `paper` → `live`).
+
+## Topology
+
+```text
+EA (MQL5)  ──named pipe / localhost socket──▶  Sidecar bridge  ──WSS──▶  WebSocket Gateway (.NET)  ──▶  Trading Engine
+```
+
+The sidecar is a dumb transport relay: it owns WSS framing, heartbeat, and reconnect, and forwards lean JSON verbatim in both directions. No business logic lives in it, so MQL5 trading callbacks are never blocked on the network.
+
 ## Lifecycle
 
 1. Start EA in MT5 terminal.
@@ -77,7 +87,17 @@ No new execution command should be trusted until reconciliation completes.
 MQL5 does not provide the same networking ergonomics as backend languages. During implementation, choose the safest available approach:
 
 - native WebRequest is acceptable only for bootstrap/health fallback, not primary trading loop
-- a WebSocket library or bridge may be required
+- Phase 03 chose an external sidecar bridge (ADR 0005): the EA talks to a local process over a named pipe / localhost socket and never opens the WSS socket itself
 - the agent must never busy-loop or block trading callbacks for long periods
 - all command execution must remain auditable
+
+## Execution Modes
+
+Every command runs through the same `ExecutionCommandReceiver → LocalRiskGuard → OrderExecutor → ExecutionReporter` path; the mode only changes the terminal action (ADR 0005, `mt5_wire_protocol.md`).
+
+- `observe` (default) — never sends to the broker; `OrderExecutor` replies `execution.report` with status `SIMULATED`. Validates protocol, ACKs, IDs, retries, timeouts, and reconnects at zero financial risk.
+- `paper` — routes to a demo account; real broker statuses.
+- `live` — routes to the FTMO broker; real broker statuses.
+
+Only configuration changes between modes (`execution.enabled`, `execution.mode`). `LocalRiskGuard` treats an unknown or absent mode as `observe`. The backend Trading Engine mirrors this with an `ExecutionAdapter` (`NullExecution` / `PaperExecution` / `MT5Execution` / future `FIXExecution`) and never knows which is active.
 
