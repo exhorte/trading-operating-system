@@ -32,9 +32,11 @@ Phase 00 - AI Project Brain Bootstrap: closed 2026-07-06.
 
 Phase 01 - Frontend Foundation: implemented 2026-07-06 after validated design (`project/phases/phase-01-design.md`). The cockpit shell, Command Center, typed contracts, and mock realtime client exist; lint and build pass. Only a user visual walkthrough remains before declaring it fully closed.
 
+Phase 02 - Domain Model MVP: implemented 2026-07-07 (`project/phases/phase-02-design.md`). Canonical portable schemas live in `lib/domain/`; `lib/contracts/` became the wire layer with full `EventPayloadMap` coverage; ADR 0004 records TypeScript as the MVP schema source. Lint, typecheck, and build pass with zero UI changes. Awaiting user review before closure (together with the Phase 01 visual walkthrough).
+
 ## Next Up
 
-Phase 02 - Domain Model MVP: formalize account/symbol/candle/trade/market-context/risk/signal models and the realtime envelope into reusable schemas. `lib/contracts/` from Phase 01 is the seed. Frontend conventions established in Phase 01 (components/shell, components/cockpit, components/ui, lib/realtime seam) are now project standards.
+Phase 03 - MT5 Agent Spec: specify the MT5 EA agent's realtime lifecycle (connect, auth, snapshot, heartbeat, command handling, reconciliation) against the Phase 02 schemas — see `project/phases/phase-03-mt5-agent-spec.md`. Alternatively, resolve the open question on the first realtime prototype (plain WebSocket in Node/Next vs waiting for ASP.NET Core SignalR) before agent work begins.
 
 ## Decisions Already Made
 
@@ -50,6 +52,8 @@ Phase 02 - Domain Model MVP: formalize account/symbol/candle/trade/market-contex
 - Phase 01 must model UI data as mock realtime subscriptions, not REST polling.
 - Phase 01 shipped with zero new runtime dependencies; shadcn/ui, TanStack Query, and chart libraries are deferred until their first real use case (validated 2026-07-06).
 - UI components depend on the `RealtimeClient` seam and `CockpitStore`, never on the mock client directly.
+- Canonical domain schemas are portable TypeScript in `lib/domain/` (ADR 0004); `lib/contracts/` is the wire layer and may depend on the domain, never the reverse.
+- Dashboard read models (`lib/contracts/snapshots.ts`) are projections for rendering, not domain models; both are legitimate payloads on different channels.
 
 ## Open Questions
 

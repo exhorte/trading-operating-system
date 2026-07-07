@@ -2,6 +2,26 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-07 - Phase 02 Implementation
+
+Phase 02 (Domain Model MVP) was designed (`project/phases/phase-02-design.md`) and implemented in direct continuation at the user's request ("analyse where we stopped and continue").
+
+Built:
+
+- `lib/domain/`: canonical portable schemas — primitives (ids, timestamps, timeframe, side/bias/session), market (SymbolMetadata, Tick, Candle, SpreadSample, SessionWindow), account (BrokerAccount, TradingAccount), analysis (LiquidityLevel, FairValueGap, OrderBlock, StructureShift, MarketContextState), risk (RiskPolicy, RiskMode, RiskGateResult, RiskState, RiskDecision), strategy (SignalStatus, StrategySignal), execution (Order, Position, Trade, ExecutionCommand union, CommandAck, ExecutionReport, ExecutionAgent)
+- `lib/contracts/commands.ts`: execution command payloads, CommandAckPayload, RealtimeSubscription, SubscriptionTopic
+- `lib/contracts/events.ts`: payloads for all remaining event families plus `EventPayloadMap` (exhaustive over all 43 `EventType`s) and `KnownEnvelope<T>`
+- `lib/contracts/enums.ts`: now re-exports domain vocabulary; `RiskState` kept as legacy alias of domain `RiskMode`
+- `context/domain/domain_model_mvp.md` (layering, portability rules, .NET/MQL5 mapping, traceability chain) and ADR 0004 (TypeScript as canonical schema source for the MVP)
+
+Verified: lint, `tsc --noEmit`, and production build pass; zero UI/component changes, zero new dependencies.
+
+Key handoff:
+
+- Dependency direction is law: `components` → `lib/realtime` → `lib/contracts` → `lib/domain`; the domain imports nothing.
+- Known Phase 01 shortcuts to reconcile when the store adopts `EventPayloadMap`: mock publishes `execution.command.acknowledged` as an ExecutionReportPayload (canonical is CommandAckPayload), and risk decisions reach the dashboard only as SignalUpdatedPayload (decision-grade record is `RiskDecision`).
+- Next recommended action: user review of Phase 01 cockpit + Phase 02 schemas, then Phase 03 (MT5 Agent Spec) starting from `context/realtime/mt5_agent_realtime_lifecycle.md`, or first decide the realtime prototype question (Node WebSocket vs ASP.NET Core SignalR).
+
 ## 2026-07-06 - Project Brain Bootstrap
 
 Created initial `.claude/` and `context/` structure for the Trading Operating System Algorithmique.

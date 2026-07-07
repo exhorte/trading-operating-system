@@ -57,6 +57,17 @@ This file tracks meaningful changes to the project brain and architecture.
 - Zero new runtime dependencies; lint and build pass with 11 routes.
 - Removed create-next-app boilerplate (homepage, public SVGs).
 
+## 2026-07-07
+
+### Added - Phase 02 Domain Model MVP
+
+- Added the Phase 02 technical design (`project/phases/phase-02-design.md`); implemented in direct continuation at the user's request.
+- Added `lib/domain/` as the canonical portable schema source: primitives, market, account, analysis (ICT/SMC), risk, strategy, execution modules.
+- Extended `lib/contracts/` into the wire layer: new `commands.ts` (execution commands, CommandAck, RealtimeSubscription), full event payload coverage with `EventPayloadMap` and `KnownEnvelope<T>`, `enums.ts` re-exporting domain vocabulary (`RiskState` kept as alias of `RiskMode`).
+- Added `context/domain/domain_model_mvp.md` (layering, portability rules, .NET/MQL5 mapping conventions, traceability chain).
+- Added `ADR 0004 - TypeScript Domain Schemas As Canonical Source (MVP)`.
+- No UI changes, no new dependencies; lint, typecheck, and build pass.
+
 ### Current Next Step
 
-User visual walkthrough of the Phase 01 cockpit (`npm run dev`), then start Phase 02 (Domain Model MVP) with a technical design that formalizes `lib/contracts/` into reusable platform schemas.
+User review of the Phase 01 cockpit (`npm run dev`) and the Phase 02 schemas, then Phase 03 (MT5 Agent Spec) — or first decide whether the first realtime prototype uses a Node/Next WebSocket server or waits for the ASP.NET Core SignalR backend.

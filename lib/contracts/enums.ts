@@ -1,9 +1,23 @@
 /**
  * Shared enums for the trading cockpit.
- * Conceptual source of truth: context/realtime/event_contracts.md and
- * context/realtime/dashboard_realtime_model.md. Phase 02 will formalize these
- * into cross-platform (TS/.NET/MQL5) schemas.
+ *
+ * Since Phase 02 the domain vocabulary lives in lib/domain (canonical,
+ * portable schemas); this module re-exports it so Phase 01 imports keep
+ * working. Only client-side concepts (connection, environment) are defined
+ * here — they never cross the wire to the backend or agents.
  */
+
+export type {
+  AgentState,
+  Bias,
+  ExecutionReportStatus,
+  Side,
+  SignalStatus,
+  TradingSession,
+} from "@/lib/domain";
+
+/** Backward-compatible alias: the domain now calls this union RiskMode. */
+export type { RiskMode as RiskState } from "@/lib/domain";
 
 export type Environment = "mock" | "paper" | "demo" | "live";
 
@@ -16,39 +30,3 @@ export type ConnectionState =
   | "degraded"
   | "disconnected"
   | "error";
-
-export type Side = "buy" | "sell";
-
-export type Bias = "bullish" | "bearish" | "neutral";
-
-export type RiskState = "normal" | "warning" | "locked";
-
-export type SignalStatus =
-  | "detected"
-  | "scored"
-  | "risk_review"
-  | "approved"
-  | "rejected"
-  | "commanded"
-  | "acknowledged"
-  | "reported"
-  | "expired";
-
-export type AgentState = "connected" | "degraded" | "disconnected";
-
-export type ExecutionReportStatus =
-  | "acknowledged"
-  | "submitted"
-  | "filled"
-  | "partially_filled"
-  | "failed"
-  | "position_opened"
-  | "position_modified"
-  | "position_closed";
-
-export type TradingSession =
-  | "asia"
-  | "london"
-  | "new_york_am"
-  | "new_york_pm"
-  | "off_session";
