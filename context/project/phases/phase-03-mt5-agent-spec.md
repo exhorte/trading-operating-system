@@ -42,6 +42,10 @@ Design and decisions in `phase-03-design.md` (three user decisions: lean WSS+JSO
 - Execution lifecycle — command → `execution.ack` → `execution.report`, per mode (`observe`/`paper`/`live`); `observe` replies `SIMULATED`.
 - Idempotency/retry/reconciliation — dedupe by command `id`, refuse past `expiresAt`, snapshot-before-trust on reconnect.
 - EA mapping — 7-component split (`MarketDataPublisher`, `AccountStatePublisher`, `ExecutionCommandReceiver`, `OrderExecutor`, `ExecutionReporter`, `LocalRiskGuard`, `ConnectionSupervisor`) bound to modes and the sidecar.
-- Recorded in ADR 0005. Awaiting user review before closure.
+- Recorded in ADR 0005.
 
 This phase is documentation + wire contracts only; the EA (MQL5), sidecar, and gateway (.NET) are not built in this repo yet.
+
+## Closure (2026-07-08)
+
+Closed on 2026-07-08, reviewed together with Phases 01 and 02. All acceptance criteria met (contracts, session lifecycle, execution lifecycle, idempotency/retry/reconciliation, EA mapping). All deliverable artifacts confirmed present; `mt5-wire.ts` still passes lint + typecheck. At closure the user fixed the outstanding open question on gateway location: the WebSocket Gateway waits for the ASP.NET Core backend — no throwaway Node/Next WebSocket dev server will be built.

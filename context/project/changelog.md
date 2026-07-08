@@ -77,6 +77,15 @@ This file tracks meaningful changes to the project brain and architecture.
 - Added `ADR 0005 - MT5 Lean WebSocket Wire, Gateway Translation, Sidecar, Execution Modes`.
 - Documentation + wire contracts only; no EA/sidecar/gateway code. Lint and typecheck pass.
 
+## 2026-07-08
+
+### Changed - Phases 01-03 Closure
+
+- Reviewed and closed Phases 01 (Frontend Foundation), 02 (Domain Model MVP), and 03 (MT5 Agent Spec) together at the user's request; the review decision discharged Phase 01's last-open visual walkthrough.
+- Re-verified at closure (no code changed): `npm run lint` clean, `tsc --noEmit` exit 0, `npm run build` compiles (13 static routes); all deliverable artifacts confirmed present.
+- Fixed the gateway-location decision: the WebSocket Gateway waits for the ASP.NET Core backend — no interim Node/Next WebSocket dev server.
+- Updated the three phase files (closure sections), `project_state.md` (phases closed, Next Up rewritten, decision promoted, open questions pruned), and `handoff.md`.
+
 ### Current Next Step
 
-User review of the Phase 01 cockpit (`npm run dev`), Phase 02 schemas, and Phase 03 MT5 spec. Then build the first WebSocket Gateway + a mock sidecar/producer speaking the lean protocol in `observe` mode, once decided whether the gateway runs as a Node/Next dev server or waits for the ASP.NET Core backend.
+No phase active. Recommended next phase: the first realtime prototype speaking `mt5-wire.ts` in `observe` mode, wired into the cockpit — now gated on standing up the ASP.NET Core backend surface first (where the gateway will live). Start with the phase-start procedure.

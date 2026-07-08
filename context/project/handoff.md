@@ -2,6 +2,26 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-08 - Phases 01-03 Review And Closure
+
+The user chose to review and close Phases 01 (Frontend Foundation), 02 (Domain Model MVP), and 03 (MT5 Agent Spec) together rather than start the next build. That decision serves as the review sign-off and discharges the one item that was still blocking Phase 01 (a human visual walkthrough in `npm run dev`).
+
+Re-verified at closure (no code changed — verification only):
+
+- `npm run lint` clean.
+- `tsc --noEmit` exit 0.
+- `npm run build` compiles, 13 static routes (was reported as 11 earlier; `/` and `/_not-found` now counted in the 13).
+- All Phase 01/02/03 deliverable artifacts confirmed present on disk (`lib/domain/*`, `lib/contracts/*` incl. `mt5-wire.ts`, `lib/realtime/*`, `context/realtime/mt5_wire_protocol.md`, `context/domain/domain_model_mvp.md`, ADRs 0004 and 0005).
+
+Decision fixed at closure: the WebSocket Gateway waits for the ASP.NET Core backend — no throwaway Node/Next WebSocket dev server. Recorded in `project_state.md` (Decisions Already Made) and the resolved open question.
+
+Updated: the three phase files (closure sections), `project_state.md` (phases now closed, Next Up rewritten, gateway decision promoted, open questions pruned), `changelog.md`, this log.
+
+Key handoff:
+
+- No phase is active. The recommended next phase is the first realtime prototype in `observe` mode against `mt5-wire.ts`, but it is now gated on standing up the ASP.NET Core backend surface first (that is where the gateway will live). Start it with the phase-start procedure.
+- Two Phase 01→02 reconciliation shortcuts are still open and should be addressed when the store adopts `EventPayloadMap`: the mock publishes `execution.command.acknowledged` as an ExecutionReportPayload (canonical is CommandAckPayload), and risk decisions reach the dashboard only as SignalUpdatedPayload (decision-grade record is `RiskDecision`).
+
 ## 2026-07-07 - Phase 03 Specification
 
 Phase 03 (MT5 Agent Spec) was specified after the user fixed three load-bearing decisions (see `project/phases/phase-03-design.md`):

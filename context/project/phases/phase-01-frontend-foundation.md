@@ -77,3 +77,7 @@ Verified:
 Remaining open:
 
 - Visual walkthrough by the user in `npm run dev` (client-side lifecycle was verified by code and SSR smoke test, not by a browser session).
+
+## Closure (2026-07-08)
+
+Closed on 2026-07-08. The user elected to review and close Phases 01–03 together; that decision stands as the review sign-off, discharging the visual-walkthrough item above. Re-verified at closure: `npm run lint` clean, `tsc --noEmit` exit 0, `npm run build` compiles (13 static routes). All acceptance criteria met.

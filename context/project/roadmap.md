@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-07: Phase 00 Closed; Phases 01, 02, 03 Delivered (awaiting a single user review); Phase 04+ Planned.
+As of 2026-07-08: Phases 00, 01, 02, 03 Closed (01-03 reviewed and closed together 2026-07-08); Phase 04+ Planned.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -17,7 +17,7 @@ Deliverables:
 - roadmap and phase system
 - governance and quality gates
 
-## Phase 01 - Frontend Foundation — Delivered (2026-07-06, awaiting review)
+## Phase 01 - Frontend Foundation — Closed (2026-07-08)
 
 Build the first dashboard shell in Next.js.
 
@@ -31,7 +31,7 @@ Deliverables:
 - mock trading data contracts
 - websocket client boundary and mock realtime event stream
 
-## Phase 02 - Domain Model MVP — Delivered (2026-07-07, awaiting review)
+## Phase 02 - Domain Model MVP — Closed (2026-07-08)
 
 Define platform contracts before real trading.
 
@@ -47,7 +47,7 @@ Deliverables:
 - realtime event envelope
 - command/ack/report contracts
 
-## Phase 03 - MT5 Agent Specification — Delivered (2026-07-07, awaiting review)
+## Phase 03 - MT5 Agent Specification — Closed (2026-07-08)
 
 Transform the existing EA into a future execution-agent specification.
 
