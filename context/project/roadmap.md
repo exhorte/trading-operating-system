@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-08: Phases 00, 01, 02, 03 Closed; Phase 04 (ICT/SMC Engine MVP) Delivered (awaiting review); Phase 05+ Planned.
+As of 2026-07-08: Phases 00–03 Closed; Phase 04 (ICT/SMC Engine MVP) and Phase 05 (Live Observe Prototype) Delivered (awaiting review — Phase 05 awaits the user's live run); Phase 06+ Planned. Note: the Live Observe Prototype was inserted as Phase 05 ahead of Risk, shifting the later phases down by one.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -78,9 +78,22 @@ Deliverables:
 
 Deferred to later phases: SMT/divergence, news/macro, premium-discount OTE, breaker/mitigation blocks, entry-sequence and trade-management engines (see `engineering/analysis_engine_mvp.md`).
 
-## Phase 05 - Risk And Prop Firm Mode
+## Phase 05 - Live Observe Prototype — Delivered (2026-07-08, awaiting user's live run)
 
-Build risk controls as independent services.
+Stream real MT5 demo data into the cockpit in read-only `observe` mode to validate the connection chain (ADR 0007).
+
+Deliverables:
+
+- Python `MetaTrader5` read-only producer (`tools/mt5-observer/`)
+- lean-wire WebSocket + browser `LiveRealtimeClient` + pure translation mappers
+- real M15 candles → Phase 04 ICT/SMC engine → Market Context
+- DEMO badge, opt-in via env (mock stays default)
+
+Prototype only: browser-side translation is a shortcut; the production path keeps the .NET gateway (ADR 0005) + MQL5 EA/sidecar (Phase 03).
+
+## Phase 06 - Risk And Prop Firm Mode
+
+Build risk controls as independent services (pure TS, engine-first pattern; makes the observed account's risk panel real).
 
 Deliverables:
 
@@ -91,7 +104,7 @@ Deliverables:
 - target reached lockout
 - news/spread/volatility gates
 
-## Phase 06 - Execution Bridge
+## Phase 07 - Execution Bridge
 
 Connect server decisions to MT5 agent in a controlled environment.
 
@@ -105,7 +118,7 @@ Deliverables:
 - idempotency
 - audit logs
 
-## Phase 07 - Backtesting And Analytics
+## Phase 08 - Backtesting And Analytics
 
 Make decisions measurable and replayable.
 

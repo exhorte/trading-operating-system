@@ -2,6 +2,27 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-08 - Phase 05 Implementation (Live Observe Prototype)
+
+Triggered by the user wanting to validate the connection chain against their real Exness demo ($1000). Two things were established first: (1) **never share account credentials** — a local reader attaches to the already-authenticated terminal, no password needed; (2) there were **no live connections built yet** — the cockpit was mock-only, Phase 03 was spec-only. So this is a build phase, not a test. The user chose the realtime prototype over the roadmap's Risk phase, then validated the design (Python producer, XAUUSDm, local run OK).
+
+Built:
+
+- `tools/mt5-observer/mt5_observer.py` — Python `MetaTrader5` producer, **strictly read-only** (`observe` mode, no `order_send`/trade calls). Emits lean `mt5-wire` JSON (hello, account/positions snapshots, ticks, M15 candles, heartbeat) over `ws://localhost:8765`. Plus `requirements.txt` + `README.md` (runbook + safety).
+- `lib/realtime/mt5-translate.ts` — pure lean→read-model mappers (+ 6 tests).
+- `lib/realtime/live-client.ts` — `LiveRealtimeClient` implementing the `RealtimeClient` seam: WS, `connecting→connected→stale→reconnecting` state machine, heartbeat watchdog, candle window → Phase 04 engine → Market Context. Read-only (never sends).
+- `lib/realtime/provider.tsx` — selects mock vs live via `NEXT_PUBLIC_REALTIME_SOURCE` (mock default). `components/shell/top-command-bar.tsx` — env-aware badge (MOCK/DEMO/PAPER/LIVE) + real symbol.
+- `.env.example`, ADR 0007, `context/realtime/live_prototype.md`, phase-05 files.
+
+Verified here: lint clean, `tsc --noEmit` exit 0, build passes (13 routes), 29 Vitest tests (10 files), `python -m py_compile` OK. **The real end-to-end run is the user's next step** (needs their Windows terminal + demo, which this environment can't do).
+
+Key handoff:
+
+- Browser-side translation is a **deliberate prototype shortcut** (ADR 0007). Production keeps the .NET gateway (ADR 0005) + MQL5 EA/sidecar (Phase 03); `live-client.ts` + `mt5-translate.ts` are throwaway/reference. The `mt5-translate` mappers are portable and can seed the .NET gateway.
+- Honest gaps in live mode: risk/signals/execution/drawdown-baseline are NOT produced (no engines yet) → empty/zero states, never fake numbers. This is why **Risk & Prop Firm Mode** is the natural next engine — it makes the observed account's risk panel real.
+- Runbook: `tools/mt5-observer/README.md`. To enable: run the producer, then `$env:NEXT_PUBLIC_REALTIME_SOURCE="live"; npm run dev`.
+- Not yet committed at time of writing (Phase 04 was committed as `298480a`).
+
 ## 2026-07-08 - Phase 04 Implementation (ICT/SMC Engine MVP)
 
 Phase 04 was designed, validated by the user (build the ICT/SMC engine now; engine home = TypeScript in this repo; MVP scope confirmed), and implemented the same day.

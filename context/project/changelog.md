@@ -79,6 +79,15 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ## 2026-07-08
 
+### Added - Phase 05 Live Observe Prototype (MT5 → cockpit, read-only)
+
+- Added the Phase 05 design (`project/phases/phase-05-design.md`), validated by the user (Python producer, XAUUSDm, local run OK), then implemented the same day.
+- Added `tools/mt5-observer/` — a Python `MetaTrader5` producer that reads real Exness demo data (account, positions, ticks, M15 candles) and streams lean `mt5-wire` JSON over a local WebSocket. **Strictly read-only** (`observe` mode, no `order_send`); no credentials needed.
+- Added `lib/realtime/mt5-translate.ts` (pure lean→read-model mappers, tested) and `lib/realtime/live-client.ts` (`LiveRealtimeClient`: WS, connection-state machine, heartbeat watchdog, real M15 candles → Phase 04 engine → Market Context).
+- `lib/realtime/provider.tsx` selects mock vs live via `NEXT_PUBLIC_REALTIME_SOURCE` (mock stays default); `top-command-bar.tsx` badge is now environment-aware (MOCK/DEMO/PAPER/LIVE). Added `.env.example`.
+- Added `ADR 0007 - Live Observe Prototype` (browser-side translation is a documented shortcut; production keeps the .NET gateway + MQL5 agent) and `context/realtime/live_prototype.md` (runbook + what's real vs. not).
+- Verified: lint clean, `tsc --noEmit` exit 0, build passes (13 routes), 29 Vitest tests, `py_compile` OK. Real end-to-end run is the user's step. Honest gaps: risk/signals/execution not produced yet → empty states.
+
 ### Added - Phase 04 ICT/SMC Engine MVP
 
 - Added the Phase 04 technical design (`project/phases/phase-04-design.md`), validated by the user, then implemented the same day.
@@ -97,4 +106,4 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ### Current Next Step
 
-Phase 04 implemented (see the Phase 04 entry above); awaiting user review before closure. Next candidates: Phase 05 (Risk & Prop Firm Mode) as pure TS services following the engine-first pattern — unblocked; or the first realtime prototype (`mt5-wire.ts`, `observe`) — still gated on the ASP.NET Core backend. Start either with the phase-start procedure.
+Phase 05 (Live Observe Prototype) implemented; the user runs the Python producer against their Exness demo (`tools/mt5-observer/README.md`) to confirm the real data path, then we close Phases 04 + 05. After that: Risk & Prop Firm Mode (pure TS, makes the observed account's risk panel real), or begin the ASP.NET Core backend to move translation server-side.

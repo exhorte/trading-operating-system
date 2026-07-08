@@ -2,13 +2,22 @@
 
 import { usePathname } from "next/navigation";
 import { useCockpit } from "@/lib/realtime/provider";
-import { StatusPill } from "@/components/ui/status-pill";
+import type { Environment } from "@/lib/contracts/enums";
+import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 import { ConnectionBadge } from "./connection-badge";
 import { pageTitleFor } from "./nav";
 
+const ENV_BADGE: Record<Environment, { label: string; tone: PillTone }> = {
+  mock: { label: "MOCK", tone: "accent" },
+  demo: { label: "DEMO", tone: "info" },
+  paper: { label: "PAPER", tone: "warning" },
+  live: { label: "LIVE", tone: "loss" },
+};
+
 export function TopCommandBar({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const pathname = usePathname();
-  const { account } = useCockpit();
+  const { account, environment, marketContext } = useCockpit();
+  const env = ENV_BADGE[environment];
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface px-3">
@@ -27,10 +36,10 @@ export function TopCommandBar({ onToggleSidebar }: { onToggleSidebar: () => void
           {account ? account.label : "No account"}
         </span>
         <span className="hidden rounded border border-border bg-surface-elevated px-2 py-1 text-xs text-muted sm:inline">
-          XAUUSD
+          {marketContext?.symbol ?? "XAUUSD"}
         </span>
-        <StatusPill tone="accent" pulse>
-          MOCK
+        <StatusPill tone={env.tone} pulse>
+          {env.label}
         </StatusPill>
         <ConnectionBadge />
         {/* Inert by design: execution controls stay disabled until a real,
@@ -38,7 +47,7 @@ export function TopCommandBar({ onToggleSidebar }: { onToggleSidebar: () => void
         <button
           type="button"
           disabled
-          title="Disabled: mock environment, no live execution path"
+          title="Disabled: read-only / observe mode, no live execution path yet"
           className="cursor-not-allowed rounded border border-loss/30 px-2 py-1 text-xs text-loss/50"
         >
           Emergency stop

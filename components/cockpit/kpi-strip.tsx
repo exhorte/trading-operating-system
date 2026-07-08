@@ -31,7 +31,10 @@ export function KpiStrip() {
   const { account, risk, positions, agents } = useCockpit();
   const untrusted = useIsDataUntrusted();
 
-  if (!account || !risk) {
+  // Only the account is required. `risk` is null until a risk engine exists
+  // (e.g. live observe mode) — degrade the risk-dependent tiles instead of
+  // blanking the whole strip, so real equity/positions/agents still show.
+  if (!account) {
     return (
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
         {Array.from({ length: 8 }).map((_, index) => (
@@ -52,18 +55,30 @@ export function KpiStrip() {
     {
       label: "Daily drawdown",
       value: formatPercent(account.dailyDrawdownPercent),
-      tone: account.dailyDrawdownPercent >= risk.dailyLossLimitPercent * 0.6 ? "warning" : "default",
+      tone:
+        risk && account.dailyDrawdownPercent >= risk.dailyLossLimitPercent * 0.6
+          ? "warning"
+          : "default",
     },
     {
       label: "Total drawdown",
       value: formatPercent(account.totalDrawdownPercent),
-      tone: account.totalDrawdownPercent >= risk.maxDrawdownLimitPercent * 0.6 ? "warning" : "default",
+      tone:
+        risk && account.totalDrawdownPercent >= risk.maxDrawdownLimitPercent * 0.6
+          ? "warning"
+          : "default",
     },
     { label: "Open risk", value: formatPercent(account.openRiskPercent) },
     {
       label: "Risk state",
-      value: risk.state.toUpperCase(),
-      tone: risk.state === "normal" ? "profit" : risk.state === "warning" ? "warning" : "loss",
+      value: risk ? risk.state.toUpperCase() : "—",
+      tone: !risk
+        ? "default"
+        : risk.state === "normal"
+          ? "profit"
+          : risk.state === "warning"
+            ? "warning"
+            : "loss",
     },
     { label: "Active positions", value: String(positions.length) },
     {

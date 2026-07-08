@@ -38,16 +38,16 @@ Phase 03 - MT5 Agent Spec: closed 2026-07-08. Specified 2026-07-07 (`project/pha
 
 Phases 01-03 were reviewed and closed together on 2026-07-08. Re-verified at closure: `npm run lint` clean, `tsc --noEmit` exit 0, `npm run build` compiles (13 static routes); all deliverable artifacts confirmed present.
 
-Phase 04 - ICT/SMC Engine MVP: implemented 2026-07-08 (`project/phases/phase-04-design.md`, validated by the user first). The pure TypeScript analysis engine lives in `lib/analysis/` (imports only `lib/domain`): swings → structure (BOS/CHOCH) → liquidity → PD arrays (FVG/OB) → session → bias → weighted scoring → `MarketContextState`. A projection (`lib/contracts/projections.ts`) flattens it to the panel read model; the mock cockpit now feeds a deterministic synthetic candle series through the engine, so the Market Context panel renders computed (not hand-written) output while staying MOCK-badged. Vitest introduced (dev-only); 23 tests pass; lint/typecheck/build green. Engine is v0.1 — a hypothesis, not a validated edge. Awaiting user review before closure.
+Phase 04 - ICT/SMC Engine MVP: implemented and committed 2026-07-08 (`298480a`; `project/phases/phase-04-design.md`, validated first). The pure TypeScript analysis engine lives in `lib/analysis/` (imports only `lib/domain`): swings → structure (BOS/CHOCH) → liquidity → PD arrays (FVG/OB) → session → bias → weighted scoring → `MarketContextState`. A projection (`lib/contracts/projections.ts`) flattens it to the panel read model. Vitest introduced (dev-only). Engine is v0.1 — a hypothesis, not a validated edge. Awaiting user review before closure.
+
+Phase 05 - Live Observe Prototype: implemented 2026-07-08 (`project/phases/phase-05-design.md`, validated first: Python producer, XAUUSDm, local run OK). Read-only path that streams **real** Exness demo data into the cockpit to validate the whole connection chain. `tools/mt5-observer/mt5_observer.py` (Python `MetaTrader5`, strictly read-only, `observe` mode) emits lean `mt5-wire` JSON over `ws://localhost:8765`; `lib/realtime/live-client.ts` (`LiveRealtimeClient`) translates it into the store via pure mappers (`lib/realtime/mt5-translate.ts`) and feeds real M15 candles to the Phase 04 engine. Opt-in via `NEXT_PUBLIC_REALTIME_SOURCE=live` (mock stays default); badge reads DEMO. Browser-side translation is a documented prototype shortcut (ADR 0007). Verified here: lint/tsc/build/test green (29 tests), `py_compile` OK. **Awaiting the user's live run against their demo terminal.**
 
 ## Next Up
 
-Two unblocked candidates; pick at the next phase-start:
+- **User runs Phase 05 live** (`tools/mt5-observer/README.md`) against their Exness demo to confirm the real data path, then we close Phases 04 + 05.
+- Then two candidates: **Risk & Prop Firm Mode** (pure TS services on `lib/domain/risk.ts`, engine-first pattern, unblocked) — now the highest-value next engine and what makes the observed account's risk panel real; or begin the **ASP.NET Core backend** to move the gateway/translation server-side (replacing the prototype shortcut).
 
-- **Phase 05 - Risk & Prop Firm Mode** (roadmap order): FTMO-style guards (daily loss, max drawdown, risk-per-trade, consecutive-loss, target lockout, news/spread/session gates) as independent pure services in TypeScript against `lib/domain/risk.ts`, feeding the risk panel — same pattern as the Phase 04 engine, also unblocked by the backend.
-- **First realtime prototype** against the Phase 03 spec (`mt5-wire.ts`, `observe` mode) — still **gated** on standing up the ASP.NET Core backend (the WebSocket Gateway waits for it, 2026-07-08 decision).
-
-The engine-first, backend-later pattern (build pure domain engines in TS now, port to .NET when the backend arrives) is working well; Phase 05 continues it.
+The engine-first, backend-later pattern (build pure domain engines in TS now, port to .NET when the backend arrives) is working well.
 
 ## Decisions Already Made
 
@@ -71,6 +71,8 @@ The engine-first, backend-later pattern (build pure domain engines in TS now, po
 - Domain engines are built as pure TypeScript in this repo now (against `lib/domain/`), imports-only-`lib/domain`, and ported to .NET when the backend arrives — the ICT/SMC engine (`lib/analysis/`, ADR 0006) is the first; risk services follow the same pattern. This unblocks server intelligence without waiting for infrastructure.
 - Detectors obey a no-look-ahead invariant (a bar's state uses only candles up to that bar) to keep future backtests honest.
 - Vitest is the domain test runner (dev-only, ADR 0006); runtime dependencies remain zero. Domain logic ships with deterministic-fixture unit tests.
+- Live MT5 access uses a local read-only reader attached to the user's already-authenticated terminal (Python `MetaTrader5`) — **no credentials are ever shared**. The observe prototype's lean→internal translation runs browser-side as a documented, throwaway shortcut (ADR 0007); production keeps a server-side .NET gateway (ADR 0005) + MQL5 EA/sidecar (Phase 03). This carve-out applies to the prototype only; the 2026-07-08 "gateway waits for ASP.NET Core" decision still governs the production path.
+- Read-only / `observe` is the mandatory mode for any first connection: no order path, execution controls stay inert.
 
 ## Open Questions
 
