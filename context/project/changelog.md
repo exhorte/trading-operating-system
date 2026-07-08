@@ -104,6 +104,12 @@ This file tracks meaningful changes to the project brain and architecture.
 - Fixed the gateway-location decision: the WebSocket Gateway waits for the ASP.NET Core backend — no interim Node/Next WebSocket dev server.
 - Updated the three phase files (closure sections), `project_state.md` (phases closed, Next Up rewritten, decision promoted, open questions pruned), and `handoff.md`.
 
+### Changed - Phases 04 + 05 Closed
+
+- Closed Phase 04 (ICT/SMC Engine) and Phase 05 (Live Observe Prototype) on 2026-07-08 after the user validated the live run against their real Exness demo (account 436634705, XAUUSDm): DEMO badge + connected, real balance/positions/ticks, engine-computed market context on real M15 candles.
+- Fixed at closure: `kpi-strip` blanked entirely when `risk` was null (live mode); now degrades gracefully so real equity/positions/agents render.
+- Updated phase files (closure sections), `project_state.md`, `roadmap.md` (statuses), `handoff.md`.
+
 ### Current Next Step
 
-Phase 05 (Live Observe Prototype) implemented; the user runs the Python producer against their Exness demo (`tools/mt5-observer/README.md`) to confirm the real data path, then we close Phases 04 + 05. After that: Risk & Prop Firm Mode (pure TS, makes the observed account's risk panel real), or begin the ASP.NET Core backend to move translation server-side.
+Phase 06 - Risk & Prop Firm Mode (phase-start): pure TS risk services against `lib/domain/risk.ts` computing risk state from account + positions + a `RiskPolicy`; fills the empty Risk Status panel and "—" risk KPI tiles in mock and live. Then: ASP.NET Core backend to move gateway/translation server-side.

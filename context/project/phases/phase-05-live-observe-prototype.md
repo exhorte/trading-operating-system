@@ -26,3 +26,9 @@ Built: `lib/realtime/mt5-translate.ts` (pure mappers + 6 tests), `lib/realtime/l
 Verified here: lint clean, `tsc --noEmit` exit 0, build passes (13 routes), 29 Vitest tests (10 files); `python -m py_compile` OK on the producer. The real end-to-end run is the user's step (needs their Windows terminal + demo).
 
 Honest gaps by design: risk/signals/execution/drawdown-baseline are not produced (engines don't exist) — shown as empty/zero, never as validated numbers. Browser-side translation is a documented prototype shortcut (ADR 0007), to be replaced by the .NET gateway + MQL5 agent.
+
+## Closure (2026-07-08)
+
+Closed 2026-07-08 (committed `4f56064`). **Validated live** by the user against their real Exness demo (account 436634705, XAUUSDm): badge DEMO + connected, real balance/equity/positions, live ticks, agent `mt5-observer-1`, and market context computed by the Phase 04 engine on real M15 candles. Fixed at closure: the KPI strip blanked entirely when `risk` was null (live mode) — now it degrades gracefully (real equity/positions/agents render; risk tiles show "—"). Gates green (lint, source `tsc`, build, 29 tests, `py_compile`).
+
+Follow-up captured: the empty Risk Status panel + "—" risk tiles are exactly what Phase 06 (Risk & Prop Firm Mode) fills.

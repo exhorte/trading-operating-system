@@ -2,6 +2,10 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-08 - Phases 04 + 05 Closed
+
+Both closed after the user's live validation against their real Exness demo (account 436634705, XAUUSDm): the cockpit showed DEMO + connected, real balance/equity/positions, live ticks, agent `mt5-observer-1`, and a market context computed by the Phase 04 engine on real M15 candles ("Downtrend after CHOCH", PDH, bearish FVG/OB, 5/10). One fix folded into the Phase 05 commit: `kpi-strip` blanked the whole strip when `risk` was null (live mode) — now it degrades gracefully. Gates green. Phase 04 = `298480a`, Phase 05 = `4f56064`. Next: Phase 06 (Risk & Prop Firm Mode) in phase-start.
+
 ## 2026-07-08 - Phase 05 Implementation (Live Observe Prototype)
 
 Triggered by the user wanting to validate the connection chain against their real Exness demo ($1000). Two things were established first: (1) **never share account credentials** — a local reader attaches to the already-authenticated terminal, no password needed; (2) there were **no live connections built yet** — the cockpit was mock-only, Phase 03 was spec-only. So this is a build phase, not a test. The user chose the realtime prototype over the roadmap's Risk phase, then validated the design (Python producer, XAUUSDm, local run OK).

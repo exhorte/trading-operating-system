@@ -35,3 +35,7 @@ Built in `lib/analysis/`: `config`, `types`, `swings`, `structure`, `liquidity`,
 Verified: lint clean, `tsc --noEmit` exit 0, build passes (13 routes), 23 Vitest tests pass across 9 files. Runtime sanity on the mock series yields a coherent bullish context ("Uptrend after BOS", a bullish FVG + OB, PDL liquidity, score 5/10).
 
 Engine is v0.1 — a hypothesis, not a validated edge. New dev dependency: Vitest (runtime deps still zero).
+
+## Closure (2026-07-08)
+
+Closed 2026-07-08 (committed `298480a`). Validated both ways: the mock cockpit renders engine-computed context, and in the Phase 05 live run the same engine produced a coherent context ("Downtrend after CHOCH", PDH, bearish FVG/OB, score 5/10) from the user's **real** XAUUSDm M15 candles. Gates green at closure: lint clean, source `tsc` exit 0, build (13 routes), 23→ (now 29) Vitest tests.

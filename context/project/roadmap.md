@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-08: Phases 00–03 Closed; Phase 04 (ICT/SMC Engine MVP) and Phase 05 (Live Observe Prototype) Delivered (awaiting review — Phase 05 awaits the user's live run); Phase 06+ Planned. Note: the Live Observe Prototype was inserted as Phase 05 ahead of Risk, shifting the later phases down by one.
+As of 2026-07-08: Phases 00–05 Closed (Phase 05 validated live against a real Exness demo); Phase 06 (Risk & Prop Firm Mode) is the active next phase; Phase 07+ Planned. Note: the Live Observe Prototype was inserted as Phase 05 ahead of Risk, shifting the later phases down by one.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -61,7 +61,7 @@ Deliverables:
 - reconciliation workflow
 - MQL5 refactor plan
 
-## Phase 04 - ICT/SMC Engine MVP — Delivered (2026-07-08, awaiting review)
+## Phase 04 - ICT/SMC Engine MVP — Closed (2026-07-08)
 
 Implement a first analysis engine outside MT5, in pure TypeScript (`lib/analysis/`, ADR 0006).
 
@@ -78,7 +78,7 @@ Deliverables:
 
 Deferred to later phases: SMT/divergence, news/macro, premium-discount OTE, breaker/mitigation blocks, entry-sequence and trade-management engines (see `engineering/analysis_engine_mvp.md`).
 
-## Phase 05 - Live Observe Prototype — Delivered (2026-07-08, awaiting user's live run)
+## Phase 05 - Live Observe Prototype — Closed (2026-07-08, validated live)
 
 Stream real MT5 demo data into the cockpit in read-only `observe` mode to validate the connection chain (ADR 0007).
 
