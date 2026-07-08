@@ -22,6 +22,10 @@ import {
   mockRisk,
   mockSignals,
 } from "@/lib/mock/initial-snapshot";
+import { mockCandles, nextCandles } from "@/lib/mock/candles";
+import { analyzeMarketContext } from "@/lib/analysis";
+import { toMarketContextReadModel } from "@/lib/contracts/projections";
+import type { Candle } from "@/lib/domain/market";
 import type {
   AgentHeartbeatPayload,
   ExecutionReportPayload,
@@ -55,6 +59,9 @@ export class MockRealtimeClient implements RealtimeClient {
 
   private signalCounter = 15;
 
+  /** Evolving candle window the ICT/SMC engine recomputes context from. */
+  private candles: Candle[] = mockCandles();
+
   constructor(private readonly store: CockpitStore) {}
 
   start(): void {
@@ -74,6 +81,8 @@ export class MockRealtimeClient implements RealtimeClient {
   private goOnline(initial: boolean): void {
     this.store.setConnectionState("connected");
     this.heartbeatsSuspended = false;
+    // Resync the candle window so snapshot and stream start from one series.
+    this.candles = mockCandles();
     // Snapshot on connect, resync on every reconnect: same rule as SignalR later.
     this.store.hydrate({
       account: mockAccount(),
@@ -147,29 +156,20 @@ export class MockRealtimeClient implements RealtimeClient {
     );
   }
 
+  /** Advance the candle window and re-run the ICT/SMC engine on it. */
   private emitContextUpdate(): void {
     if (this.heartbeatsSuspended) {
       return;
     }
-    const context = this.store.getSnapshot().marketContext;
-    if (!context) {
-      return;
-    }
-    const smt = Math.random() > 0.5 ? 1 : 0;
+    this.candles = nextCandles(this.candles);
+    const context = toMarketContextReadModel(
+      analyzeMarketContext({ symbol: "XAUUSD", timeframe: "M15", candles: this.candles }),
+    );
     this.store.apply(
       makeEnvelope<MarketContextUpdatedPayload>(
         "analysis.market_context.updated",
         "mock-analysis-engine",
-        {
-          context: {
-            ...context,
-            score: 6 + smt + (Math.random() > 0.5 ? 1 : 0),
-            scoreBreakdown: context.scoreBreakdown.map((component) =>
-              component.label === "SMT" ? { ...component, score: smt } : component,
-            ),
-            updatedAt: new Date().toISOString(),
-          },
-        },
+        { context },
       ),
     );
   }

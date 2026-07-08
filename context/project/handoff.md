@@ -2,6 +2,28 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-08 - Phase 04 Implementation (ICT/SMC Engine MVP)
+
+Phase 04 was designed, validated by the user (build the ICT/SMC engine now; engine home = TypeScript in this repo; MVP scope confirmed), and implemented the same day.
+
+Built:
+
+- `lib/analysis/` — pure engine importing only `lib/domain`: `config`, `types`, `swings`, `structure` (BOS/CHOCH), `liquidity` (equal highs/lows, PDH/PDL, swept flags), `pd-arrays` (FVG + order blocks), `sessions`, `bias` (+ premium/discount location), `scoring` (weighted `ScoreComponent[]`), `market-context` (orchestrator `analyzeMarketContext`), `index` barrel, `test-helpers`, and colocated `*.test.ts`.
+- `lib/contracts/projections.ts` — `toMarketContextReadModel(MarketContextState) → MarketContext` (the only humanisation point) + test.
+- `lib/mock/candles.ts` — deterministic seeded `mockCandles()` + `nextCandles()` live-advance.
+- Rewired `lib/mock/initial-snapshot.ts` (`mockMarketContext` computes) and `lib/realtime/mock-client.ts` (`emitContextUpdate` advances candles and re-runs the engine). Panel/seam/store/event contract unchanged.
+- Vitest (dev-only) + `vitest.config.ts` + `"test": "vitest run"`.
+- Docs: ADR 0006, `context/engineering/analysis_engine_mvp.md`, `phase-04-ict-smc-engine.md`, `phase-04-design.md`.
+
+Verified: lint clean, `tsc --noEmit` exit 0, `npm run build` passes (13 routes), 23 Vitest tests across 9 files. Runtime sanity on the mock series: `bias=bullish | Uptrend after BOS | BOS above 3,325.36 | PDL 3,299.98 | bullish FVG + OB | score 5/10`.
+
+Key handoff:
+
+- Dependency law extended: `lib/analysis` imports only `lib/domain`; the domain→read-model projection lives in `lib/contracts`, never in the engine. Keep it that way.
+- No-look-ahead is a hard invariant (asserted in tests) — preserve it for Phase 07 backtesting.
+- Engine is `v0.1`, a hypothesis. Tolerances are raw price units; a later revision should derive them from ATR/tickSize. Deferred engines (SMT, news/macro, OTE, entry/trade-management) are listed in `analysis_engine_mvp.md`; Bias/Scoring are the extension points.
+- Next recommended action: user review of the Market Context panel now showing computed output (`npm run dev`), then Phase 05 (Risk & Prop Firm Mode) as pure TS services following the same engine-first pattern — also unblocked by the backend. The realtime prototype remains gated on ASP.NET Core.
+
 ## 2026-07-08 - Phases 01-03 Review And Closure
 
 The user chose to review and close Phases 01 (Frontend Foundation), 02 (Domain Model MVP), and 03 (MT5 Agent Spec) together rather than start the next build. That decision serves as the review sign-off and discharges the one item that was still blocking Phase 01 (a human visual walkthrough in `npm run dev`).

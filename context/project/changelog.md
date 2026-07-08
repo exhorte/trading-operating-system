@@ -79,6 +79,15 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ## 2026-07-08
 
+### Added - Phase 04 ICT/SMC Engine MVP
+
+- Added the Phase 04 technical design (`project/phases/phase-04-design.md`), validated by the user, then implemented the same day.
+- Added `lib/analysis/` — the first server-side domain engine (pure TypeScript, imports only `lib/domain`): swings, market structure (BOS/CHOCH), liquidity (equal highs/lows, PDH/PDL, swept), PD arrays (FVG + order blocks), sessions, bias + premium/discount, weighted scoring, and the `analyzeMarketContext` orchestrator emitting `MarketContextState`.
+- Added `lib/contracts/projections.ts` (`MarketContextState → MarketContext` read model) and `lib/mock/candles.ts` (deterministic synthetic series); rewired the mock so the Market Context panel renders computed output while staying MOCK-badged. No UI/seam/store changes.
+- Introduced Vitest (dev-only) + `test` script + `vitest.config.ts`; 23 deterministic-fixture tests. Runtime dependencies remain zero.
+- Added `ADR 0006 - ICT/SMC Analysis Engine In TypeScript (MVP), Vitest For Domain Tests` and `context/engineering/analysis_engine_mvp.md` (scope, deferred engines, no-look-ahead rule).
+- Verified: lint clean, `tsc --noEmit` exit 0, build passes (13 routes), all tests pass. Engine is v0.1 — a hypothesis, not a validated edge.
+
 ### Changed - Phases 01-03 Closure
 
 - Reviewed and closed Phases 01 (Frontend Foundation), 02 (Domain Model MVP), and 03 (MT5 Agent Spec) together at the user's request; the review decision discharged Phase 01's last-open visual walkthrough.
@@ -88,4 +97,4 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ### Current Next Step
 
-No phase active. Recommended next phase: the first realtime prototype speaking `mt5-wire.ts` in `observe` mode, wired into the cockpit — now gated on standing up the ASP.NET Core backend surface first (where the gateway will live). Start with the phase-start procedure.
+Phase 04 implemented (see the Phase 04 entry above); awaiting user review before closure. Next candidates: Phase 05 (Risk & Prop Firm Mode) as pure TS services following the engine-first pattern — unblocked; or the first realtime prototype (`mt5-wire.ts`, `observe`) — still gated on the ASP.NET Core backend. Start either with the phase-start procedure.

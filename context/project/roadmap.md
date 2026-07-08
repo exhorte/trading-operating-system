@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-08: Phases 00, 01, 02, 03 Closed (01-03 reviewed and closed together 2026-07-08); Phase 04+ Planned.
+As of 2026-07-08: Phases 00, 01, 02, 03 Closed; Phase 04 (ICT/SMC Engine MVP) Delivered (awaiting review); Phase 05+ Planned.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -61,18 +61,22 @@ Deliverables:
 - reconciliation workflow
 - MQL5 refactor plan
 
-## Phase 04 - ICT/SMC Engine MVP
+## Phase 04 - ICT/SMC Engine MVP — Delivered (2026-07-08, awaiting review)
 
-Implement a first analysis engine outside MT5.
+Implement a first analysis engine outside MT5, in pure TypeScript (`lib/analysis/`, ADR 0006).
 
 Deliverables:
 
-- price engine
+- price/candle intake
 - swing engine
-- liquidity engine
-- FVG detector
+- market structure (BOS/CHOCH)
+- liquidity engine (equal highs/lows, PDH/PDL, swept)
+- FVG + order-block detector
 - session engine
-- market context output
+- bias + weighted scoring
+- market context output (`MarketContextState`) + read-model projection
+
+Deferred to later phases: SMT/divergence, news/macro, premium-discount OTE, breaker/mitigation blocks, entry-sequence and trade-management engines (see `engineering/analysis_engine_mvp.md`).
 
 ## Phase 05 - Risk And Prop Firm Mode
 

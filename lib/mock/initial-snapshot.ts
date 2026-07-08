@@ -15,6 +15,9 @@ import type {
   RiskStatus,
   StrategySignal,
 } from "@/lib/contracts/snapshots";
+import { analyzeMarketContext } from "@/lib/analysis";
+import { toMarketContextReadModel } from "@/lib/contracts/projections";
+import { mockCandles } from "@/lib/mock/candles";
 
 const now = () => new Date();
 
@@ -93,27 +96,19 @@ export function mockRisk(): RiskStatus {
   };
 }
 
+/**
+ * Market context is now COMPUTED by the ICT/SMC engine (Phase 04) from a
+ * deterministic synthetic candle series, then projected to the panel read
+ * model — no longer hand-written. The data is still mock (synthetic candles),
+ * but the analysis is real.
+ */
 export function mockMarketContext(): MarketContext {
-  return {
+  const state = analyzeMarketContext({
     symbol: "XAUUSD",
     timeframe: "M15",
-    bias: "bullish",
-    structureState: "Uptrend after MSS",
-    lastStructureEvent: "BOS above 3305.2 (M15)",
-    session: "new_york_am",
-    liquidityNote: "Asia low swept 08:42 UTC; buy-side pool above 3318.5",
-    pdArrayNote: "M15 FVG 3306.8-3309.1 respected; H1 OB at 3298.4 intact",
-    score: 7,
-    maxScore: 10,
-    scoreBreakdown: [
-      { label: "Structure", score: 2, maxScore: 3 },
-      { label: "Liquidity", score: 2, maxScore: 2 },
-      { label: "PD arrays", score: 2, maxScore: 3 },
-      { label: "Session", score: 1, maxScore: 1 },
-      { label: "SMT", score: 0, maxScore: 1 },
-    ],
-    updatedAt: isoMinutesAgo(1),
-  };
+    candles: mockCandles(),
+  });
+  return toMarketContextReadModel(state);
 }
 
 export function mockSignals(): StrategySignal[] {

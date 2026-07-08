@@ -28,6 +28,10 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // Browser extensions/theme scripts mutate <html> before hydration
+      // (e.g. injected data-* attributes); suppress the resulting warning at
+      // this level only — it does not hide mismatches inside the app tree.
+      suppressHydrationWarning
     >
       <body className="min-h-full">
         <RealtimeProvider>{children}</RealtimeProvider>

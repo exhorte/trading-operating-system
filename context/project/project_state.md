@@ -38,9 +38,16 @@ Phase 03 - MT5 Agent Spec: closed 2026-07-08. Specified 2026-07-07 (`project/pha
 
 Phases 01-03 were reviewed and closed together on 2026-07-08. Re-verified at closure: `npm run lint` clean, `tsc --noEmit` exit 0, `npm run build` compiles (13 static routes); all deliverable artifacts confirmed present.
 
+Phase 04 - ICT/SMC Engine MVP: implemented 2026-07-08 (`project/phases/phase-04-design.md`, validated by the user first). The pure TypeScript analysis engine lives in `lib/analysis/` (imports only `lib/domain`): swings → structure (BOS/CHOCH) → liquidity → PD arrays (FVG/OB) → session → bias → weighted scoring → `MarketContextState`. A projection (`lib/contracts/projections.ts`) flattens it to the panel read model; the mock cockpit now feeds a deterministic synthetic candle series through the engine, so the Market Context panel renders computed (not hand-written) output while staying MOCK-badged. Vitest introduced (dev-only); 23 tests pass; lint/typecheck/build green. Engine is v0.1 — a hypothesis, not a validated edge. Awaiting user review before closure.
+
 ## Next Up
 
-No phase is active. The recommended next phase is the first realtime prototype against the Phase 03 spec: a WebSocket Gateway plus a mock/sidecar producer speaking the lean MT5 wire protocol (`mt5-wire.ts`) in `observe` mode, wired end-to-end into the existing cockpit (dashboard side stays on the mock client / future SignalR). Per the 2026-07-08 decision the gateway waits for the ASP.NET Core backend, so this phase is now gated on standing up that backend surface first. Start it with the phase-start procedure.
+Two unblocked candidates; pick at the next phase-start:
+
+- **Phase 05 - Risk & Prop Firm Mode** (roadmap order): FTMO-style guards (daily loss, max drawdown, risk-per-trade, consecutive-loss, target lockout, news/spread/session gates) as independent pure services in TypeScript against `lib/domain/risk.ts`, feeding the risk panel — same pattern as the Phase 04 engine, also unblocked by the backend.
+- **First realtime prototype** against the Phase 03 spec (`mt5-wire.ts`, `observe` mode) — still **gated** on standing up the ASP.NET Core backend (the WebSocket Gateway waits for it, 2026-07-08 decision).
+
+The engine-first, backend-later pattern (build pure domain engines in TS now, port to .NET when the backend arrives) is working well; Phase 05 continues it.
 
 ## Decisions Already Made
 
@@ -61,6 +68,9 @@ No phase is active. The recommended next phase is the first realtime prototype a
 - MT5 edge uses lean WSS+versioned JSON, not SignalR; a WebSocket Gateway translates it to the internal envelope. SignalR is dashboard-side only (ADR 0005).
 - The MT5 agent connects through an external sidecar bridge (EA never opens the WSS socket directly); execution runs in `observe`/`paper`/`live` modes, `observe` never touching the broker.
 - The WebSocket Gateway waits for the ASP.NET Core backend; no throwaway Node/Next WebSocket dev server will be built (decided 2026-07-08). The first realtime prototype is therefore gated on standing up that backend surface.
+- Domain engines are built as pure TypeScript in this repo now (against `lib/domain/`), imports-only-`lib/domain`, and ported to .NET when the backend arrives — the ICT/SMC engine (`lib/analysis/`, ADR 0006) is the first; risk services follow the same pattern. This unblocks server intelligence without waiting for infrastructure.
+- Detectors obey a no-look-ahead invariant (a bar's state uses only candles up to that bar) to keep future backtests honest.
+- Vitest is the domain test runner (dev-only, ADR 0006); runtime dependencies remain zero. Domain logic ships with deterministic-fixture unit tests.
 
 ## Open Questions
 
