@@ -23,6 +23,7 @@ export type EventType =
   | "strategy.setup.expired"
   // risk
   | "risk.state.updated"
+  | "risk.decision.made"
   | "risk.command.approved"
   | "risk.command.rejected"
   | "risk.lockout.enabled"

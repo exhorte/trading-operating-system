@@ -100,6 +100,18 @@ export interface StrategySignal {
   createdAt: string;
 }
 
+/** Audit-grade risk decision for the dashboard (from a domain RiskDecision). */
+export interface RiskDecisionView {
+  approvalId: string;
+  signalId: string;
+  accountId: string;
+  approved: boolean;
+  /** Sized volume (lots) when approved; null when rejected. */
+  approvedVolume: number | null;
+  reason: string;
+  decidedAt: string;
+}
+
 export interface AgentStatus {
   agentId: string;
   accountId: string;

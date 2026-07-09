@@ -20,6 +20,7 @@ import type {
   ExecutionReport,
   MarketContext,
   Position,
+  RiskDecisionView,
   RiskStatus,
   StrategySignal,
 } from "./snapshots";
@@ -119,6 +120,11 @@ export interface RiskStateUpdatedPayload {
   risk: RiskStatus;
 }
 
+/** Audit-grade verdict of the risk engine on a signal (Signal → Risk Review). */
+export interface RiskDecisionMadePayload {
+  decision: RiskDecisionView;
+}
+
 export interface RiskLockoutEnabledPayload {
   accountId: AccountId;
   reason: string;
@@ -187,6 +193,7 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "strategy.signal.cancelled": SignalCancelledPayload;
   "strategy.setup.expired": SetupExpiredPayload;
   "risk.state.updated": RiskStateUpdatedPayload;
+  "risk.decision.made": RiskDecisionMadePayload;
   "risk.command.approved": SignalUpdatedPayload;
   "risk.command.rejected": SignalUpdatedPayload;
   "risk.lockout.enabled": RiskLockoutEnabledPayload;

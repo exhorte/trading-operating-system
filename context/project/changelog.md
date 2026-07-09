@@ -79,6 +79,16 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ## 2026-07-08
 
+## 2026-07-09
+
+### Added - Phase 07 Signal → Risk Review Wiring
+
+- Added the Phase 07 design (`project/phases/phase-07-design.md`), validated by the user, then implemented the same day.
+- Replaced the mock's faked signal approvals (`score >= 7`) with real `RiskDecision`s from the Phase 06 `evaluateSignalRisk` (sizing + gates + lockout). The mock is now a mini strategy: `lib/mock/signals.ts` emits domain `StrategySignal`s from the computed `MarketContextState`.
+- Added the audit-grade contract `risk.decision.made` + `RiskDecisionMadePayload` + `RiskDecisionView` (resolves the Phase 02 shortcut where risk decisions reached the dashboard only via `SignalUpdatedPayload`).
+- Added projections `toStrategySignalReadModel` / `toRiskDecisionView`; `initial-snapshot.mockRiskContext()` exposes the domain `RiskState`; store handles `risk.decision.made`; `mock-client.advanceSignals` rewritten (create → review → decide → fill @ approvedVolume).
+- Verified: lint clean, source `tsc` exit 0, build compiles, 47 Vitest tests (3 new). Legacy `risk.command.approved/rejected` events remain in the contract, unused by the mock.
+
 ### Added - Phase 06 Risk & Prop Firm Mode
 
 - Added the Phase 06 design (`project/phases/phase-06-design.md`), validated by the user, then implemented the same day.
@@ -121,4 +131,4 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ### Current Next Step
 
-Phase 06 (Risk & Prop Firm Mode) implemented; awaiting user review before closure. Then: ASP.NET Core backend to move gateway/translation server-side (replace the Phase 05 browser-side shortcut), or continue engine-first in TS (wire Signal → Risk Review → Execution with `evaluateSignalRisk`, or a strategy/signal engine).
+Phase 07 (Signal → Risk Review wiring) implemented; awaiting user review before closure. Then the recommended big step is the ASP.NET Core backend (move gateway/translation server-side, host engines/hub); or keep going engine-first in TS (a real strategy engine, or the execution-command loop shape).

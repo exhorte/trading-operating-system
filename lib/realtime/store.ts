@@ -27,6 +27,7 @@ import type {
   ExecutionReportPayload,
   MarketContextUpdatedPayload,
   MarketTickPayload,
+  RiskDecisionMadePayload,
   RiskStateUpdatedPayload,
   SignalCreatedPayload,
   SignalUpdatedPayload,
@@ -111,6 +112,21 @@ export class CockpitStore {
         const { signal } = envelope.payload as SignalCreatedPayload;
         this.patch({
           signals: [signal, ...this.snapshot.signals].slice(0, MAX_FEED_LENGTH),
+        });
+        break;
+      }
+      case "risk.decision.made": {
+        const { decision } = envelope.payload as RiskDecisionMadePayload;
+        this.patch({
+          signals: this.snapshot.signals.map((signal) =>
+            signal.signalId === decision.signalId
+              ? {
+                  ...signal,
+                  status: decision.approved ? "approved" : "rejected",
+                  riskDecision: decision.reason,
+                }
+              : signal,
+          ),
         });
         break;
       }

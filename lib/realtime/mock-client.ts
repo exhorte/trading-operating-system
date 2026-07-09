@@ -20,21 +20,28 @@ import {
   mockPnlCalendar,
   mockPositions,
   mockRisk,
+  mockRiskContext,
   mockSignals,
 } from "@/lib/mock/initial-snapshot";
+import { mockStrategySignal } from "@/lib/mock/signals";
 import { mockCandles, nextCandles } from "@/lib/mock/candles";
 import { analyzeMarketContext } from "@/lib/analysis";
-import { toMarketContextReadModel } from "@/lib/contracts/projections";
+import { evaluateSignalRisk } from "@/lib/risk";
+import {
+  toMarketContextReadModel,
+  toRiskDecisionView,
+  toStrategySignalReadModel,
+} from "@/lib/contracts/projections";
 import type { Candle } from "@/lib/domain/market";
+import type { StrategySignal as DomainStrategySignal } from "@/lib/domain/strategy";
 import type {
   AgentHeartbeatPayload,
   ExecutionReportPayload,
   MarketContextUpdatedPayload,
   MarketTickPayload,
+  RiskDecisionMadePayload,
   SignalCreatedPayload,
-  SignalUpdatedPayload,
 } from "@/lib/contracts/events";
-import type { StrategySignal } from "@/lib/contracts/snapshots";
 import type { RealtimeClient } from "./client";
 import type { CockpitStore } from "./store";
 
@@ -58,6 +65,9 @@ export class MockRealtimeClient implements RealtimeClient {
   private price = 3312.1;
 
   private signalCounter = 15;
+
+  /** Domain signal awaiting risk review on the next tick (Signal → Risk Review). */
+  private pendingReview: DomainStrategySignal | null = null;
 
   /** Evolving candle window the ICT/SMC engine recomputes context from. */
   private candles: Candle[] = mockCandles();
@@ -174,63 +184,66 @@ export class MockRealtimeClient implements RealtimeClient {
     );
   }
 
-  /** Progress a pending signal through risk review, or create a new one. */
+  /**
+   * Signal → Risk Review. One tick reviews the pending signal with the REAL
+   * risk engine (evaluateSignalRisk against the current risk state), the next
+   * creates a fresh signal from the computed market context. No more faked
+   * score-threshold approvals.
+   */
   private advanceSignals(): void {
     if (this.heartbeatsSuspended) {
       return;
     }
-    const pending = this.store
-      .getSnapshot()
-      .signals.find((signal) => signal.status === "risk_review");
 
-    if (pending) {
-      const approved = pending.score >= 7;
+    if (this.pendingReview) {
+      const signal = this.pendingReview;
+      this.pendingReview = null;
+      const { state, policy, balance } = mockRiskContext();
+      const decision = evaluateSignalRisk({
+        signalId: signal.signalId,
+        accountId: signal.accountId,
+        entryPrice: signal.entryPrice,
+        stopLoss: signal.stopLoss,
+        balance,
+        state,
+        policy,
+        now: new Date().toISOString(),
+      });
       this.store.apply(
-        makeEnvelope<SignalUpdatedPayload>(
-          approved ? "risk.command.approved" : "risk.command.rejected",
+        makeEnvelope<RiskDecisionMadePayload>(
+          "risk.decision.made",
           "mock-risk-engine",
-          {
-            signalId: pending.signalId,
-            status: approved ? "approved" : "rejected",
-            riskDecision: approved
-              ? `approved (risk-approval-${pending.signalId})`
-              : "rejected: score below threshold",
-          },
-          pending.signalId,
+          { decision: toRiskDecisionView(decision) },
+          signal.signalId,
         ),
       );
-      if (approved) {
-        this.after(2_500, () => this.emitFillReport(pending));
+      if (decision.approved) {
+        this.after(2_500, () => this.emitFillReport(signal, decision.approvedVolume));
       }
       return;
     }
 
     this.signalCounter += 1;
-    const side = Math.random() > 0.4 ? "buy" : "sell";
-    const signal: StrategySignal = {
-      signalId: `sig-${String(this.signalCounter).padStart(3, "0")}`,
+    const context = analyzeMarketContext({
       symbol: "XAUUSD",
-      strategyId: Math.random() > 0.5 ? "ict-silver-bullet-v1" : "ict-fvg-continuation-v1",
-      side,
-      status: "risk_review",
-      score: 5 + Math.round(Math.random() * 4),
-      maxScore: 10,
-      contextSummary:
-        side === "buy"
-          ? "Sweep of session low + MSS, discount FVG retrace"
-          : "Buy-side sweep into premium, bearish displacement",
-      riskDecision: null,
-      expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
-      createdAt: new Date().toISOString(),
-    };
+      timeframe: "M15",
+      candles: this.candles,
+    });
+    const signal = mockStrategySignal({
+      context,
+      account: mockAccount(),
+      price: this.price,
+      seq: this.signalCounter,
+    });
+    this.pendingReview = signal;
     this.store.apply(
       makeEnvelope<SignalCreatedPayload>("strategy.signal.created", "mock-strategy-engine", {
-        signal,
+        signal: toStrategySignalReadModel(signal),
       }),
     );
   }
 
-  private emitFillReport(signal: StrategySignal): void {
+  private emitFillReport(signal: DomainStrategySignal, volume: number | null): void {
     if (this.heartbeatsSuspended) {
       return;
     }
@@ -240,12 +253,12 @@ export class MockRealtimeClient implements RealtimeClient {
           reportId: uuid(),
           commandId: `cmd-${signal.signalId}`,
           correlationId: `corr-${signal.signalId}`,
-          accountId: "account-001",
+          accountId: signal.accountId,
           agentId: "mt5-agent-001",
           symbol: signal.symbol,
           side: signal.side,
           status: "filled",
-          detail: `Mock fill for ${signal.signalId}, TRADE_RETCODE_DONE`,
+          detail: `Mock fill ${volume ?? "?"} lot for ${signal.signalId}, TRADE_RETCODE_DONE`,
           reportedAt: new Date().toISOString(),
         },
       }),

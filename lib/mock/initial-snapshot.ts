@@ -15,6 +15,7 @@ import type {
   RiskStatus,
   StrategySignal,
 } from "@/lib/contracts/snapshots";
+import type { RiskPolicy, RiskState } from "@/lib/domain/risk";
 import { analyzeMarketContext } from "@/lib/analysis";
 import { evaluateRiskState, defaultRiskPolicy } from "@/lib/risk";
 import {
@@ -81,10 +82,11 @@ export function mockPositions(): Position[] {
 
 /**
  * Risk is now COMPUTED by the Phase 06 risk engine from the mock account +
- * positions + a default FTMO-style policy, then projected to the panel read
- * model — no longer hand-written.
+ * positions + a default FTMO-style policy. Exposed as the domain RiskState +
+ * policy so the mock client can both render the panel AND review signals
+ * against the same state (Signal → Risk Review, Phase 07).
  */
-export function mockRisk(): RiskStatus {
+export function mockRiskContext(): { state: RiskState; policy: RiskPolicy; balance: number } {
   const account = mockAccount();
   const policy = defaultRiskPolicy(account.accountId);
   const positions = mockPositions().map((p) => ({
@@ -103,10 +105,17 @@ export function mockRisk(): RiskStatus {
     tradesToday: 3,
     consecutiveLosses: 1,
     spreadPoints: 21,
-    session: "new_york_pm",
-    sessionTradingEnabled: false, // one blocked entry gate, as before
+    // NY AM window open so the Signal → Risk Review flow actually approves &
+    // sizes (a blocked session gate would reject every mock signal).
+    session: "new_york_am",
+    sessionTradingEnabled: true,
     now: new Date().toISOString(),
   });
+  return { state, policy, balance: account.balance };
+}
+
+export function mockRisk(): RiskStatus {
+  const { state, policy } = mockRiskContext();
   return toRiskStatusReadModel(state, policy);
 }
 
@@ -132,12 +141,12 @@ export function mockSignals(): StrategySignal[] {
       symbol: "XAUUSD",
       strategyId: "ict-silver-bullet-v1",
       side: "buy",
-      status: "risk_review",
+      status: "reported",
       score: 8,
       maxScore: 10,
       contextSummary: "Sweep + MSS + M5 FVG retrace in NY AM window",
-      riskDecision: null,
-      expiresAt: new Date(now().getTime() + 4 * 60_000).toISOString(),
+      riskDecision: "Approved: 0.05 lot at 1% risk",
+      expiresAt: isoMinutesAgo(1),
       createdAt: isoMinutesAgo(2),
     },
     {

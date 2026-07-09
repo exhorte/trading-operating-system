@@ -11,8 +11,14 @@ import type {
   LiquidityLevel,
   MarketContextState,
 } from "@/lib/domain/analysis";
-import type { RiskPolicy, RiskState } from "@/lib/domain/risk";
-import type { MarketContext, RiskStatus } from "./snapshots";
+import type { RiskDecision, RiskPolicy, RiskState } from "@/lib/domain/risk";
+import type { StrategySignal as DomainStrategySignal } from "@/lib/domain/strategy";
+import type {
+  MarketContext,
+  RiskDecisionView,
+  RiskStatus,
+  StrategySignal,
+} from "./snapshots";
 
 const LIQUIDITY_LABELS: Record<LiquidityLevel["kind"], string> = {
   buy_side: "Buy-side",
@@ -70,6 +76,49 @@ function pdArrayNote(state: MarketContextState): string {
     parts.push(`${ob.direction} OB ${num(ob.low)}-${num(ob.high)}`);
   }
   return parts.length > 0 ? parts.join("; ") : "No active PD arrays";
+}
+
+/** Flatten a domain RiskDecision into the dashboard's audit-grade view. */
+export function toRiskDecisionView(decision: RiskDecision): RiskDecisionView {
+  return {
+    approvalId: decision.approvalId,
+    signalId: decision.signalId,
+    accountId: decision.accountId,
+    approved: decision.approved,
+    approvedVolume: decision.approvedVolume,
+    reason: decision.reason,
+    decidedAt: decision.decidedAt,
+  };
+}
+
+/**
+ * Flatten a domain StrategySignal into the Signal Queue read model. The frozen
+ * marketContext becomes a short human summary; the risk decision (if any) fills
+ * the riskDecision line.
+ */
+export function toStrategySignalReadModel(
+  signal: DomainStrategySignal,
+  decision?: RiskDecision | null,
+): StrategySignal {
+  const ctx = signal.marketContext;
+  const structure = ctx.lastStructureShift
+    ? ctx.lastStructureShift.kind === "break_of_structure"
+      ? "BOS"
+      : "CHOCH"
+    : "ranging";
+  return {
+    signalId: signal.signalId,
+    symbol: signal.symbol,
+    strategyId: signal.strategyId,
+    side: signal.side,
+    status: signal.status,
+    score: signal.score,
+    maxScore: signal.maxScore,
+    contextSummary: `${ctx.bias} bias · ${structure} · ${ctx.session}`,
+    riskDecision: decision ? decision.reason : null,
+    expiresAt: signal.expiresAt,
+    createdAt: signal.createdAt,
+  };
 }
 
 /** Flatten a domain RiskState + RiskPolicy into the panel's RiskStatus read model. */

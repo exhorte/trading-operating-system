@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-08: Phases 00–05 Closed; Phase 06 (Risk & Prop Firm Mode) Delivered (awaiting review); Phase 07+ Planned. Note: the Live Observe Prototype was inserted as Phase 05 ahead of Risk, shifting the later phases down by one.
+As of 2026-07-09: Phases 00–05 Closed; Phase 06 (Risk & Prop Firm Mode) and Phase 07 (Signal → Risk Review) Delivered (awaiting review); Phase 08+ Planned. Note: two phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07), shifting Execution Bridge and Backtesting down.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -104,7 +104,11 @@ Deliverables:
 - target reached lockout
 - news/spread/volatility gates
 
-## Phase 07 - Execution Bridge
+## Phase 07 - Signal → Risk Review — Delivered (2026-07-09, awaiting review)
+
+Wire the real risk engine into the signal pipeline: the mock emits domain signals from the computed market context, `evaluateSignalRisk` rules on each, and the audit-grade `risk.decision.made` contract carries the verdict. Live signals out of scope; execution loop deferred.
+
+## Phase 08 - Execution Bridge
 
 Connect server decisions to MT5 agent in a controlled environment.
 
@@ -118,7 +122,7 @@ Deliverables:
 - idempotency
 - audit logs
 
-## Phase 08 - Backtesting And Analytics
+## Phase 09 - Backtesting And Analytics
 
 Make decisions measurable and replayable.
 

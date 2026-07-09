@@ -44,12 +44,16 @@ Phase 05 - Live Observe Prototype: closed 2026-07-08 (committed `4f56064`; `proj
 
 Phase 06 - Risk & Prop Firm Mode: implemented 2026-07-08 (`project/phases/phase-06-design.md`, validated first). Pure TS risk engine in `lib/risk/` (imports only `lib/domain`): one pure gate per FTMO guard (daily loss, max drawdown, open risk, max trades, consecutive losses, spread, session; news stub) → `evaluateRiskState` derives normal/warning/locked + lockout → `toRiskStatusReadModel` projection fills the Risk Status panel + risk KPI tiles in mock **and** live. `evaluateSignalRisk`→`RiskDecision` built + tested but not wired. Honesty: `tradesToday`/`consecutiveLosses` are `number | null` (observe → "n/a"); no-SL positions excluded from open-risk. Verified: lint, source `tsc`, build, 44 tests. Engine v0.1 — a hypothesis. ADR 0008. Awaiting user review before closure.
 
+Phase 06 - Risk & Prop Firm Mode: closed 2026-07-08 (committed `6f1a0c9`). See above.
+
+Phase 07 - Signal → Risk Review Wiring: implemented 2026-07-09 (`project/phases/phase-07-design.md`, validated first). The mock is now a mini strategy: it emits domain `StrategySignal`s from the computed `MarketContextState`, and the real Phase 06 `evaluateSignalRisk` rules on each (sizing + gates + lockout) — no more faked `score >= 7`. New audit-grade contract `risk.decision.made` + `RiskDecisionPayload`/`RiskDecisionView`; store updates the signal from the decision. Projections `toStrategySignalReadModel` / `toRiskDecisionView`. Live/observe signals stay out of scope. Verified: lint, source `tsc`, build, 47 tests. Awaiting user review before closure.
+
 ## Next Up
 
-- **User review** of the Risk panel now computing (mock + live), then close Phase 06.
-- Then: **ASP.NET Core backend** to move the gateway/translation server-side (replace the Phase 05 browser-side prototype shortcut), OR continue engine-first in TS (e.g. wire the Signal → Risk Review → Execution loop using `evaluateSignalRisk`, or a strategy/signal engine). The realtime execution path stays gated on the backend.
+- **User review** of the signal flow (mock): signals now created from the computed context and approved/rejected with real sized decisions, then close Phase 07.
+- Then the recommended big step: **ASP.NET Core backend** to move the gateway/translation server-side (replace the Phase 05 browser-side shortcut) and host the engines/hub. The realtime execution path stays gated on it. Alternatively keep going engine-first in TS (e.g. a real strategy/signal engine feeding `evaluateSignalRisk`, or the execution-command loop shape).
 
-The engine-first, backend-later pattern (build pure domain engines in TS now, port to .NET when the backend arrives) is working well — Phases 04 and 06 both followed it.
+The engine-first, backend-later pattern (pure domain engines in TS now, port to .NET later) has carried Phases 04, 06, 07.
 
 ## Decisions Already Made
 

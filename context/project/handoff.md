@@ -2,6 +2,26 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-09 - Phase 07 Implementation (Signal → Risk Review Wiring)
+
+Chosen by the user to stabilise the business flow before the backend: replace the mock's faked `score >= 7` approvals with real, testable `RiskDecision`s, on clean contracts. Design validated (new `risk.decision.made` event; mock becomes a mini strategy; live signals out of scope).
+
+Built:
+
+- Contract `risk.decision.made`: `envelope.ts` EventType, `RiskDecisionMadePayload` + `EventPayloadMap` entry, `RiskDecisionView` read model (`snapshots.ts`).
+- Projections `toStrategySignalReadModel(signal, decision?)` and `toRiskDecisionView(decision)` (+ tests).
+- `lib/mock/signals.ts` — mock mini strategy: domain `StrategySignal` from the computed `MarketContextState` (side ← bias, fixed-distance stop/target, carries the frozen context).
+- `initial-snapshot.mockRiskContext()` — exposes the domain `RiskState` + policy + balance so the panel and the signal review share one state (session set to open NY-AM so approvals flow, else a blocked entry gate would reject everything). Seed `sig-014` flipped off `risk_review`.
+- Store handles `risk.decision.made` (updates the signal). `mock-client.advanceSignals` rewritten: create a domain signal → next tick reviews it via `evaluateSignalRisk` → emit `risk.decision.made` → on approval, fill @ `approvedVolume`.
+
+Verified: lint clean, source `tsc` exit 0 (temp tsconfig excluding the dev server's `.next/dev/types`), build compiles, 47 Vitest tests (3 new). Runtime sanity: bullish context → buy signal → approved, 2.02 lot at 1% risk, mode normal.
+
+Key handoff:
+
+- The Signal → Risk Review loop is now real in the mock; the decision-grade record (`RiskDecision`) reaches the dashboard via `risk.decision.made` (resolves the Phase 02 shortcut). Legacy `risk.command.approved/rejected` events remain in the contract, now unused by the mock.
+- Live/observe still has no signals (no strategy engine); this loop is mock-only until a real strategy engine or the backend exists.
+- Not yet committed at time of writing.
+
 ## 2026-07-08 - Phase 06 Implementation (Risk & Prop Firm Mode)
 
 Chosen to fill the last empty panel (Risk Status) the user saw in the Phase 05 live view. Design validated (scope = panel + gates; `evaluateSignalRisk` built+tested but not wired; live = session baseline + honest "n/a").
