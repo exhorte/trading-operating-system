@@ -33,7 +33,10 @@ export default function RootLayout({
       // this level only — it does not hide mismatches inside the app tree.
       suppressHydrationWarning
     >
-      <body className="min-h-full">
+      {/* suppressHydrationWarning: browser extensions (ColorZilla, Grammarly, …)
+          inject attributes like cz-shortcut-listen onto <body> before React
+          hydrates. Scoped to this element only; app markup is unaffected. */}
+      <body className="min-h-full" suppressHydrationWarning>
         <RealtimeProvider>{children}</RealtimeProvider>
       </body>
     </html>

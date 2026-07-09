@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-08: Phases 00–05 Closed (Phase 05 validated live against a real Exness demo); Phase 06 (Risk & Prop Firm Mode) is the active next phase; Phase 07+ Planned. Note: the Live Observe Prototype was inserted as Phase 05 ahead of Risk, shifting the later phases down by one.
+As of 2026-07-08: Phases 00–05 Closed; Phase 06 (Risk & Prop Firm Mode) Delivered (awaiting review); Phase 07+ Planned. Note: the Live Observe Prototype was inserted as Phase 05 ahead of Risk, shifting the later phases down by one.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -91,9 +91,9 @@ Deliverables:
 
 Prototype only: browser-side translation is a shortcut; the production path keeps the .NET gateway (ADR 0005) + MQL5 EA/sidecar (Phase 03).
 
-## Phase 06 - Risk And Prop Firm Mode
+## Phase 06 - Risk And Prop Firm Mode — Delivered (2026-07-08, awaiting review)
 
-Build risk controls as independent services (pure TS, engine-first pattern; makes the observed account's risk panel real).
+Build risk controls as independent services (pure TS, engine-first pattern; makes the observed account's risk panel real). Engine in `lib/risk/` (ADR 0008): gates + `evaluateRiskState` + `evaluateSignalRisk` (not wired). Deferred: news calendar, trailing drawdown, profit-target lockout, Friday/Sunday blocks, cooldown, ATR gate, multi-symbol sizing.
 
 Deliverables:
 

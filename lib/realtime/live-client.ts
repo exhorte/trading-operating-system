@@ -10,8 +10,13 @@
  * ADR 0007); the definitive server-side .NET gateway replaces it later.
  */
 
-import { analyzeMarketContext } from "@/lib/analysis";
-import { toMarketContextReadModel } from "@/lib/contracts/projections";
+import { analyzeMarketContext, DEFAULT_SESSION_WINDOWS } from "@/lib/analysis";
+import { sessionEnabled, sessionForTimestamp } from "@/lib/analysis/sessions";
+import { defaultRiskPolicy, evaluateRiskState } from "@/lib/risk";
+import {
+  toMarketContextReadModel,
+  toRiskStatusReadModel,
+} from "@/lib/contracts/projections";
 import type {
   Mt5AccountSnapshotMessage,
   Mt5CandleMessage,
@@ -45,6 +50,13 @@ export class LiveRealtimeClient implements RealtimeClient {
   private hello: Mt5HelloMessage | null = null;
 
   private lastPrice: number | null = null;
+
+  private lastAsk: number | null = null;
+
+  /** Session baseline captured at connect for daily-loss / drawdown in live. */
+  private baselineBalance: number | null = null;
+
+  private baselineEquity: number | null = null;
 
   private symbol = "XAUUSDm";
 
@@ -93,6 +105,9 @@ export class LiveRealtimeClient implements RealtimeClient {
     if (this.stopped || typeof WebSocket === "undefined") {
       return;
     }
+    // Recapture the session baseline on every (re)connect.
+    this.baselineBalance = null;
+    this.baselineEquity = null;
     this.store.setConnectionState("connecting");
     const socket = new WebSocket(this.url);
     this.socket = socket;
@@ -160,15 +175,58 @@ export class LiveRealtimeClient implements RealtimeClient {
   }
 
   private onAccount(msg: Mt5AccountSnapshotMessage): void {
+    if (this.baselineBalance === null) {
+      this.baselineBalance = msg.balance;
+      this.baselineEquity = msg.equity;
+    }
     this.store.hydrate({ account: toAccountSummary(msg, this.hello) });
+    this.recomputeRisk();
   }
 
   private onPositions(msg: Mt5PositionsSnapshotMessage): void {
     this.store.hydrate({ positions: toPositions(msg, this.lastPrice) });
+    this.recomputeRisk();
+  }
+
+  /** Compute risk from real account + positions + spread + session (observe:
+   *  trades/consecutive losses are unknown → null → honest "n/a" gates). */
+  private recomputeRisk(): void {
+    const { account, positions } = this.store.getSnapshot();
+    if (!account || this.baselineBalance === null || this.baselineEquity === null) {
+      return;
+    }
+    const policy = defaultRiskPolicy(account.accountId);
+    const spreadPoints =
+      this.lastAsk !== null && this.lastPrice !== null
+        ? Math.round((this.lastAsk - this.lastPrice) / 0.01)
+        : null;
+    const nowIso = new Date().toISOString();
+    const session = sessionForTimestamp(nowIso, DEFAULT_SESSION_WINDOWS);
+    const state = evaluateRiskState({
+      policy,
+      initialBalance: this.baselineBalance,
+      dayStartEquity: this.baselineEquity,
+      equity: account.equity,
+      balance: account.balance,
+      positions: positions.map((p) => ({
+        symbol: p.symbol,
+        entryPrice: p.entryPrice,
+        stopLoss: p.stopLoss,
+        volume: p.volume,
+      })),
+      tradesToday: null,
+      consecutiveLosses: null,
+      spreadPoints,
+      session,
+      sessionTradingEnabled: sessionEnabled(session, DEFAULT_SESSION_WINDOWS),
+      now: nowIso,
+    });
+    this.store.hydrate({ risk: toRiskStatusReadModel(state, policy) });
   }
 
   private onTick(msg: Mt5TickMessage): void {
     this.lastPrice = msg.bid;
+    this.lastAsk = msg.ask;
     // Cosmetic: keep current price fresh; real P&L arrives on the next snapshot.
     const positions = this.store.getSnapshot().positions.map((p) =>
       p.symbol === msg.symbol ? { ...p, currentPrice: msg.bid } : p,

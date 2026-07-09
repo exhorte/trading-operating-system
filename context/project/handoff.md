@@ -2,6 +2,23 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-08 - Phase 06 Implementation (Risk & Prop Firm Mode)
+
+Chosen to fill the last empty panel (Risk Status) the user saw in the Phase 05 live view. Design validated (scope = panel + gates; `evaluateSignalRisk` built+tested but not wired; live = session baseline + honest "n/a").
+
+Built `lib/risk/` (pure, imports only `lib/domain`): `policy` (`defaultRiskPolicy`, `WARNING_THRESHOLD`), `types`, `open-risk` (excludes sl≤0 positions), `gates` (one pure fn per FTMO guard; "n/a" on unknown input), `evaluate` (`evaluateRiskState` → normal/warning/locked + lockout), `sizing` (`evaluateSignalRisk`→`RiskDecision`; NOT wired), `index`. Projection `toRiskStatusReadModel(state, policy)` added. Made `RiskState`/`RiskStatus` `tradesToday`/`consecutiveLosses` `number | null`; panel renders "n/a". Wired mock (`mockRisk` computes) + live (`LiveRealtimeClient` captures a session baseline, computes risk from real account/positions/spread/session; trade-history gates "n/a").
+
+Real edge case handled (from the Phase 05 run): the demo position had SL 0.00 → excluded from open-risk instead of a nonsensical `|entry−0|` blow-up.
+
+Verified: lint clean, source `tsc` exit 0 (via a temp tsconfig excluding the concurrent dev server's `.next/dev/types`), build compiles, 44 Vitest tests (15 new). Engine is v0.1 — a hypothesis. ADR 0008, `context/engineering/risk_engine_mvp.md`, phase-06 files.
+
+Key handoff:
+
+- Same law as ADR 0006: `lib/risk` imports only `lib/domain`; projection lives in `lib/contracts`.
+- Account-lockout gates (daily loss/drawdown/max trades/consecutive) drive `locked`; spread/session/open-risk are entry gates.
+- Deferred (ADR 0008): news calendar, trailing drawdown, profit-target lockout, Friday/Sunday blocks, cooldown, ATR gate, multi-symbol sizing (generalise the XAUUSD 100 USD/point factor via `SymbolMetadata`), and wiring `evaluateSignalRisk` into Signal → Risk Review → Execution.
+- Not yet committed at time of writing.
+
 ## 2026-07-08 - Phases 04 + 05 Closed
 
 Both closed after the user's live validation against their real Exness demo (account 436634705, XAUUSDm): the cockpit showed DEMO + connected, real balance/equity/positions, live ticks, agent `mt5-observer-1`, and a market context computed by the Phase 04 engine on real M15 candles ("Downtrend after CHOCH", PDH, bearish FVG/OB, 5/10). One fix folded into the Phase 05 commit: `kpi-strip` blanked the whole strip when `risk` was null (live mode) — now it degrades gracefully. Gates green. Phase 04 = `298480a`, Phase 05 = `4f56064`. Next: Phase 06 (Risk & Prop Firm Mode) in phase-start.

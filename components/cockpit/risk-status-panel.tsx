@@ -67,12 +67,14 @@ export function RiskStatusPanel() {
           <span>
             Trades today:{" "}
             <span className="tnum text-foreground">
-              {risk.tradesToday}/{risk.maxTradesPerDay}
+              {risk.tradesToday === null ? "n/a" : `${risk.tradesToday}/${risk.maxTradesPerDay}`}
             </span>
           </span>
           <span>
             Consecutive losses:{" "}
-            <span className="tnum text-foreground">{risk.consecutiveLosses}</span>
+            <span className="tnum text-foreground">
+              {risk.consecutiveLosses === null ? "n/a" : risk.consecutiveLosses}
+            </span>
           </span>
         </div>
         {risk.lockoutReason && (

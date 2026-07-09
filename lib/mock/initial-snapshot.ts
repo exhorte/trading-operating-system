@@ -16,7 +16,11 @@ import type {
   StrategySignal,
 } from "@/lib/contracts/snapshots";
 import { analyzeMarketContext } from "@/lib/analysis";
-import { toMarketContextReadModel } from "@/lib/contracts/projections";
+import { evaluateRiskState, defaultRiskPolicy } from "@/lib/risk";
+import {
+  toMarketContextReadModel,
+  toRiskStatusReadModel,
+} from "@/lib/contracts/projections";
 import { mockCandles } from "@/lib/mock/candles";
 
 const now = () => new Date();
@@ -75,25 +79,35 @@ export function mockPositions(): Position[] {
   ];
 }
 
+/**
+ * Risk is now COMPUTED by the Phase 06 risk engine from the mock account +
+ * positions + a default FTMO-style policy, then projected to the panel read
+ * model — no longer hand-written.
+ */
 export function mockRisk(): RiskStatus {
-  return {
-    state: "normal",
-    dailyLossLimitPercent: 5.0,
-    dailyLossUsedPercent: 0.9,
-    maxDrawdownLimitPercent: 10.0,
-    maxDrawdownUsedPercent: 2.4,
-    maxTradesPerDay: 6,
+  const account = mockAccount();
+  const policy = defaultRiskPolicy(account.accountId);
+  const positions = mockPositions().map((p) => ({
+    symbol: p.symbol,
+    entryPrice: p.entryPrice,
+    stopLoss: p.stopLoss,
+    volume: p.volume,
+  }));
+  const state = evaluateRiskState({
+    policy,
+    initialBalance: 100_000,
+    dayStartEquity: 102_400, // ~0.9% intraday loss vs current equity
+    equity: account.equity,
+    balance: account.balance,
+    positions,
     tradesToday: 3,
     consecutiveLosses: 1,
-    lockoutReason: null,
-    gates: [
-      { gateId: "gate-daily-loss", label: "Daily loss guard", state: "open", detail: "0.9% used of 5.0%" },
-      { gateId: "gate-total-dd", label: "Max drawdown guard", state: "open", detail: "2.4% used of 10.0%" },
-      { gateId: "gate-news", label: "News filter", state: "open", detail: "No high-impact event in window" },
-      { gateId: "gate-spread", label: "Spread gate", state: "open", detail: "2.1 pts < 4.0 pts limit" },
-      { gateId: "gate-session", label: "Session filter", state: "blocked", detail: "NY PM entries disabled" },
-    ],
-  };
+    spreadPoints: 21,
+    session: "new_york_pm",
+    sessionTradingEnabled: false, // one blocked entry gate, as before
+    now: new Date().toISOString(),
+  });
+  return toRiskStatusReadModel(state, policy);
 }
 
 /**

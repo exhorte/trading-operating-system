@@ -51,8 +51,10 @@ export interface RiskState {
   dailyLossUsedPercent: number;
   maxDrawdownUsedPercent: number;
   openRiskPercent: number;
-  tradesToday: number;
-  consecutiveLosses: number;
+  /** Null when the data source has no trade history (e.g. observe prototype). */
+  tradesToday: number | null;
+  /** Null when the data source has no trade history (e.g. observe prototype). */
+  consecutiveLosses: number | null;
   /** Null unless mode is "locked". */
   lockoutReason: string | null;
   /** Null unless a lockout is active; when the lockout auto-clears. */

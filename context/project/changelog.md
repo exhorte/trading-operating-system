@@ -79,6 +79,15 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ## 2026-07-08
 
+### Added - Phase 06 Risk & Prop Firm Mode
+
+- Added the Phase 06 design (`project/phases/phase-06-design.md`), validated by the user, then implemented the same day.
+- Added `lib/risk/` — the first risk engine (pure TS, imports only `lib/domain`): one gate per FTMO guard (daily loss, max drawdown, open risk, max trades, consecutive losses, spread, session; news stub), `evaluateRiskState` (normal/warning/locked + lockout), `evaluateSignalRisk`→`RiskDecision` (built + tested, not wired), `defaultRiskPolicy`.
+- Added `toRiskStatusReadModel` projection; wired the mock (`mockRisk` computes) and live (`LiveRealtimeClient` captures a session baseline and computes risk from real account/positions/spread/session). Risk Status panel + risk KPI tiles now render computed values in mock and live.
+- Honesty: `RiskState`/`RiskStatus` `tradesToday`/`consecutiveLosses` are now `number | null` (observe → "n/a"); positions without a stop-loss are excluded from open-risk.
+- Added `ADR 0008 - Risk Engine In TypeScript (MVP)` and `context/engineering/risk_engine_mvp.md`.
+- Verified: lint clean, source `tsc` exit 0, build compiles, 44 Vitest tests (15 new). Engine v0.1 — a hypothesis, not a validated edge.
+
 ### Added - Phase 05 Live Observe Prototype (MT5 → cockpit, read-only)
 
 - Added the Phase 05 design (`project/phases/phase-05-design.md`), validated by the user (Python producer, XAUUSDm, local run OK), then implemented the same day.
@@ -112,4 +121,4 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ### Current Next Step
 
-Phase 06 - Risk & Prop Firm Mode (phase-start): pure TS risk services against `lib/domain/risk.ts` computing risk state from account + positions + a `RiskPolicy`; fills the empty Risk Status panel and "—" risk KPI tiles in mock and live. Then: ASP.NET Core backend to move gateway/translation server-side.
+Phase 06 (Risk & Prop Firm Mode) implemented; awaiting user review before closure. Then: ASP.NET Core backend to move gateway/translation server-side (replace the Phase 05 browser-side shortcut), or continue engine-first in TS (wire Signal → Risk Review → Execution with `evaluateSignalRisk`, or a strategy/signal engine).

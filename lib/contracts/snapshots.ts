@@ -57,8 +57,10 @@ export interface RiskStatus {
   maxDrawdownLimitPercent: number;
   maxDrawdownUsedPercent: number;
   maxTradesPerDay: number;
-  tradesToday: number;
-  consecutiveLosses: number;
+  /** Null when the data source has no trade history (e.g. observe prototype). */
+  tradesToday: number | null;
+  /** Null when the data source has no trade history (e.g. observe prototype). */
+  consecutiveLosses: number | null;
   lockoutReason: string | null;
   gates: RiskGate[];
 }

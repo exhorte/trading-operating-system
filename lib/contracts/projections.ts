@@ -11,7 +11,8 @@ import type {
   LiquidityLevel,
   MarketContextState,
 } from "@/lib/domain/analysis";
-import type { MarketContext } from "./snapshots";
+import type { RiskPolicy, RiskState } from "@/lib/domain/risk";
+import type { MarketContext, RiskStatus } from "./snapshots";
 
 const LIQUIDITY_LABELS: Record<LiquidityLevel["kind"], string> = {
   buy_side: "Buy-side",
@@ -69,6 +70,27 @@ function pdArrayNote(state: MarketContextState): string {
     parts.push(`${ob.direction} OB ${num(ob.low)}-${num(ob.high)}`);
   }
   return parts.length > 0 ? parts.join("; ") : "No active PD arrays";
+}
+
+/** Flatten a domain RiskState + RiskPolicy into the panel's RiskStatus read model. */
+export function toRiskStatusReadModel(state: RiskState, policy: RiskPolicy): RiskStatus {
+  return {
+    state: state.mode,
+    dailyLossLimitPercent: policy.dailyLossLimitPercent,
+    dailyLossUsedPercent: state.dailyLossUsedPercent,
+    maxDrawdownLimitPercent: policy.maxDrawdownLimitPercent,
+    maxDrawdownUsedPercent: state.maxDrawdownUsedPercent,
+    maxTradesPerDay: policy.maxTradesPerDay,
+    tradesToday: state.tradesToday,
+    consecutiveLosses: state.consecutiveLosses,
+    lockoutReason: state.lockoutReason,
+    gates: state.gates.map((g) => ({
+      gateId: g.gateId,
+      label: g.label,
+      state: g.state,
+      detail: g.detail,
+    })),
+  };
 }
 
 /** Flatten a domain MarketContextState into the panel's MarketContext read model. */

@@ -42,11 +42,14 @@ Phase 04 - ICT/SMC Engine MVP: closed 2026-07-08 (committed `298480a`; `project/
 
 Phase 05 - Live Observe Prototype: closed 2026-07-08 (committed `4f56064`; `project/phases/phase-05-design.md`). Read-only path streaming **real** Exness demo data into the cockpit. `tools/mt5-observer/mt5_observer.py` (Python `MetaTrader5`, read-only, `observe`) emits lean `mt5-wire` JSON over `ws://localhost:8765`; `lib/realtime/live-client.ts` translates it via pure mappers (`lib/realtime/mt5-translate.ts`) and feeds real M15 candles to the Phase 04 engine. Opt-in via `NEXT_PUBLIC_REALTIME_SOURCE=live` (mock default); badge reads DEMO. Browser-side translation is a documented prototype shortcut (ADR 0007). **Validated live** by the user (account 436634705, XAUUSDm). KpiStrip fixed to degrade gracefully when `risk` is null.
 
+Phase 06 - Risk & Prop Firm Mode: implemented 2026-07-08 (`project/phases/phase-06-design.md`, validated first). Pure TS risk engine in `lib/risk/` (imports only `lib/domain`): one pure gate per FTMO guard (daily loss, max drawdown, open risk, max trades, consecutive losses, spread, session; news stub) → `evaluateRiskState` derives normal/warning/locked + lockout → `toRiskStatusReadModel` projection fills the Risk Status panel + risk KPI tiles in mock **and** live. `evaluateSignalRisk`→`RiskDecision` built + tested but not wired. Honesty: `tradesToday`/`consecutiveLosses` are `number | null` (observe → "n/a"); no-SL positions excluded from open-risk. Verified: lint, source `tsc`, build, 44 tests. Engine v0.1 — a hypothesis. ADR 0008. Awaiting user review before closure.
+
 ## Next Up
 
-**Phase 06 - Risk & Prop Firm Mode** (in phase-start): pure TS risk services (engine-first pattern, against `lib/domain/risk.ts`) computing risk state from account + positions + a `RiskPolicy` — daily loss, max drawdown, risk-per-trade, consecutive losses, target lockout, news/spread/session gates. Fills the currently-empty Risk Status panel and the "—" risk KPI tiles, in both mock and live. Unblocked by the backend. Later: ASP.NET Core backend to move gateway/translation server-side (replacing the prototype shortcut).
+- **User review** of the Risk panel now computing (mock + live), then close Phase 06.
+- Then: **ASP.NET Core backend** to move the gateway/translation server-side (replace the Phase 05 browser-side prototype shortcut), OR continue engine-first in TS (e.g. wire the Signal → Risk Review → Execution loop using `evaluateSignalRisk`, or a strategy/signal engine). The realtime execution path stays gated on the backend.
 
-The engine-first, backend-later pattern (build pure domain engines in TS now, port to .NET when the backend arrives) is working well.
+The engine-first, backend-later pattern (build pure domain engines in TS now, port to .NET when the backend arrives) is working well — Phases 04 and 06 both followed it.
 
 ## Decisions Already Made
 
