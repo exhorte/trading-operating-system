@@ -92,6 +92,10 @@ export interface StrategySignal {
   strategyId: string;
   side: Side;
   status: SignalStatus;
+  /** Proposed levels the risk engine ruled on (never moves them). */
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
   score: number;
   maxScore: number;
   contextSummary: string;
@@ -109,6 +113,8 @@ export interface RiskDecisionView {
   /** Sized volume (lots) when approved; null when rejected. */
   approvedVolume: number | null;
   reason: string;
+  /** Gate results at decision time (for the audit trail). */
+  gates: RiskGate[];
   decidedAt: string;
 }
 

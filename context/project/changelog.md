@@ -81,6 +81,12 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ## 2026-07-09
 
+### Added - /signals Audit Workspace (Phase 07 addendum)
+
+- Built the full `/signals` page (was a stub) as the detailed audit/tracking view: master-detail with a signal list + a detail panel showing the lifecycle stepper, context/bias/strategy, entry/stop/target/side, the associated `RiskDecision` (approved/rejected, `approvedVolume`, reason, gates), and matching execution fills. Command Center Signal Queue stays the summary.
+- Data enrichment: read-model `StrategySignal` += `entryPrice`/`stopLoss`/`takeProfit`; `RiskDecisionView` += `gates`; store keeps `riskDecisions` per signal (set on `risk.decision.made`); mock seed signals carry levels.
+- `components/cockpit/signals-workspace.tsx`. Verified: lint, source `tsc`, build, 47 tests.
+
 ### Added - Phase 07 Signal → Risk Review Wiring
 
 - Added the Phase 07 design (`project/phases/phase-07-design.md`), validated by the user, then implemented the same day.

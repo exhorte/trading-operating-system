@@ -87,6 +87,12 @@ export function toRiskDecisionView(decision: RiskDecision): RiskDecisionView {
     approved: decision.approved,
     approvedVolume: decision.approvedVolume,
     reason: decision.reason,
+    gates: decision.gates.map((g) => ({
+      gateId: g.gateId,
+      label: g.label,
+      state: g.state,
+      detail: g.detail,
+    })),
     decidedAt: decision.decidedAt,
   };
 }
@@ -112,6 +118,9 @@ export function toStrategySignalReadModel(
     strategyId: signal.strategyId,
     side: signal.side,
     status: signal.status,
+    entryPrice: signal.entryPrice,
+    stopLoss: signal.stopLoss,
+    takeProfit: signal.takeProfit,
     score: signal.score,
     maxScore: signal.maxScore,
     contextSummary: `${ctx.bias} bias · ${structure} · ${ctx.session}`,

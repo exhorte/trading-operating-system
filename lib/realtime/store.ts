@@ -18,6 +18,7 @@ import type {
   MarketContext,
   PnlCalendarDay,
   Position,
+  RiskDecisionView,
   RiskStatus,
   StrategySignal,
 } from "@/lib/contracts/snapshots";
@@ -41,6 +42,8 @@ export interface CockpitSnapshot {
   risk: RiskStatus | null;
   marketContext: MarketContext | null;
   signals: StrategySignal[];
+  /** Audit-grade risk decisions keyed by signalId (Signal → Risk Review). */
+  riskDecisions: Record<string, RiskDecisionView>;
   agents: AgentStatus[];
   executionReports: ExecutionReport[];
   pnlCalendar: PnlCalendarDay[];
@@ -56,6 +59,7 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   risk: null,
   marketContext: null,
   signals: [],
+  riskDecisions: {},
   agents: [],
   executionReports: [],
   pnlCalendar: [],
@@ -127,6 +131,7 @@ export class CockpitStore {
                 }
               : signal,
           ),
+          riskDecisions: { ...this.snapshot.riskDecisions, [decision.signalId]: decision },
         });
         break;
       }
