@@ -1,6 +1,6 @@
 # Phase 06 - Risk & Prop Firm Mode
 
-Status: implemented 2026-07-08 (design in `phase-06-design.md`, validated by the user first: panel + gates scope; live = session baseline + honest "n/a"). Awaiting user review before closure.
+Status: closed 2026-07-10 (implemented 2026-07-08, committed `6f1a0c9`; design in `phase-06-design.md`, validated by the user first). Reviewed by the user in the live cockpit against their real Exness demo ($10k): all gates computed, honest "n/a" for trade-history gates in observe mode, RISK STATE NORMAL. The engine was then further validated by Phase 07, which wired `evaluateSignalRisk` into the signal flow (real approvals/rejections with sized volumes).
 
 ## Objective
 

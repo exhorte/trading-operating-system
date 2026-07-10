@@ -1,6 +1,6 @@
 # Phase 07 - Signal → Risk Review Wiring
 
-Status: implemented 2026-07-09 (design in `phase-07-design.md`, validated first: new `risk.decision.made` event; mock becomes a mini strategy; live signals out of scope). Awaiting user review before closure.
+Status: closed 2026-07-10 (implemented 2026-07-09, committed `3f4208c` + `/signals` addendum `d455a72` + mock variety `59fa86e`; design in `phase-07-design.md`, validated first). Reviewed by the user in the running cockpit: the `/signals` audit workspace shows the full lifecycle, real `RiskDecision`s with sized volumes and gates, and matching fills; the mock-variety follow-up added rotating scenarios so rejections (spread gate, session filter) and both sides/volumes are exercised.
 
 ## Objective
 

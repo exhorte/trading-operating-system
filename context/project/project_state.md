@@ -44,16 +44,15 @@ Phase 05 - Live Observe Prototype: closed 2026-07-08 (committed `4f56064`; `proj
 
 Phase 06 - Risk & Prop Firm Mode: implemented 2026-07-08 (`project/phases/phase-06-design.md`, validated first). Pure TS risk engine in `lib/risk/` (imports only `lib/domain`): one pure gate per FTMO guard (daily loss, max drawdown, open risk, max trades, consecutive losses, spread, session; news stub) → `evaluateRiskState` derives normal/warning/locked + lockout → `toRiskStatusReadModel` projection fills the Risk Status panel + risk KPI tiles in mock **and** live. `evaluateSignalRisk`→`RiskDecision` built + tested but not wired. Honesty: `tradesToday`/`consecutiveLosses` are `number | null` (observe → "n/a"); no-SL positions excluded from open-risk. Verified: lint, source `tsc`, build, 44 tests. Engine v0.1 — a hypothesis. ADR 0008. Awaiting user review before closure.
 
-Phase 06 - Risk & Prop Firm Mode: closed 2026-07-08 (committed `6f1a0c9`). See above.
+Phase 06 - Risk & Prop Firm Mode: closed 2026-07-10 (committed `6f1a0c9`). Pure TS risk engine in `lib/risk/`; validated in the live cockpit against the user's real Exness demo, then exercised end-to-end by Phase 07.
 
-Phase 07 - Signal → Risk Review Wiring: implemented 2026-07-09 (`project/phases/phase-07-design.md`, validated first). The mock is now a mini strategy: it emits domain `StrategySignal`s from the computed `MarketContextState`, and the real Phase 06 `evaluateSignalRisk` rules on each (sizing + gates + lockout) — no more faked `score >= 7`. New audit-grade contract `risk.decision.made` + `RiskDecisionPayload`/`RiskDecisionView`; store updates the signal from the decision. Projections `toStrategySignalReadModel` / `toRiskDecisionView`. Live/observe signals stay out of scope. **Addendum**: built the full `/signals` audit workspace (master-detail: lifecycle stepper, entry/stop/target, RiskDecision + approvedVolume + reason + gates, execution fills); store now keeps `riskDecisions` per signal; read-model signal gained levels. Command Center stays the summary. Verified: lint, source `tsc`, build, 47 tests. Awaiting user review before closure.
+Phase 07 - Signal → Risk Review Wiring: closed 2026-07-10 (commits `3f4208c`, `d455a72`, `59fa86e`). The mock is a mini strategy emitting domain `StrategySignal`s from the computed `MarketContextState`; the real `evaluateSignalRisk` rules on each (sizing + gates + lockout) on the audit-grade `risk.decision.made` contract. The full `/signals` audit workspace shows lifecycle, levels, RiskDecision (volume, reason, gates), and fills; the Command Center stays the summary. Rotating mock scenarios (wide spread, closed session) produce real rejections, with the Risk panel synced to the same state the review used. Live/observe signals remain out of scope (no strategy engine there).
 
 ## Next Up
 
-- **User review** of the signal flow (mock): signals now created from the computed context and approved/rejected with real sized decisions, then close Phase 07.
-- Then the recommended big step: **ASP.NET Core backend** to move the gateway/translation server-side (replace the Phase 05 browser-side shortcut) and host the engines/hub. The realtime execution path stays gated on it. Alternatively keep going engine-first in TS (e.g. a real strategy/signal engine feeding `evaluateSignalRisk`, or the execution-command loop shape).
+**Phase 08 - ASP.NET Core Backend Bootstrap** (in phase-start): stand up the real backend — host, SignalR hub for the dashboard, WebSocket Gateway ingesting the lean MT5 wire (replacing the Phase 05 browser-side translation shortcut, ADR 0007), C# mirrors of the domain/contract schemas (ADR 0004). This unblocks the production realtime path and, later, the Execution Bridge (Phase 09 in the renumbered roadmap).
 
-The engine-first, backend-later pattern (pure domain engines in TS now, port to .NET later) has carried Phases 04, 06, 07.
+The engine-first, backend-later pattern (pure domain engines in TS now, port to .NET later) has carried Phases 04, 06, 07; the backend now becomes the priority infrastructure step.
 
 ## Decisions Already Made
 

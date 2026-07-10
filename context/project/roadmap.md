@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-09: Phases 00–05 Closed; Phase 06 (Risk & Prop Firm Mode) and Phase 07 (Signal → Risk Review) Delivered (awaiting review); Phase 08+ Planned. Note: two phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07), shifting Execution Bridge and Backtesting down.
+As of 2026-07-10: Phases 00–07 Closed; Phase 08 (ASP.NET Core Backend Bootstrap) is the active next phase; Phase 09+ Planned. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -91,7 +91,7 @@ Deliverables:
 
 Prototype only: browser-side translation is a shortcut; the production path keeps the .NET gateway (ADR 0005) + MQL5 EA/sidecar (Phase 03).
 
-## Phase 06 - Risk And Prop Firm Mode — Delivered (2026-07-08, awaiting review)
+## Phase 06 - Risk And Prop Firm Mode — Closed (2026-07-10)
 
 Build risk controls as independent services (pure TS, engine-first pattern; makes the observed account's risk panel real). Engine in `lib/risk/` (ADR 0008): gates + `evaluateRiskState` + `evaluateSignalRisk` (not wired). Deferred: news calendar, trailing drawdown, profit-target lockout, Friday/Sunday blocks, cooldown, ATR gate, multi-symbol sizing.
 
@@ -104,11 +104,23 @@ Deliverables:
 - target reached lockout
 - news/spread/volatility gates
 
-## Phase 07 - Signal → Risk Review — Delivered (2026-07-09, awaiting review)
+## Phase 07 - Signal → Risk Review — Closed (2026-07-10)
 
-Wire the real risk engine into the signal pipeline: the mock emits domain signals from the computed market context, `evaluateSignalRisk` rules on each, and the audit-grade `risk.decision.made` contract carries the verdict. Live signals out of scope; execution loop deferred.
+Wire the real risk engine into the signal pipeline: the mock emits domain signals from the computed market context, `evaluateSignalRisk` rules on each, and the audit-grade `risk.decision.made` contract carries the verdict. Includes the `/signals` audit workspace and rotating mock scenarios (real rejections). Live signals out of scope; execution loop deferred.
 
-## Phase 08 - Execution Bridge
+## Phase 08 - ASP.NET Core Backend Bootstrap
+
+Stand up the real backend: host, SignalR hub for the dashboard, WebSocket Gateway ingesting the lean MT5 wire (replaces the Phase 05 browser-side translation, ADR 0007), C# mirrors of domain/contract schemas (ADR 0004).
+
+Deliverables:
+
+- ASP.NET Core solution (modular monolith)
+- SignalR hub broadcasting `Envelope<T>` to the dashboard
+- WebSocket Gateway for the lean MT5 wire (mt5-wire)
+- C# domain/contract mirrors
+- dashboard SignalR client behind the RealtimeClient seam
+
+## Phase 09 - Execution Bridge
 
 Connect server decisions to MT5 agent in a controlled environment.
 

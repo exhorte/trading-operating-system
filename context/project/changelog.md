@@ -79,6 +79,22 @@ This file tracks meaningful changes to the project brain and architecture.
 
 ## 2026-07-08
 
+## 2026-07-10
+
+### Added - Mock Variety (rotating scenarios + varied signals)
+
+- `mockRiskContext(scenario)`: rotating conditions normal / wide_spread (55 pts > 40 limit) / closed_session (NY PM disabled); the mock client publishes the same state to the Risk panel that the signal review uses, so rejections always match the cockpit.
+- `mockStrategySignal`: every 4th signal is a counter-bias probe (`ict-liquidity-raid-v1`, weaker score); stop distance cycles 3.5–8.0 so volumes vary. Sanity over one rotation: sell 2.89 lot, buy 2.02, spread-gate rejection, buy 1.26, session-filter rejection.
+
+### Changed - Phases 06 + 07 Closed
+
+- Closed Phase 06 (Risk & Prop Firm Mode) and Phase 07 (Signal → Risk Review + `/signals` workspace + mock variety) after the user reviewed both in the running cockpit (risk panel live on the real demo; `/signals` audit view showing real decisions, gates, and fills).
+- Updated phase files (closure sections), `project_state.md`, `roadmap.md` (Phase 08 = ASP.NET Core Backend Bootstrap; Execution Bridge → 09, Backtesting → 10), this changelog, `handoff.md`.
+
+### Current Next Step
+
+Phase 08 - ASP.NET Core Backend Bootstrap (phase-start): host + SignalR hub + WebSocket Gateway for the lean MT5 wire + C# schema mirrors + dashboard SignalR client behind the existing seam.
+
 ## 2026-07-09
 
 ### Added - /signals Audit Workspace (Phase 07 addendum)
@@ -135,6 +151,3 @@ This file tracks meaningful changes to the project brain and architecture.
 - Fixed at closure: `kpi-strip` blanked entirely when `risk` was null (live mode); now degrades gracefully so real equity/positions/agents render.
 - Updated phase files (closure sections), `project_state.md`, `roadmap.md` (statuses), `handoff.md`.
 
-### Current Next Step
-
-Phase 07 (Signal → Risk Review wiring) implemented; awaiting user review before closure. Then the recommended big step is the ASP.NET Core backend (move gateway/translation server-side, host engines/hub); or keep going engine-first in TS (a real strategy engine, or the execution-command loop shape).

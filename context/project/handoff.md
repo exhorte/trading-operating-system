@@ -2,6 +2,16 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-10 - Phases 06 + 07 Closed; Mock Variety; Next = Backend
+
+Closed Phase 06 (Risk & Prop Firm Mode) and Phase 07 (Signal → Risk Review + `/signals` audit workspace) after the user reviewed both in the running cockpit — the risk panel live against their real Exness demo, and `/signals` showing real decisions (volume, reason, gates) and fills.
+
+Also shipped "mock variety" (`59fa86e`): `mockRiskContext(scenario)` rotates normal / wide_spread / closed_session and the mock client publishes the same `RiskState` to the panel that the review uses, so rejections match the cockpit; `mockStrategySignal` emits counter-bias probes and cycling stop distances (varied volumes). One rotation yields: sell 2.89 lot, buy 2.02, spread-gate rejection, buy 1.26, session-filter rejection.
+
+Operational lesson recorded: never run `next build` while the user's dev server is running — both write `.next/` and the dev route manifest gets corrupted (caused a transient 404 on `/signals`, fixed by restarting dev). Verify with lint + isolated `tsc` (temp tsconfig excluding `.next`) + vitest instead.
+
+Next: Phase 08 - ASP.NET Core Backend Bootstrap (phase-start; design then user validation). Roadmap renumbered: Execution Bridge → 09, Backtesting → 10.
+
 ## 2026-07-09 - Phase 07 Implementation (Signal → Risk Review Wiring)
 
 Chosen by the user to stabilise the business flow before the backend: replace the mock's faked `score >= 7` approvals with real, testable `RiskDecision`s, on clean contracts. Design validated (new `risk.decision.made` event; mock becomes a mini strategy; live signals out of scope).
