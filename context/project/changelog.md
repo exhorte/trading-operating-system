@@ -77,8 +77,6 @@ This file tracks meaningful changes to the project brain and architecture.
 - Added `ADR 0005 - MT5 Lean WebSocket Wire, Gateway Translation, Sidecar, Execution Modes`.
 - Documentation + wire contracts only; no EA/sidecar/gateway code. Lint and typecheck pass.
 
-## 2026-07-08
-
 ## 2026-07-10
 
 ### Added - Mock Variety (rotating scenarios + varied signals)
@@ -91,9 +89,17 @@ This file tracks meaningful changes to the project brain and architecture.
 - Closed Phase 06 (Risk & Prop Firm Mode) and Phase 07 (Signal → Risk Review + `/signals` workspace + mock variety) after the user reviewed both in the running cockpit (risk panel live on the real demo; `/signals` audit view showing real decisions, gates, and fills).
 - Updated phase files (closure sections), `project_state.md`, `roadmap.md` (Phase 08 = ASP.NET Core Backend Bootstrap; Execution Bridge → 09, Backtesting → 10), this changelog, `handoff.md`.
 
+### Added - Phase 08 ASP.NET Core Backend Bootstrap
+
+- Added the Phase 08 design (`project/phases/phase-08-design.md`), validated by the user (backend in this repo under `backend/`; minimal observe-only stateless slice), then implemented the same day.
+- Added `backend/TradingOs.slnx` (.NET 10): `TradingOs.Contracts` (C# mirrors: `Envelope<T>`, lean mt5-wire records + `Mt5WireParser`, camelCase read models), `TradingOs.Gateway` (`Mt5WireTranslator` — C# port of `mt5-translate.ts`; `GatewayState`; `Mt5ObserverClient` WS client dialing the Python observer, read-only, auto-reconnect), `TradingOs.Host` (SignalR `CockpitHub` `/hub/cockpit` with `GetSnapshot` + `event` envelope broadcasts, `/health`, dev CORS, `GatewayBridgeService`), 7 xUnit tests mirroring the TS translator tests.
+- Frontend: `lib/realtime/signalr-client.ts` (`SignalRRealtimeClient` behind the seam; snapshot hydrate + event stream; TS engines on relayed candles + observe-mode risk), provider source `backend`, store `agent.snapshot.positions` case, `@microsoft/signalr` (first runtime dependency), `.env.example`/`.gitignore` updates.
+- Added ADR 0009 and `context/backend/backend_bootstrap.md` (3-terminal runbook). Resolves the mono-repo open question (single repo).
+- Verified: `dotnet build` 0 warnings/0 errors, `dotnet test` 7/7, host smoke test (`/health` 200, SignalR negotiate 200), frontend lint clean / source `tsc` exit 0 / 47 Vitest tests.
+
 ### Current Next Step
 
-Phase 08 - ASP.NET Core Backend Bootstrap (phase-start): host + SignalR hub + WebSocket Gateway for the lean MT5 wire + C# schema mirrors + dashboard SignalR client behind the existing seam.
+User runs the backend chain live (observer + `dotnet run` + cockpit with `NEXT_PUBLIC_REALTIME_SOURCE=backend`, runbook `context/backend/backend_bootstrap.md`), then close Phase 08. After closure: delete the superseded `LiveRealtimeClient`, then Execution Bridge or persistence at next phase-start.
 
 ## 2026-07-09
 

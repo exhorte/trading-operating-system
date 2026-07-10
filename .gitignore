@@ -38,6 +38,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# .NET backend build artifacts
+backend/**/bin/
+backend/**/obj/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

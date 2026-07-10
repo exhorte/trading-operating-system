@@ -28,6 +28,7 @@ import type {
   ExecutionReportPayload,
   MarketContextUpdatedPayload,
   MarketTickPayload,
+  PositionsSnapshotPayload,
   RiskDecisionMadePayload,
   RiskStateUpdatedPayload,
   SignalCreatedPayload,
@@ -105,6 +106,11 @@ export class CockpitStore {
       case "agent.snapshot.account": {
         const { account } = envelope.payload as AccountSnapshotPayload;
         this.patch({ account });
+        break;
+      }
+      case "agent.snapshot.positions": {
+        const { positions } = envelope.payload as PositionsSnapshotPayload;
+        this.patch({ positions });
         break;
       }
       case "analysis.market_context.updated": {

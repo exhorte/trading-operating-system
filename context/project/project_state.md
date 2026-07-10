@@ -48,11 +48,12 @@ Phase 06 - Risk & Prop Firm Mode: closed 2026-07-10 (committed `6f1a0c9`). Pure 
 
 Phase 07 - Signal → Risk Review Wiring: closed 2026-07-10 (commits `3f4208c`, `d455a72`, `59fa86e`). The mock is a mini strategy emitting domain `StrategySignal`s from the computed `MarketContextState`; the real `evaluateSignalRisk` rules on each (sizing + gates + lockout) on the audit-grade `risk.decision.made` contract. The full `/signals` audit workspace shows lifecycle, levels, RiskDecision (volume, reason, gates), and fills; the Command Center stays the summary. Rotating mock scenarios (wide spread, closed session) produce real rejections, with the Risk panel synced to the same state the review used. Live/observe signals remain out of scope (no strategy engine there).
 
+Phase 08 - ASP.NET Core Backend Bootstrap: implemented 2026-07-10 (`project/phases/phase-08-design.md`, validated first: backend in this repo under `backend/`, minimal observe-only stateless slice). .NET 10 solution: Contracts (C# mirrors: Envelope, lean mt5-wire records + parser, camelCase read models), Gateway (`Mt5WireTranslator` port of `mt5-translate.ts` with 1:1 mirrored xUnit tests, `Mt5ObserverClient` dialing the Python observer, auto-reconnect, read-only), Host (SignalR `CockpitHub` `/hub/cockpit` with GetSnapshot + `event` envelope broadcasts, `/health`, dev CORS). Frontend: `SignalRRealtimeClient` behind the seam (source `backend`; `@microsoft/signalr` = first runtime dep), TS engines still run client-side on relayed candles/state. Verified: dotnet build 0/0, 7/7 xUnit, host smoke (/health 200, negotiate 200), frontend lint/tsc/47 tests. **Awaiting the user's live 3-terminal run** (`context/backend/backend_bootstrap.md`).
+
 ## Next Up
 
-**Phase 08 - ASP.NET Core Backend Bootstrap** (in phase-start): stand up the real backend — host, SignalR hub for the dashboard, WebSocket Gateway ingesting the lean MT5 wire (replacing the Phase 05 browser-side translation shortcut, ADR 0007), C# mirrors of the domain/contract schemas (ADR 0004). This unblocks the production realtime path and, later, the Execution Bridge (Phase 09 in the renumbered roadmap).
-
-The engine-first, backend-later pattern (pure domain engines in TS now, port to .NET later) has carried Phases 04, 06, 07; the backend now becomes the priority infrastructure step.
+- **User runs the backend chain live**: observer + `dotnet run` + cockpit with `NEXT_PUBLIC_REALTIME_SOURCE=backend`, validates DEMO + connected with server-side translation, then close Phase 08.
+- After closure: delete `LiveRealtimeClient` (ADR 0007 shortcut, now superseded), then **Phase 09 - Execution Bridge** (command loop in `observe`/SIMULATED mode through the gateway) or start persisting (PostgreSQL/Timescale) — decide at next phase-start.
 
 ## Decisions Already Made
 
@@ -78,10 +79,12 @@ The engine-first, backend-later pattern (pure domain engines in TS now, port to 
 - Vitest is the domain test runner (dev-only, ADR 0006); runtime dependencies remain zero. Domain logic ships with deterministic-fixture unit tests.
 - Live MT5 access uses a local read-only reader attached to the user's already-authenticated terminal (Python `MetaTrader5`) — **no credentials are ever shared**. The observe prototype's lean→internal translation runs browser-side as a documented, throwaway shortcut (ADR 0007); production keeps a server-side .NET gateway (ADR 0005) + MQL5 EA/sidecar (Phase 03). This carve-out applies to the prototype only; the 2026-07-08 "gateway waits for ASP.NET Core" decision still governs the production path.
 - Read-only / `observe` is the mandatory mode for any first connection: no order path, execution controls stay inert.
+- The backend lives in this repo under `backend/` as a .NET 10 modular monolith (decided 2026-07-10, ADR 0009); extraction to a sibling repo only if operationally justified later. The gateway translates server-side; the browser-side `LiveRealtimeClient` is superseded and slated for deletion after the backend path is validated live.
+- SignalR (`@microsoft/signalr`) is the dashboard's production transport — the first and only frontend runtime dependency to date.
 
 ## Open Questions
 
-- Will this remain a single repository containing frontend, backend, EA, and infrastructure, or will the backend live in a sibling repository later?
+- ~~Will this remain a single repository containing frontend, backend, EA, and infrastructure, or will the backend live in a sibling repository later?~~ Resolved 2026-07-10: single repo, backend under `backend/` (ADR 0009); revisit only if operationally justified.
 - Which auth approach will be selected first: local auth, Supabase Auth, Auth0, or Keycloak?
 - Will first market data be mocked, imported from MT5, or pulled from a market data provider?
 - Which symbol set is MVP: XAUUSD only, or XAUUSD plus EURUSD/GBPUSD/USDJPY?

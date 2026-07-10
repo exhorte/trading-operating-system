@@ -2,6 +2,26 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-10 - Phase 08 Implementation (ASP.NET Core Backend Bootstrap)
+
+Designed and implemented after user validation (backend in this repo under `backend/`; minimal observe-only stateless slice). The production transport now exists: MT5 → Python observer → **.NET gateway (server-side translation)** → SignalR → cockpit.
+
+Built:
+
+- `backend/TradingOs.slnx` (.NET 10, note: new `.slnx` solution format). Projects: `TradingOs.Contracts` (C# mirrors — `Envelope<T>`, lean `Mt5*Message` records + `Mt5WireParser` type-discriminator dispatch, camelCase read models so the TS store consumes them unchanged), `TradingOs.Gateway` (`Mt5WireTranslator` = C# port of `mt5-translate.ts`, `GatewayState` snapshot store, `Mt5ObserverClient` — WS client dialing `ws://localhost:8765`, read-only, auto-reconnect), `TradingOs.Host` (SignalR `CockpitHub` at `/hub/cockpit` with `GetSnapshot` + `event` envelope broadcasts, `/health`, CORS for `localhost:3000`, `GatewayBridgeService`; listens on `http://localhost:5080`).
+- `tests/TradingOs.Gateway.Tests`: 7 xUnit tests mirroring `mt5-translate.test.ts` 1:1 — the two translators must stay in sync until the TS one is deleted.
+- Frontend: `SignalRRealtimeClient` (snapshot hydrate + event stream, heartbeat watchdog, initial-connect retry; TS engines still run client-side: ICT/SMC on relayed candles, observe-mode risk with session baseline). Provider source `backend` (`NEXT_PUBLIC_BACKEND_HUB_URL`); store gained `agent.snapshot.positions`; `@microsoft/signalr` added — first frontend runtime dependency.
+- ADR 0009, `context/backend/backend_bootstrap.md` (3-terminal runbook), phase-08 files. `.gitignore`: `backend/**/bin|obj`.
+
+Verified here: `dotnet build` 0/0, `dotnet test` 7/7, host smoke test (`/health` 200, SignalR negotiate 200), frontend lint clean / source `tsc` exit 0 / 47 Vitest tests. **The live 3-terminal run is the user's step.**
+
+Key handoff:
+
+- Connection direction is prototype-era: the gateway DIALS the observer (which is a WS server). The definitive MQL5 agent + sidecar will dial the gateway (ADR 0005); only `Mt5ObserverClient` changes then.
+- `LiveRealtimeClient` (browser translation, ADR 0007) is superseded — keep as fallback until the backend path is validated live, then delete it (and its translator? no: `mt5-translate.ts` types/tests stay as the reference the C# mirrors).
+- Engines remain TS client-side in this slice; porting to C# is a later decision.
+- Not yet committed at time of writing.
+
 ## 2026-07-10 - Phases 06 + 07 Closed; Mock Variety; Next = Backend
 
 Closed Phase 06 (Risk & Prop Firm Mode) and Phase 07 (Signal → Risk Review + `/signals` audit workspace) after the user reviewed both in the running cockpit — the risk panel live against their real Exness demo, and `/signals` showing real decisions (volume, reason, gates) and fills.
