@@ -1,6 +1,6 @@
 # Phase 08 - ASP.NET Core Backend Bootstrap
 
-Status: implemented 2026-07-10 (design in `phase-08-design.md`, validated first: backend in this repo under `backend/`; minimal observe-only stateless slice). Awaiting the user's live 3-terminal run before closure.
+Status: closed 2026-07-11 (implemented 2026-07-10, committed `0977175`; design in `phase-08-design.md`, validated first). **Validated live by the user** with the 3-terminal run: `/health` OK, cockpit DEMO + connected on the real Exness demo (account 436634705, equity $9,902.51), market context computed from real candles, honest observe-mode gates — translation now server-side in .NET. At closure the superseded `LiveRealtimeClient` (ADR 0007 browser shortcut) was deleted; `mt5-translate.ts` + tests remain as the TS reference the C# port mirrors.
 
 ## Objective
 

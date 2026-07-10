@@ -48,12 +48,14 @@ Phase 06 - Risk & Prop Firm Mode: closed 2026-07-10 (committed `6f1a0c9`). Pure 
 
 Phase 07 - Signal → Risk Review Wiring: closed 2026-07-10 (commits `3f4208c`, `d455a72`, `59fa86e`). The mock is a mini strategy emitting domain `StrategySignal`s from the computed `MarketContextState`; the real `evaluateSignalRisk` rules on each (sizing + gates + lockout) on the audit-grade `risk.decision.made` contract. The full `/signals` audit workspace shows lifecycle, levels, RiskDecision (volume, reason, gates), and fills; the Command Center stays the summary. Rotating mock scenarios (wide spread, closed session) produce real rejections, with the Risk panel synced to the same state the review used. Live/observe signals remain out of scope (no strategy engine there).
 
-Phase 08 - ASP.NET Core Backend Bootstrap: implemented 2026-07-10 (`project/phases/phase-08-design.md`, validated first: backend in this repo under `backend/`, minimal observe-only stateless slice). .NET 10 solution: Contracts (C# mirrors: Envelope, lean mt5-wire records + parser, camelCase read models), Gateway (`Mt5WireTranslator` port of `mt5-translate.ts` with 1:1 mirrored xUnit tests, `Mt5ObserverClient` dialing the Python observer, auto-reconnect, read-only), Host (SignalR `CockpitHub` `/hub/cockpit` with GetSnapshot + `event` envelope broadcasts, `/health`, dev CORS). Frontend: `SignalRRealtimeClient` behind the seam (source `backend`; `@microsoft/signalr` = first runtime dep), TS engines still run client-side on relayed candles/state. Verified: dotnet build 0/0, 7/7 xUnit, host smoke (/health 200, negotiate 200), frontend lint/tsc/47 tests. **Awaiting the user's live 3-terminal run** (`context/backend/backend_bootstrap.md`).
+Phase 08 - ASP.NET Core Backend Bootstrap: closed 2026-07-11 (committed `0977175`; validated live by the user — full chain MT5 → Python observer → .NET gateway (server-side translation) → SignalR → cockpit on the real Exness demo). .NET 10 solution under `backend/`: Contracts (C# mirrors), Gateway (`Mt5WireTranslator` + `Mt5ObserverClient`), Host (SignalR `CockpitHub`, `/health`, CORS), 7 xUnit tests mirroring the TS translator tests. Frontend: `SignalRRealtimeClient` behind the seam (source `backend`; `@microsoft/signalr` = first runtime dep); TS engines still run client-side on relayed candles/state. The superseded `LiveRealtimeClient` was deleted at closure; `mt5-translate.ts` + tests stay as the TS reference the C# mirrors.
 
 ## Next Up
 
-- **User runs the backend chain live**: observer + `dotnet run` + cockpit with `NEXT_PUBLIC_REALTIME_SOURCE=backend`, validates DEMO + connected with server-side translation, then close Phase 08.
-- After closure: delete `LiveRealtimeClient` (ADR 0007 shortcut, now superseded), then **Phase 09 - Execution Bridge** (command loop in `observe`/SIMULATED mode through the gateway) or start persisting (PostgreSQL/Timescale) — decide at next phase-start.
+Decide at next phase-start:
+
+- **Phase 09 - Execution Bridge (observe/SIMULATED)**: the full command loop through the gateway — dashboard/engine emits `ExecutionCommand` → gateway flattens to lean `execution.order` → observer replies SIMULATED ack/report (never touching the broker) → reports back up to the cockpit. Exercises idempotency, expiry, ack/report plumbing from ADR 0005 at zero risk.
+- **Persistence**: PostgreSQL/Timescale for candles/decisions/audit, enabling replay and the P&L calendar on real data.
 
 ## Decisions Already Made
 

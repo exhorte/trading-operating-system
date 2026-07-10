@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-10: Phases 00–07 Closed; Phase 08 (ASP.NET Core Backend Bootstrap) Delivered (awaiting the user's live run); Phase 09+ Planned. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
+As of 2026-07-11: Phases 00–08 Closed (Phase 08 validated live: server-side translation through the .NET gateway); Phase 09+ Planned. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -108,7 +108,7 @@ Deliverables:
 
 Wire the real risk engine into the signal pipeline: the mock emits domain signals from the computed market context, `evaluateSignalRisk` rules on each, and the audit-grade `risk.decision.made` contract carries the verdict. Includes the `/signals` audit workspace and rotating mock scenarios (real rejections). Live signals out of scope; execution loop deferred.
 
-## Phase 08 - ASP.NET Core Backend Bootstrap — Delivered (2026-07-10, awaiting live run)
+## Phase 08 - ASP.NET Core Backend Bootstrap — Closed (2026-07-11, validated live)
 
 Stand up the real backend: host, SignalR hub for the dashboard, WebSocket Gateway ingesting the lean MT5 wire (replaces the Phase 05 browser-side translation, ADR 0007), C# mirrors of domain/contract schemas (ADR 0004).
 

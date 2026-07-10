@@ -2,6 +2,14 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-11 - Phase 08 Closed; LiveRealtimeClient Deleted
+
+Phase 08 closed after the user's live 3-terminal validation: `/health` returned ok, the cockpit showed DEMO + connected on the real Exness demo (436634705, equity $9,902.51) with market context computed from real candles and honest observe-mode gates — translation running server-side in .NET.
+
+Cleanup at closure: deleted `lib/realtime/live-client.ts` (the ADR 0007 browser-translation shortcut, now superseded); provider offers `mock` (default) and `backend` only; `.env.example` simplified. **Kept** `lib/realtime/mt5-translate.ts` + its tests as the canonical TS reference that `Mt5WireTranslator.cs` mirrors 1:1 — change both together.
+
+Next phase-start decision: Phase 09 Execution Bridge in observe/SIMULATED mode (full command loop through the gateway: ExecutionCommand → lean execution.order → SIMULATED ack/report; exercises idempotency/expiry at zero broker risk) or persistence (PostgreSQL/Timescale for candles/decisions/audit/replay).
+
 ## 2026-07-10 - Phase 08 Implementation (ASP.NET Core Backend Bootstrap)
 
 Designed and implemented after user validation (backend in this repo under `backend/`; minimal observe-only stateless slice). The production transport now exists: MT5 → Python observer → **.NET gateway (server-side translation)** → SignalR → cockpit.

@@ -10,26 +10,21 @@ import {
 } from "react";
 import type { ConnectionState } from "@/lib/contracts/enums";
 import { MockRealtimeClient } from "./mock-client";
-import { LiveRealtimeClient } from "./live-client";
 import { SignalRRealtimeClient } from "./signalr-client";
 import type { RealtimeClient } from "./client";
 import { CockpitStore, EMPTY_COCKPIT_SNAPSHOT, type CockpitSnapshot } from "./store";
 
 const CockpitStoreContext = createContext<CockpitStore | null>(null);
 
-// Mock is the default everywhere. Local opt-ins via NEXT_PUBLIC_REALTIME_SOURCE:
-//  - "backend": SignalR to the ASP.NET Core gateway (production path, ADR 0009)
-//  - "live":    browser-side translation prototype (ADR 0007, superseded by backend)
+// Mock is the default everywhere. NEXT_PUBLIC_REALTIME_SOURCE="backend" opts
+// into the production path: SignalR to the ASP.NET Core gateway (ADR 0009).
+// The former "live" browser-side translation prototype (ADR 0007) was
+// superseded by the backend and deleted after live validation.
 function createClient(store: CockpitStore): RealtimeClient {
-  const source = process.env.NEXT_PUBLIC_REALTIME_SOURCE;
-  if (source === "backend") {
+  if (process.env.NEXT_PUBLIC_REALTIME_SOURCE === "backend") {
     const hubUrl =
       process.env.NEXT_PUBLIC_BACKEND_HUB_URL ?? "http://localhost:5080/hub/cockpit";
     return new SignalRRealtimeClient(store, hubUrl);
-  }
-  if (source === "live") {
-    const url = process.env.NEXT_PUBLIC_MT5_WS_URL ?? "ws://localhost:8765";
-    return new LiveRealtimeClient(store, url);
   }
   return new MockRealtimeClient(store);
 }

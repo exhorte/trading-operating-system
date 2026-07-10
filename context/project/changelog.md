@@ -97,9 +97,16 @@ This file tracks meaningful changes to the project brain and architecture.
 - Added ADR 0009 and `context/backend/backend_bootstrap.md` (3-terminal runbook). Resolves the mono-repo open question (single repo).
 - Verified: `dotnet build` 0 warnings/0 errors, `dotnet test` 7/7, host smoke test (`/health` 200, SignalR negotiate 200), frontend lint clean / source `tsc` exit 0 / 47 Vitest tests.
 
+## 2026-07-11
+
+### Changed - Phase 08 Closed; LiveRealtimeClient Deleted
+
+- Closed Phase 08 after the user's live 3-terminal validation (`/health` OK; cockpit DEMO + connected on the real demo with server-side translation).
+- Deleted the superseded `lib/realtime/live-client.ts` (ADR 0007 browser shortcut); provider now offers `mock` (default) and `backend` only; `.env.example` simplified; `mt5-translate.ts` + tests kept as the TS reference the C# port mirrors 1:1.
+
 ### Current Next Step
 
-User runs the backend chain live (observer + `dotnet run` + cockpit with `NEXT_PUBLIC_REALTIME_SOURCE=backend`, runbook `context/backend/backend_bootstrap.md`), then close Phase 08. After closure: delete the superseded `LiveRealtimeClient`, then Execution Bridge or persistence at next phase-start.
+Next phase-start decision: Phase 09 Execution Bridge in observe/SIMULATED mode (full command loop through the gateway, zero broker risk) or persistence (PostgreSQL/Timescale).
 
 ## 2026-07-09
 

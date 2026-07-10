@@ -2,10 +2,11 @@
  * Pure translation: lean MT5 edge messages (lib/contracts/mt5-wire) → dashboard
  * read models (lib/contracts/snapshots) and domain candles.
  *
- * In the observe-only prototype this runs in the browser inside
- * LiveRealtimeClient (see context/realtime/live_prototype.md and ADR 0007); the
- * definitive server-side .NET gateway will do the same translation later. Kept
- * pure so it is unit-testable and portable.
+ * Since Phase 08 this translation runs SERVER-SIDE in the .NET gateway
+ * (backend/src/TradingOs.Gateway/Mt5WireTranslator.cs, ADR 0009); the former
+ * browser LiveRealtimeClient was deleted after live validation. This module and
+ * its tests are kept as the canonical TS reference the C# port mirrors 1:1 —
+ * change both sides together.
  */
 
 import type {
