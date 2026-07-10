@@ -11,9 +11,6 @@ import type { Side } from "@/lib/domain/primitives";
 import type { StrategySignal } from "@/lib/domain/strategy";
 import type { AccountSummary } from "@/lib/contracts/snapshots";
 
-/** XAUUSD fixed stop distance (price units) for the mock. */
-const STOP_DISTANCE = 5.0;
-
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -25,14 +22,27 @@ export function mockStrategySignal(args: {
   seq: number;
 }): StrategySignal {
   const { context, account, price, seq } = args;
-  const side: Side = context.bias === "bearish" ? "sell" : "buy";
-  const stopLoss = side === "buy" ? price - STOP_DISTANCE : price + STOP_DISTANCE;
-  const takeProfit = side === "buy" ? price + 2 * STOP_DISTANCE : price - 2 * STOP_DISTANCE;
+
+  // Variety: every 4th signal is a counter-bias probe with a weaker score, so
+  // the queue shows both sides; stop distance cycles 3.5→8.0 so the risk
+  // engine sizes different volumes per signal.
+  const counterBias = seq % 4 === 0;
+  const withBias: Side = context.bias === "bearish" ? "sell" : "buy";
+  const side: Side = counterBias ? (withBias === "buy" ? "sell" : "buy") : withBias;
+  const score = counterBias ? Math.max(2, context.score - 3) : context.score;
+  const stopDistance = 3.5 + (seq % 4) * 1.5;
+
+  const stopLoss = side === "buy" ? price - stopDistance : price + stopDistance;
+  const takeProfit = side === "buy" ? price + 2 * stopDistance : price - 2 * stopDistance;
   const now = new Date();
 
   return {
     signalId: `sig-${String(seq).padStart(3, "0")}`,
-    strategyId: side === "buy" ? "ict-silver-bullet-v1" : "ict-fvg-continuation-v1",
+    strategyId: counterBias
+      ? "ict-liquidity-raid-v1"
+      : side === "buy"
+        ? "ict-silver-bullet-v1"
+        : "ict-fvg-continuation-v1",
     accountId: account.accountId,
     symbol: context.symbol,
     side,
@@ -40,7 +50,7 @@ export function mockStrategySignal(args: {
     entryPrice: round2(price),
     stopLoss: round2(stopLoss),
     takeProfit: round2(takeProfit),
-    score: context.score,
+    score,
     maxScore: context.maxScore,
     marketContext: context,
     riskApprovalId: null,

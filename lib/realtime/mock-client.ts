@@ -24,12 +24,14 @@ import {
   mockSignals,
 } from "@/lib/mock/initial-snapshot";
 import { mockStrategySignal } from "@/lib/mock/signals";
+import type { MockRiskScenario } from "@/lib/mock/initial-snapshot";
 import { mockCandles, nextCandles } from "@/lib/mock/candles";
 import { analyzeMarketContext } from "@/lib/analysis";
 import { evaluateSignalRisk } from "@/lib/risk";
 import {
   toMarketContextReadModel,
   toRiskDecisionView,
+  toRiskStatusReadModel,
   toStrategySignalReadModel,
 } from "@/lib/contracts/projections";
 import type { Candle } from "@/lib/domain/market";
@@ -40,6 +42,7 @@ import type {
   MarketContextUpdatedPayload,
   MarketTickPayload,
   RiskDecisionMadePayload,
+  RiskStateUpdatedPayload,
   SignalCreatedPayload,
 } from "@/lib/contracts/events";
 import type { RealtimeClient } from "./client";
@@ -68,6 +71,17 @@ export class MockRealtimeClient implements RealtimeClient {
 
   /** Domain signal awaiting risk review on the next tick (Signal → Risk Review). */
   private pendingReview: DomainStrategySignal | null = null;
+
+  /** Rotating market/risk conditions so reviews also produce rejections. */
+  private reviewCounter = 0;
+
+  private static readonly SCENARIOS: MockRiskScenario[] = [
+    "normal",
+    "normal",
+    "wide_spread",
+    "normal",
+    "closed_session",
+  ];
 
   /** Evolving candle window the ICT/SMC engine recomputes context from. */
   private candles: Candle[] = mockCandles();
@@ -198,7 +212,19 @@ export class MockRealtimeClient implements RealtimeClient {
     if (this.pendingReview) {
       const signal = this.pendingReview;
       this.pendingReview = null;
-      const { state, policy, balance } = mockRiskContext();
+      // Rotate market/risk conditions and publish the SAME state to the Risk
+      // panel that the review uses, so an approval/rejection always matches
+      // what the cockpit shows (wide spread and closed session cause real
+      // gate rejections).
+      const scenario =
+        MockRealtimeClient.SCENARIOS[this.reviewCounter % MockRealtimeClient.SCENARIOS.length];
+      this.reviewCounter += 1;
+      const { state, policy, balance } = mockRiskContext(scenario);
+      this.store.apply(
+        makeEnvelope<RiskStateUpdatedPayload>("risk.state.updated", "mock-risk-engine", {
+          risk: toRiskStatusReadModel(state, policy),
+        }),
+      );
       const decision = evaluateSignalRisk({
         signalId: signal.signalId,
         accountId: signal.accountId,

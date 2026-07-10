@@ -81,12 +81,22 @@ export function mockPositions(): Position[] {
 }
 
 /**
+ * Rotating market/risk conditions so the Signal → Risk Review loop shows real
+ * rejections too, not only approvals. The same state feeds the Risk panel and
+ * the review, so what the cockpit shows always matches why a signal was
+ * approved or rejected.
+ */
+export type MockRiskScenario = "normal" | "wide_spread" | "closed_session";
+
+/**
  * Risk is now COMPUTED by the Phase 06 risk engine from the mock account +
  * positions + a default FTMO-style policy. Exposed as the domain RiskState +
  * policy so the mock client can both render the panel AND review signals
  * against the same state (Signal → Risk Review, Phase 07).
  */
-export function mockRiskContext(): { state: RiskState; policy: RiskPolicy; balance: number } {
+export function mockRiskContext(
+  scenario: MockRiskScenario = "normal",
+): { state: RiskState; policy: RiskPolicy; balance: number } {
   const account = mockAccount();
   const policy = defaultRiskPolicy(account.accountId);
   const positions = mockPositions().map((p) => ({
@@ -104,11 +114,11 @@ export function mockRiskContext(): { state: RiskState; policy: RiskPolicy; balan
     positions,
     tradesToday: 3,
     consecutiveLosses: 1,
-    spreadPoints: 21,
-    // NY AM window open so the Signal → Risk Review flow actually approves &
-    // sizes (a blocked session gate would reject every mock signal).
-    session: "new_york_am",
-    sessionTradingEnabled: true,
+    // wide_spread: above the 40-pt policy limit → spread gate blocks entries.
+    spreadPoints: scenario === "wide_spread" ? 55 : 21,
+    // closed_session: NY PM disabled → session gate blocks entries.
+    session: scenario === "closed_session" ? "new_york_pm" : "new_york_am",
+    sessionTradingEnabled: scenario !== "closed_session",
     now: new Date().toISOString(),
   });
   return { state, policy, balance: account.balance };
