@@ -18,23 +18,34 @@ import {
 } from "@microsoft/signalr";
 import { analyzeMarketContext, DEFAULT_SESSION_WINDOWS } from "@/lib/analysis";
 import { sessionEnabled, sessionForTimestamp } from "@/lib/analysis/sessions";
-import { defaultRiskPolicy, evaluateRiskState } from "@/lib/risk";
+import { defaultRiskPolicy, evaluateRiskState, evaluateSignalRisk } from "@/lib/risk";
+import { buildPlaceOrderCommand } from "@/lib/execution/command-builder";
+import { mockStrategySignal } from "@/lib/mock/signals";
+import { makeEnvelope } from "@/lib/mock/envelope";
 import {
   toMarketContextReadModel,
+  toRiskDecisionView,
   toRiskStatusReadModel,
+  toStrategySignalReadModel,
 } from "@/lib/contracts/projections";
 import type { Envelope } from "@/lib/contracts/envelope";
 import type {
   AgentHeartbeatPayload,
   MarketCandlePayload,
   MarketTickPayload,
+  RiskDecisionMadePayload,
+  SignalCreatedPayload,
 } from "@/lib/contracts/events";
+import type { CommandAckPayload } from "@/lib/contracts/commands";
 import type {
   AccountSummary,
   AgentStatus,
   Position,
 } from "@/lib/contracts/snapshots";
 import type { Candle } from "@/lib/domain/market";
+import type { MarketContextState } from "@/lib/domain/analysis";
+import type { PlaceOrderCommand } from "@/lib/domain/execution";
+import type { RiskPolicy, RiskState } from "@/lib/domain/risk";
 import type { RealtimeClient } from "./client";
 import type { CockpitStore } from "./store";
 
@@ -42,6 +53,10 @@ const WATCHDOG_INTERVAL_MS = 2_000;
 const HEARTBEAT_STALE_AFTER_MS = 8_000;
 const CONTEXT_DEBOUNCE_MS = 200;
 const MAX_CANDLES = 300;
+/** Cadence of the transitional in-browser strategy stub (Phase 09). */
+const SIGNAL_INTERVAL_MS = 30_000;
+/** No ack within this window → the single idempotent retry, then failed. */
+const ACK_TIMEOUT_MS = 5_000;
 
 /** Shape returned by CockpitHub.GetSnapshot (C# CockpitSnapshotDto, camelCase). */
 interface HubSnapshot {
@@ -73,6 +88,22 @@ export class SignalRRealtimeClient implements RealtimeClient {
   private watchdog: ReturnType<typeof setInterval> | null = null;
 
   private contextTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // --- Phase 09: transitional in-browser decision loop (documented, ADR 0010) ---
+
+  private lastContextState: MarketContextState | null = null;
+
+  private lastRisk: { state: RiskState; policy: RiskPolicy } | null = null;
+
+  private signalTimer: ReturnType<typeof setInterval> | null = null;
+
+  private signalCounter = 100;
+
+  /** Commands awaiting an ack: single 5s timeout → one retry (same id) → failed. */
+  private pendingAcks = new Map<
+    string,
+    { command: PlaceOrderCommand; timer: ReturnType<typeof setTimeout>; retried: boolean }
+  >();
 
   constructor(
     private readonly store: CockpitStore,
@@ -108,6 +139,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
         this.store.setConnectionState("connected");
         this.store.hydrate({ lastHeartbeatAt: new Date().toISOString() });
         this.startWatchdog();
+        this.startSignalLoop();
         return this.hydrateFromSnapshot();
       })
       .catch(() => {
@@ -135,6 +167,14 @@ export class SignalRRealtimeClient implements RealtimeClient {
       clearTimeout(this.contextTimer);
       this.contextTimer = null;
     }
+    if (this.signalTimer) {
+      clearInterval(this.signalTimer);
+      this.signalTimer = null;
+    }
+    for (const pending of this.pendingAcks.values()) {
+      clearTimeout(pending.timer);
+    }
+    this.pendingAcks.clear();
     if (this.connection) {
       const connection = this.connection;
       this.connection = null;
@@ -213,6 +253,19 @@ export class SignalRRealtimeClient implements RealtimeClient {
         void payload;
         break;
       }
+      // Phase 09: agent/gateway receipt — settle the pending ack timer, then
+      // let the store drive the command/signal lifecycle.
+      case "execution.command.acknowledged":
+      case "execution.command.rejected": {
+        const { ack } = envelope.payload as CommandAckPayload;
+        const pending = this.pendingAcks.get(ack.commandId);
+        if (pending) {
+          clearTimeout(pending.timer);
+          this.pendingAcks.delete(ack.commandId);
+        }
+        this.store.apply(envelope);
+        break;
+      }
       default:
         this.store.apply(envelope);
         break;
@@ -241,6 +294,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
       timeframe: this.timeframe as Candle["timeframe"],
       candles,
     });
+    this.lastContextState = state;
     this.store.hydrate({ marketContext: toMarketContextReadModel(state) });
   }
 
@@ -277,7 +331,99 @@ export class SignalRRealtimeClient implements RealtimeClient {
       sessionTradingEnabled: sessionEnabled(session, DEFAULT_SESSION_WINDOWS),
       now: nowIso,
     });
+    this.lastRisk = { state, policy };
     this.store.hydrate({ risk: toRiskStatusReadModel(state, policy) });
+  }
+
+  // --- Phase 09: Signal → RiskDecision → ExecutionCommand (observe loop) ---
+  // Transitional: the strategy stub + risk review run in the browser on REAL
+  // context/risk (engine port to the backend is a later phase, ADR 0010).
+  // Business logic lives in lib/strategy-stub, lib/risk, lib/execution.
+
+  private startSignalLoop(): void {
+    if (this.signalTimer) {
+      return;
+    }
+    this.signalTimer = setInterval(() => this.runDecisionLoop(), SIGNAL_INTERVAL_MS);
+  }
+
+  private runDecisionLoop(): void {
+    const { connection, account } = this.store.getSnapshot();
+    if (connection !== "connected" || !account || !this.lastContextState || !this.lastRisk) {
+      return; // only decide on fresh, fully-hydrated real state
+    }
+    if (this.lastBid === null) {
+      return;
+    }
+
+    this.signalCounter += 1;
+    const signal = mockStrategySignal({
+      context: this.lastContextState,
+      account,
+      price: this.lastBid,
+      seq: this.signalCounter,
+    });
+    this.store.apply(
+      makeEnvelope<SignalCreatedPayload>("strategy.signal.created", "cockpit-strategy-stub", {
+        signal: toStrategySignalReadModel(signal),
+      }),
+    );
+
+    const decision = evaluateSignalRisk({
+      signalId: signal.signalId,
+      accountId: signal.accountId,
+      entryPrice: signal.entryPrice,
+      stopLoss: signal.stopLoss,
+      balance: account.balance,
+      state: this.lastRisk.state,
+      policy: this.lastRisk.policy,
+      now: new Date().toISOString(),
+    });
+    this.store.apply(
+      makeEnvelope<RiskDecisionMadePayload>("risk.decision.made", "cockpit-risk-engine", {
+        decision: toRiskDecisionView(decision),
+      }, signal.signalId),
+    );
+
+    // Only an approved, sized decision can become a command (builder enforces it).
+    const agentId = this.store.getSnapshot().agents[0]?.agentId ?? "mt5-observer-1";
+    const command = buildPlaceOrderCommand({
+      signal,
+      decision,
+      agentId,
+      now: new Date().toISOString(),
+    });
+    if (command) {
+      this.submitCommand(command, false);
+    }
+  }
+
+  /** Submit to the hub and arm the ack timeout (one idempotent retry, then failed). */
+  private submitCommand(command: PlaceOrderCommand, isRetry: boolean): void {
+    if (!this.connection) {
+      return;
+    }
+    void this.connection.invoke("SubmitCommand", command).catch(() => {
+      // invoke failed outright (e.g. reconnecting) — the timeout path handles it.
+    });
+    const timer = setTimeout(() => this.onAckTimeout(command.commandId), ACK_TIMEOUT_MS);
+    this.pendingAcks.set(command.commandId, { command, timer, retried: isRetry });
+  }
+
+  private onAckTimeout(commandId: string): void {
+    const pending = this.pendingAcks.get(commandId);
+    if (!pending) {
+      return;
+    }
+    this.pendingAcks.delete(commandId);
+    if (!pending.retried) {
+      // Single retry with the SAME commandId — the agent dedupes (DUPLICATE
+      // ack counts as confirmation), which exercises idempotency for real.
+      this.store.markCommandRetried(commandId);
+      this.submitCommand(pending.command, true);
+      return;
+    }
+    this.store.markCommandFailed(commandId, "no ack within timeout (after retry)");
   }
 
   private startWatchdog(): void {

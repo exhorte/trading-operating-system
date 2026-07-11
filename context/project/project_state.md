@@ -50,12 +50,12 @@ Phase 07 - Signal → Risk Review Wiring: closed 2026-07-10 (commits `3f4208c`, 
 
 Phase 08 - ASP.NET Core Backend Bootstrap: closed 2026-07-11 (committed `0977175`; validated live by the user — full chain MT5 → Python observer → .NET gateway (server-side translation) → SignalR → cockpit on the real Exness demo). .NET 10 solution under `backend/`: Contracts (C# mirrors), Gateway (`Mt5WireTranslator` + `Mt5ObserverClient`), Host (SignalR `CockpitHub`, `/health`, CORS), 7 xUnit tests mirroring the TS translator tests. Frontend: `SignalRRealtimeClient` behind the seam (source `backend`; `@microsoft/signalr` = first runtime dep); TS engines still run client-side on relayed candles/state. The superseded `LiveRealtimeClient` was deleted at closure; `mt5-translate.ts` + tests stay as the TS reference the C# mirrors.
 
+Phase 09 - Execution Bridge (observe/SIMULATED): implemented 2026-07-11 per the user's 10-point spec (`project/phases/phase-09-execution-bridge.md`, design validated first). Full command loop at zero risk: approved `RiskDecision` → `buildPlaceOrderCommand` (volume = approvedVolume, null if rejected) → `CockpitHub.SubmitCommand` (observe-mode guard; absent/unknown mode refused) → lean `execution.order` (ADR 0005 flatten) → observer validates (fields/expiry/volume bounds/mandatory SL), dedupes by commandId, replies `execution.ack` + `execution.report SIMULATED` — **no trade call exists anywhere** → canonical `CommandAckPayload` + new `execution.order.simulated` event → store lifecycle (`commands` map + signal statuses). 5s ack timeout → one same-id retry (DUPLICATE = confirmation) → failed. New domain status `simulated`, never rendered as a fill. Contract debt resolved: ack events now carry `CommandAckPayload`. Gates: lint/tsc/56 Vitest, 14/14 xUnit, py_compile. ADR 0010. **Awaiting the user's live run** (same 3-terminal runbook; watch the Signal Queue + Execution reports for SIMULATED outcomes).
+
 ## Next Up
 
-Decide at next phase-start:
-
-- **Phase 09 - Execution Bridge (observe/SIMULATED)**: the full command loop through the gateway — dashboard/engine emits `ExecutionCommand` → gateway flattens to lean `execution.order` → observer replies SIMULATED ack/report (never touching the broker) → reports back up to the cockpit. Exercises idempotency, expiry, ack/report plumbing from ADR 0005 at zero risk.
-- **Persistence**: PostgreSQL/Timescale for candles/decisions/audit, enabling replay and the P&L calendar on real data.
+- **User runs Phase 09 live**: 3-terminal chain, verify signals → sized decisions → commands → ACCEPTED acks → SIMULATED reports in the cockpit (and DUPLICATE/rejection paths in the observer console), then close Phase 09.
+- **Phase 10 - Persistence (PostgreSQL/Timescale)** — user decision: store commands, decisions, acks, reports, candles, and audit traces **before any paper trading**.
 
 ## Decisions Already Made
 

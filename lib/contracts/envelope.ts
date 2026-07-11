@@ -37,6 +37,7 @@ export type EventType =
   // execution reports
   | "execution.command.acknowledged"
   | "execution.command.rejected"
+  | "execution.order.simulated"
   | "execution.order.submitted"
   | "execution.order.filled"
   | "execution.order.partially_filled"

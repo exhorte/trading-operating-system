@@ -68,7 +68,9 @@ public static class Mt5WireParser
             "market.candle" => doc.RootElement.Deserialize<Mt5CandleMessage>(Options),
             "account.snapshot" => doc.RootElement.Deserialize<Mt5AccountSnapshotMessage>(Options),
             "positions.snapshot" => doc.RootElement.Deserialize<Mt5PositionsSnapshotMessage>(Options),
-            // ack/report/error are not used by the observe slice.
+            // Phase 09: command receipts and SIMULATED outcomes from the agent.
+            "execution.ack" => doc.RootElement.Deserialize<Mt5AckMessage>(Options),
+            "execution.report" => doc.RootElement.Deserialize<Mt5ReportMessage>(Options),
             _ => null,
         };
     }

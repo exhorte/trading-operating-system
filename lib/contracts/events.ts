@@ -7,10 +7,10 @@
  * - dashboard-facing events carry read models from snapshots.ts
  * - backend/agent-facing events carry canonical domain shapes from lib/domain
  *
- * Known Phase 01 shortcut: the mock feed publishes execution.command.acknowledged
- * with an ExecutionReportPayload for the cockpit feed; the canonical agent-channel
- * payload is CommandAckPayload (see commands.ts). To reconcile when the store
- * adopts EventPayloadMap.
+ * Phase 09 reconciled the old Phase 01 shortcut: execution.command.acknowledged
+ * and .rejected now carry the canonical CommandAckPayload (commands.ts), and
+ * observe-mode outcomes travel as execution.order.simulated — never disguised
+ * as fills.
  */
 
 import type { Envelope, EventType } from "./envelope";
@@ -29,6 +29,7 @@ import type {
   CancelOrderCommandPayload,
   CloseAllCommandPayload,
   ClosePositionCommandPayload,
+  CommandAckPayload,
   ModifyPositionCommandPayload,
   PlaceOrderCommandPayload,
   RealtimeSubscription,
@@ -203,8 +204,9 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "execution.command.close_position": ClosePositionCommandPayload;
   "execution.command.close_all": CloseAllCommandPayload;
   "execution.command.cancel_order": CancelOrderCommandPayload;
-  "execution.command.acknowledged": ExecutionReportPayload;
-  "execution.command.rejected": ExecutionReportPayload;
+  "execution.command.acknowledged": CommandAckPayload;
+  "execution.command.rejected": CommandAckPayload;
+  "execution.order.simulated": ExecutionReportPayload;
   "execution.order.submitted": ExecutionReportPayload;
   "execution.order.filled": ExecutionReportPayload;
   "execution.order.partially_filled": ExecutionReportPayload;

@@ -14,6 +14,7 @@ import type {
   AccountSummary,
   AgentStatus,
   CockpitAlert,
+  ExecutionCommandView,
   ExecutionReport,
   MarketContext,
   PnlCalendarDay,
@@ -22,6 +23,10 @@ import type {
   RiskStatus,
   StrategySignal,
 } from "@/lib/contracts/snapshots";
+import type {
+  CommandAckPayload,
+  PlaceOrderCommandPayload,
+} from "@/lib/contracts/commands";
 import type {
   AccountSnapshotPayload,
   AgentHeartbeatPayload,
@@ -45,6 +50,8 @@ export interface CockpitSnapshot {
   signals: StrategySignal[];
   /** Audit-grade risk decisions keyed by signalId (Signal → Risk Review). */
   riskDecisions: Record<string, RiskDecisionView>;
+  /** Execution command lifecycle keyed by commandId (Phase 09 bridge audit). */
+  commands: Record<string, ExecutionCommandView>;
   agents: AgentStatus[];
   executionReports: ExecutionReport[];
   pnlCalendar: PnlCalendarDay[];
@@ -61,6 +68,7 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   marketContext: null,
   signals: [],
   riskDecisions: {},
+  commands: {},
   agents: [],
   executionReports: [],
   pnlCalendar: [],
@@ -179,8 +187,76 @@ export class CockpitStore {
         });
         break;
       }
-      case "execution.order.filled":
+      // A command was issued after an approved RiskDecision (Phase 09 bridge).
+      case "execution.command.place_order": {
+        const { command } = envelope.payload as PlaceOrderCommandPayload;
+        // Idempotent re-registration (the single retry re-broadcasts the same
+        // commandId): never downgrade an existing lifecycle back to "sent".
+        if (this.snapshot.commands[command.commandId]) {
+          break;
+        }
+        this.patch({
+          commands: {
+            ...this.snapshot.commands,
+            [command.commandId]: {
+              commandId: command.commandId,
+              signalId: command.signalId,
+              riskApprovalId: command.riskApprovalId,
+              symbol: command.symbol,
+              side: command.side,
+              volume: command.volume,
+              status: "sent",
+              reason: null,
+              issuedAt: command.issuedAt,
+              updatedAt: envelope.sentAt,
+            },
+          },
+          signals: this.setSignalStatus(command.signalId, "commanded", null),
+        });
+        break;
+      }
+      // Agent receipt. accepted/duplicate confirm; rejected/expired terminate —
+      // a rejected or expired command NEVER produces a fill.
       case "execution.command.acknowledged":
+      case "execution.command.rejected": {
+        const { ack } = envelope.payload as CommandAckPayload;
+        const confirmed = ack.status === "accepted" || ack.status === "duplicate";
+        const commandStatus = confirmed
+          ? "acknowledged"
+          : ack.status === "expired"
+            ? "expired"
+            : "rejected";
+        const command = this.snapshot.commands[ack.commandId];
+        this.patch({
+          commands: this.setCommandStatus(ack.commandId, commandStatus, ack.reason),
+          signals: command
+            ? this.setSignalStatus(
+                command.signalId,
+                confirmed ? "acknowledged" : ack.status === "expired" ? "expired" : "rejected",
+                ack.reason,
+              )
+            : this.snapshot.signals,
+        });
+        break;
+      }
+      // Observe-mode outcome: validated end-to-end, no broker order. Distinct
+      // status by contract — never rendered as a fill.
+      case "execution.order.simulated": {
+        const { report } = envelope.payload as ExecutionReportPayload;
+        const command = this.snapshot.commands[report.commandId];
+        this.patch({
+          executionReports: [report, ...this.snapshot.executionReports].slice(
+            0,
+            MAX_FEED_LENGTH,
+          ),
+          commands: this.setCommandStatus(report.commandId, "reported", null),
+          signals: command
+            ? this.setSignalStatus(command.signalId, "reported", null)
+            : this.snapshot.signals,
+        });
+        break;
+      }
+      case "execution.order.filled":
       case "execution.position.opened":
       case "execution.position.closed": {
         const { report } = envelope.payload as ExecutionReportPayload;
@@ -196,6 +272,56 @@ export class CockpitStore {
         // Unhandled event families are ignored by the Phase 01 dashboard.
         break;
     }
+  }
+
+  /** Client-side lifecycle: no ack before timeout (after the single retry). */
+  markCommandFailed(commandId: string, reason: string): void {
+    const command = this.snapshot.commands[commandId];
+    if (!command || command.status === "acknowledged" || command.status === "reported") {
+      return;
+    }
+    this.patch({
+      commands: this.setCommandStatus(commandId, "failed", reason),
+      signals: this.setSignalStatus(command.signalId, "rejected", reason),
+    });
+  }
+
+  /** Client-side lifecycle: the single idempotent resend happened. */
+  markCommandRetried(commandId: string): void {
+    const command = this.snapshot.commands[commandId];
+    if (command && command.status === "sent") {
+      this.patch({ commands: this.setCommandStatus(commandId, "retried", null) });
+    }
+  }
+
+  private setCommandStatus(
+    commandId: string,
+    status: ExecutionCommandView["status"],
+    reason: string | null,
+  ): Record<string, ExecutionCommandView> {
+    const command = this.snapshot.commands[commandId];
+    if (!command) {
+      return this.snapshot.commands;
+    }
+    return {
+      ...this.snapshot.commands,
+      [commandId]: { ...command, status, reason, updatedAt: new Date().toISOString() },
+    };
+  }
+
+  private setSignalStatus(
+    signalId: string | null,
+    status: StrategySignal["status"],
+    reason: string | null,
+  ): StrategySignal[] {
+    if (!signalId) {
+      return this.snapshot.signals;
+    }
+    return this.snapshot.signals.map((signal) =>
+      signal.signalId === signalId
+        ? { ...signal, status, riskDecision: reason ?? signal.riskDecision }
+        : signal,
+    );
   }
 
   private applyTick(symbol: string, price: number): void {

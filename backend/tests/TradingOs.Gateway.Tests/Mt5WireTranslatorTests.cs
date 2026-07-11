@@ -112,6 +112,8 @@ public class Mt5WireTranslatorTests
         var typed = Assert.IsType<Mt5TickMessage>(tick);
         Assert.Equal(4053.2, typed.Bid);
 
-        Assert.Null(Mt5WireParser.Parse("""{"version":1,"type":"execution.report","accountId":"a","time":1}"""));
+        // agent.error is still outside the observe slice (execution.ack/report
+        // joined the parser in Phase 09).
+        Assert.Null(Mt5WireParser.Parse("""{"version":1,"type":"agent.error","accountId":"a","time":1}"""));
     }
 }

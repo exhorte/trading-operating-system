@@ -2,6 +2,20 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-11 - Phase 09 Implementation (Execution Bridge, observe/SIMULATED)
+
+Implemented against the user's explicit 10-point spec (design + 3 choices validated first: transitional in-browser decision loop; `simulated` status + `execution.order.simulated` + canonical ack payload; 5s timeout with one same-id retry).
+
+The loop: approved `RiskDecision` → `buildPlaceOrderCommand` (`lib/execution/command-builder.ts` — the ONLY way a command exists; volume = approvedVolume; rejected/unsized/mismatched → null) → `SignalRRealtimeClient` invokes `CockpitHub.SubmitCommand` → hub broadcasts the command envelope to all dashboards, guards agent mode (non-observe/absent/unknown → synthesized rejected ack, never forwarded) → `FlattenPlaceOrder` to lean `execution.order` → first outbound frame over the existing observer WS → observer (v0.2.0, producer‖consumer via `asyncio.TaskGroup`) validates (required fields, MARKET only, served symbol, volume bounds from broker info, mandatory SL), checks expiry, dedupes by commandId (module-level set, survives reconnects) → `execution.ack` then `execution.report SIMULATED` with live tick price → gateway maps ack → canonical `CommandAckPayload` events and SIMULATED → `execution.order.simulated` → store drives `commands` map + signal statuses (commanded→acknowledged→reported).
+
+Key safety layering (four independent barriers): risk-gated builder · hub observe guard · agent `EXECUTION_MODE="observe"` constant with ZERO trade imports (a "fill" is a JSON reply) · distinct `simulated` status never rendered as a fill. Rejected/expired/duplicate never produce a report (tested TS-side; enforced agent-side).
+
+Contract work: domain `ExecutionReportStatus` += `simulated`; EventType += `execution.order.simulated`; **Phase 01/02 ack shortcut resolved** (`execution.command.acknowledged|rejected` now carry `CommandAckPayload`). C# `Execution.cs` mirrors 1:1; 14/14 xUnit (one stale Phase 08 parser assertion updated — execution.ack/report joined the parser). Store: `ExecutionCommandView`, `markCommandRetried/Failed`, idempotent place_order re-registration (retry never downgrades lifecycle).
+
+Gates: lint clean, source `tsc` exit 0, 56 Vitest (3 builder + 6 store new), dotnet build 0/0, `py_compile` OK, trade-call grep clean (only a docstring mention).
+
+Next: user's live 3-terminal run (expect: signals every ~30s in backend mode → sized decisions → ACCEPTED acks → SIMULATED reports in the feed; observer console logs dedup/rejections). Then close and start Phase 10 Persistence (PostgreSQL/Timescale) — **before any paper trading** (user decision). Not yet committed at time of writing.
+
 ## 2026-07-11 - Phase 08 Closed; LiveRealtimeClient Deleted
 
 Phase 08 closed after the user's live 3-terminal validation: `/health` returned ok, the cockpit showed DEMO + connected on the real Exness demo (436634705, equity $9,902.51) with market context computed from real candles and honest observe-mode gates — translation running server-side in .NET.

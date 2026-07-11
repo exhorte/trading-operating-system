@@ -10,6 +10,8 @@ import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 const REPORT_TONES: Record<ExecutionReportStatus, PillTone> = {
   acknowledged: "info",
   submitted: "info",
+  // Observe-mode outcome: deliberately NOT the "profit" fill tone.
+  simulated: "accent",
   filled: "profit",
   partially_filled: "warning",
   failed: "loss",

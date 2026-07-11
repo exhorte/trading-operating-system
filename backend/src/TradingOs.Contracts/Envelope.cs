@@ -42,4 +42,8 @@ public static class EventTypes
     public const string AgentDisconnected = "agent.disconnected";
     public const string AgentSnapshotAccount = "agent.snapshot.account";
     public const string AgentSnapshotPositions = "agent.snapshot.positions";
+    public const string ExecutionCommandPlaceOrder = "execution.command.place_order";
+    public const string ExecutionCommandAcknowledged = "execution.command.acknowledged";
+    public const string ExecutionCommandRejected = "execution.command.rejected";
+    public const string ExecutionOrderSimulated = "execution.order.simulated";
 }

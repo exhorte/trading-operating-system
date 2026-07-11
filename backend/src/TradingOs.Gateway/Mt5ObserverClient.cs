@@ -19,11 +19,40 @@ public sealed class Mt5ObserverClient(GatewayState state, string url)
 {
     private const int ReconnectDelayMs = 3_000;
 
+    private ClientWebSocket? _socket;
+
     /// <summary>Translated envelope ready to broadcast (type + camelCase payload object).</summary>
     public event Action<string, object>? EnvelopeReady;
 
     /// <summary>Producer connection state changed (true = connected).</summary>
     public event Action<bool>? ConnectionChanged;
+
+    /// <summary>True when a command can be delivered to the agent right now.</summary>
+    public bool IsConnected => _socket is { State: WebSocketState.Open };
+
+    /// <summary>
+    /// Phase 09: send one lean command frame to the agent. The ONLY outbound
+    /// path to the agent; the observe agent answers with ack/report and never
+    /// touches the broker. Returns false when the agent is unreachable.
+    /// </summary>
+    public async Task<bool> SendCommandAsync(string json, CancellationToken ct)
+    {
+        var socket = _socket;
+        if (socket is not { State: WebSocketState.Open })
+        {
+            return false;
+        }
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(json);
+            await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public async Task RunAsync(CancellationToken ct)
     {
@@ -33,6 +62,7 @@ public sealed class Mt5ObserverClient(GatewayState state, string url)
             {
                 using var socket = new ClientWebSocket();
                 await socket.ConnectAsync(new Uri(url), ct);
+                _socket = socket;
                 ConnectionChanged?.Invoke(true);
                 await ReceiveLoopAsync(socket, ct);
             }
@@ -45,6 +75,7 @@ public sealed class Mt5ObserverClient(GatewayState state, string url)
                 // fall through to reconnect
             }
 
+            _socket = null;
             ConnectionChanged?.Invoke(false);
             state.MarkAgentDisconnected();
             EnvelopeReady?.Invoke(EventTypes.AgentDisconnected, new { agentId = state.Hello?.AgentId ?? "mt5-observer" });
@@ -134,6 +165,24 @@ public sealed class Mt5ObserverClient(GatewayState state, string url)
             {
                 state.MarkAgentHeartbeat(heartbeat.LatencyMs, DateTimeOffset.UtcNow.ToString("o"));
                 EnvelopeReady?.Invoke(EventTypes.AgentHeartbeat, new AgentHeartbeatPayload(heartbeat.AgentId, heartbeat.LatencyMs));
+                break;
+            }
+            // Phase 09: agent receipts and SIMULATED outcomes flow back up.
+            case Mt5AckMessage ack:
+            {
+                var agentId = state.Hello?.AgentId ?? "mt5-observer";
+                var mapped = Mt5WireTranslator.ToCommandAck(ack, agentId);
+                var type = mapped.Status is "accepted" or "duplicate"
+                    ? EventTypes.ExecutionCommandAcknowledged
+                    : EventTypes.ExecutionCommandRejected;
+                EnvelopeReady?.Invoke(type, new CommandAckPayload(mapped));
+                break;
+            }
+            case Mt5ReportMessage report when report.Status == "SIMULATED":
+            {
+                var agentId = state.Hello?.AgentId ?? "mt5-observer";
+                var mapped = Mt5WireTranslator.ToExecutionReport(report, agentId);
+                EnvelopeReady?.Invoke(EventTypes.ExecutionOrderSimulated, new ExecutionReportPayload(mapped));
                 break;
             }
             default:

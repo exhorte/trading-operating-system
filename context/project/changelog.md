@@ -104,9 +104,16 @@ This file tracks meaningful changes to the project brain and architecture.
 - Closed Phase 08 after the user's live 3-terminal validation (`/health` OK; cockpit DEMO + connected on the real demo with server-side translation).
 - Deleted the superseded `lib/realtime/live-client.ts` (ADR 0007 browser shortcut); provider now offers `mock` (default) and `backend` only; `.env.example` simplified; `mt5-translate.ts` + tests kept as the TS reference the C# port mirrors 1:1.
 
+### Added - Phase 09 Execution Bridge (observe/SIMULATED)
+
+- Implemented the user's 10-point spec (design validated first): approved `RiskDecision` → `buildPlaceOrderCommand` (`lib/execution/`, volume = approvedVolume, null when rejected/unsized) → `CockpitHub.SubmitCommand` (observe-mode guard, synthesized rejection otherwise) → lean `execution.order` flatten (ADR 0005) → observer validation (fields/expiry/volume bounds/mandatory SL) + dedup by commandId → `execution.ack` + `execution.report SIMULATED` → canonical `CommandAckPayload` + new `execution.order.simulated` event → store lifecycle.
+- Contracts: domain status `simulated` (never a fill; dedicated pill tone), EventType `execution.order.simulated`, ack events now carry `CommandAckPayload` (resolves the Phase 01/02 shortcut). C# mirrors 1:1 (`Execution.cs`), observer v0.2.0 producer‖consumer with `EXECUTION_MODE="observe"` constant and zero trade calls.
+- Store: `ExecutionCommandView` + `commands` map (sent→retried/acknowledged/rejected/expired/failed/reported), signal lifecycle wiring; 5s ack timeout → one same-id retry (DUPLICATE = confirmation) → failed; rejected/expired never produce a fill (tested).
+- Gates: lint clean, source `tsc` exit 0, 56 Vitest (9 new), dotnet build 0/0 + 14/14 xUnit, `py_compile` OK. ADR 0010.
+
 ### Current Next Step
 
-Next phase-start decision: Phase 09 Execution Bridge in observe/SIMULATED mode (full command loop through the gateway, zero broker risk) or persistence (PostgreSQL/Timescale).
+User runs Phase 09 live (3-terminal runbook; expect SIMULATED reports in the cockpit), then close it. Next: Phase 10 Persistence (PostgreSQL/Timescale) before any paper trading.
 
 ## 2026-07-09
 
@@ -163,4 +170,3 @@ Next phase-start decision: Phase 09 Execution Bridge in observe/SIMULATED mode (
 - Closed Phase 04 (ICT/SMC Engine) and Phase 05 (Live Observe Prototype) on 2026-07-08 after the user validated the live run against their real Exness demo (account 436634705, XAUUSDm): DEMO badge + connected, real balance/positions/ticks, engine-computed market context on real M15 candles.
 - Fixed at closure: `kpi-strip` blanked entirely when `risk` was null (live mode); now degrades gracefully so real equity/positions/agents render.
 - Updated phase files (closure sections), `project_state.md`, `roadmap.md` (statuses), `handoff.md`.
-

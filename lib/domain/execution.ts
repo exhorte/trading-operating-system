@@ -170,6 +170,9 @@ export interface CommandAck {
 export type ExecutionReportStatus =
   | "acknowledged"
   | "submitted"
+  /** Observe-mode outcome: the command was validated end-to-end but no broker
+   *  order exists. Never rendered or treated as a fill. */
+  | "simulated"
   | "filled"
   | "partially_filled"
   | "failed"

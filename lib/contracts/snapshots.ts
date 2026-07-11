@@ -104,6 +104,30 @@ export interface StrategySignal {
   createdAt: string;
 }
 
+export type ExecutionCommandStatus =
+  | "sent"
+  | "retried"
+  | "acknowledged"
+  | "rejected"
+  | "expired"
+  | "failed"
+  | "reported";
+
+/** Lifecycle of one execution command as tracked by the cockpit (audit). */
+export interface ExecutionCommandView {
+  commandId: string;
+  signalId: string | null;
+  riskApprovalId: string;
+  symbol: string;
+  side: Side;
+  volume: number;
+  status: ExecutionCommandStatus;
+  /** Ack/failure reason when not accepted, else null. */
+  reason: string | null;
+  issuedAt: string;
+  updatedAt: string;
+}
+
 /** Audit-grade risk decision for the dashboard (from a domain RiskDecision). */
 export interface RiskDecisionView {
   approvalId: string;

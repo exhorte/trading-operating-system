@@ -88,4 +88,54 @@ public static class Mt5WireTranslator
             LastHeartbeatAt: Iso(hello.Time),
             Version: hello.AgentVersion);
     }
+
+    // --- Phase 09: command loop (ADR 0005 flatten/enrich tables) ---
+
+    /// <summary>Flatten a dashboard PlaceOrderCommand to the lean edge command:
+    /// id=commandId, ISO→epoch-ms expiry, uppercase side/orderType.</summary>
+    public static Mt5OrderCommand FlattenPlaceOrder(PlaceOrderCommand command)
+    {
+        return new Mt5OrderCommand(
+            Version: 1,
+            Type: "execution.order",
+            AccountId: command.AccountId,
+            Time: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Id: command.CommandId,
+            ExpiresAt: DateTimeOffset.Parse(command.ExpiresAt).ToUnixTimeMilliseconds(),
+            Symbol: command.Symbol,
+            Side: command.Side.ToUpperInvariant(),
+            OrderType: command.OrderType.ToUpperInvariant(),
+            Volume: command.Volume,
+            LimitPrice: command.LimitPrice,
+            Sl: command.StopLoss,
+            Tp: command.TakeProfit);
+    }
+
+    /// <summary>Lean execution.ack → dashboard CommandAck (statuses lowercased).</summary>
+    public static CommandAck ToCommandAck(Mt5AckMessage ack, string agentId)
+    {
+        return new CommandAck(
+            CommandId: ack.CommandId,
+            AgentId: agentId,
+            Status: ack.Status.ToLowerInvariant(), // ACCEPTED→accepted, DUPLICATE→duplicate, …
+            Reason: ack.Reason,
+            ReceivedAt: Iso(ack.Time));
+    }
+
+    /// <summary>Lean execution.report → dashboard report view. SIMULATED maps to
+    /// the dedicated "simulated" status — never to a fill.</summary>
+    public static ExecutionReportView ToExecutionReport(Mt5ReportMessage report, string agentId)
+    {
+        return new ExecutionReportView(
+            ReportId: Guid.NewGuid().ToString(),
+            CommandId: report.CommandId,
+            CorrelationId: report.CommandId,
+            AccountId: report.AccountId,
+            AgentId: agentId,
+            Symbol: report.Symbol,
+            Side: LowercaseSide(report.Side),
+            Status: report.Status.ToLowerInvariant(),
+            Detail: report.Detail,
+            ReportedAt: Iso(report.Time));
+    }
 }
