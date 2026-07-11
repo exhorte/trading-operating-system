@@ -233,7 +233,9 @@ export class CockpitStore {
             ? this.setSignalStatus(
                 command.signalId,
                 confirmed ? "acknowledged" : ack.status === "expired" ? "expired" : "rejected",
-                ack.reason,
+                // Confirmations keep the risk-decision text on the card;
+                // only failure reasons replace it.
+                confirmed ? null : ack.reason,
               )
             : this.snapshot.signals,
         });

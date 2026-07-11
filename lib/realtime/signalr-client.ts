@@ -99,6 +99,10 @@ export class SignalRRealtimeClient implements RealtimeClient {
 
   private signalCounter = 100;
 
+  /** Session-unique id prefix: prevents cross-session/tab commandId collisions
+   *  against the agent's persistent dedup set (seen live on 2026-07-11). */
+  private readonly runId = Date.now().toString(36).slice(-4);
+
   /** Commands awaiting an ack: single 5s timeout → one retry (same id) → failed. */
   private pendingAcks = new Map<
     string,
@@ -362,6 +366,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
       account,
       price: this.lastBid,
       seq: this.signalCounter,
+      runId: this.runId,
     });
     this.store.apply(
       makeEnvelope<SignalCreatedPayload>("strategy.signal.created", "cockpit-strategy-stub", {

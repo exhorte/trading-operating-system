@@ -1,6 +1,6 @@
 # Phase 09 - Execution Bridge (observe/SIMULATED)
 
-Status: implemented 2026-07-11 (user's detailed spec + design validated first: browser/lib transitional decision loop; `simulated` status + `execution.order.simulated` + canonical ack contract; 5s timeout with one same-id retry). Awaiting the user's live run before closure.
+Status: closed 2026-07-11 (implemented the same day per the user's 10-point spec, committed `57e96b1`; design validated first). **Validated live by the user**: signals (both sides, counter-bias sell included) → risk-sized decisions with varied volumes (0.12–0.28 lot tracking stop distance) → commands → ACCEPTED acks → `simulated` reports ("observe mode, no broker order") in the cockpit feed. The run also exercised **real idempotency**: a cockpit restart without restarting the observer replayed counter-based ids → the agent's persistent dedup set answered DUPLICATE and refused to re-simulate (no double fill) — exactly as specified. Two fixes folded in at closure: session-unique signal/command ids (`sig-{runId}-{seq}`, collisions across restarts/tabs eliminated) and confirmations no longer overwrite the risk-decision text on signal cards.
 
 ## Objective
 
@@ -8,14 +8,14 @@ Validate the full execution command loop at zero risk: approved `RiskDecision` �
 
 ## Spec coverage (user's 10 points)
 
-1. Command only from an approved decision — `buildPlaceOrderCommand` returns null otherwise (tested).
-2. Gateway flatten to lean `execution.order` — `FlattenPlaceOrder` (xUnit).
-3–4. Observer receives + validates id/expiry/mode/required fields/volume bounds/mandatory SL.
-5. Dedup by commandId → `DUPLICATE` ack, no report.
-6–7. `execution.ack` then `execution.report SIMULATED`.
-8. Gateway → SignalR → cockpit (`execution.command.acknowledged|rejected` = canonical `CommandAckPayload`; `execution.order.simulated`).
-9. Store: `commands` map (sent→retried/acknowledged/rejected/expired/failed/reported) + signal statuses commanded→acknowledged→reported (tested).
-10. Errors/timeouts/duplicates/expiry/reconnects: 5s ack timeout → one same-id retry (DUPLICATE = confirmation) → failed; rejected/expired never fill (tested); no implicit resend on reconnect.
+- **(1)** Command only from an approved decision — `buildPlaceOrderCommand` returns null otherwise (tested).
+- **(2)** Gateway flatten to lean `execution.order` — `FlattenPlaceOrder` (xUnit).
+- **(3–4)** Observer receives + validates id/expiry/mode/required fields/volume bounds/mandatory SL.
+- **(5)** Dedup by commandId → `DUPLICATE` ack, no report.
+- **(6–7)** `execution.ack` then `execution.report SIMULATED`.
+- **(8)** Gateway → SignalR → cockpit (`execution.command.acknowledged|rejected` = canonical `CommandAckPayload`; `execution.order.simulated`).
+- **(9)** Store: `commands` map (sent→retried/acknowledged/rejected/expired/failed/reported) + signal statuses commanded→acknowledged→reported (tested).
+- **(10)** Errors/timeouts/duplicates/expiry/reconnects: 5s ack timeout → one same-id retry (DUPLICATE = confirmation) → failed; rejected/expired never fill (tested); no implicit resend on reconnect.
 
 ## Constraints honored
 

@@ -111,9 +111,14 @@ This file tracks meaningful changes to the project brain and architecture.
 - Store: `ExecutionCommandView` + `commands` map (sent→retried/acknowledged/rejected/expired/failed/reported), signal lifecycle wiring; 5s ack timeout → one same-id retry (DUPLICATE = confirmation) → failed; rejected/expired never produce a fill (tested).
 - Gates: lint clean, source `tsc` exit 0, 56 Vitest (9 new), dotnet build 0/0 + 14/14 xUnit, `py_compile` OK. ADR 0010.
 
+### Changed - Phase 09 Closed (validated live, idempotency exercised for real)
+
+- User's live run confirmed the full loop: signals both sides → risk-sized volumes (0.12–0.28 lot tracking stop distance) → ACCEPTED acks → `simulated` reports. A cockpit restart without restarting the observer replayed counter-based ids → the agent's persistent dedup set answered DUPLICATE and refused to re-simulate — the specified behavior, exercised in real conditions.
+- Fixes folded in at closure: session-unique signal/command ids (`sig-{runId}-{seq}`; cross-session/tab collisions eliminated) and ack confirmations no longer overwrite the risk-decision text on signal cards.
+
 ### Current Next Step
 
-User runs Phase 09 live (3-terminal runbook; expect SIMULATED reports in the cockpit), then close it. Next: Phase 10 Persistence (PostgreSQL/Timescale) before any paper trading.
+Phase 10 - Persistence (PostgreSQL/Timescale), before any paper trading: phase-start (design → validation → code) for storing commands, decisions, acks, reports, candles, and audit traces.
 
 ## 2026-07-09
 

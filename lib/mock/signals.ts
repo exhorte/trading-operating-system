@@ -20,8 +20,12 @@ export function mockStrategySignal(args: {
   account: AccountSummary;
   price: number;
   seq: number;
+  /** Session-unique prefix so ids never collide across restarts/tabs — a
+   *  commandId derived from the signal must be globally unique per intent
+   *  (the agent dedup set outlives cockpit sessions). */
+  runId?: string;
 }): StrategySignal {
-  const { context, account, price, seq } = args;
+  const { context, account, price, seq, runId } = args;
 
   // Variety: every 4th signal is a counter-bias probe with a weaker score, so
   // the queue shows both sides; stop distance cycles 3.5→8.0 so the risk
@@ -37,7 +41,7 @@ export function mockStrategySignal(args: {
   const now = new Date();
 
   return {
-    signalId: `sig-${String(seq).padStart(3, "0")}`,
+    signalId: runId ? `sig-${runId}-${seq}` : `sig-${String(seq).padStart(3, "0")}`,
     strategyId: counterBias
       ? "ict-liquidity-raid-v1"
       : side === "buy"

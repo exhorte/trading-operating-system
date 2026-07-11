@@ -2,6 +2,16 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-11 - Phase 09 Closed (validated live; idempotency exercised for real)
+
+The user's 3-terminal run validated the whole loop: signals both sides (counter-bias sell 4/10 included) → risk-sized decisions with varied volumes (0.12–0.28 lot tracking stop distance) → commands → ACCEPTED acks → `simulated` reports ("observe mode, no broker order") in the cockpit feed.
+
+Bonus finding: the run exercised **real idempotency** — the cockpit was restarted without restarting the observer, the counter-based ids replayed (`cmd-sig-117`…), and the agent's module-level dedup set (which deliberately survives reconnects) answered DUPLICATE and refused to re-simulate. No double fill: the specified behavior, proven in real conditions.
+
+Two defects surfaced and fixed at closure: (1) ids were not session-unique (counter reset per client instance → guaranteed collisions across restarts/tabs against a persistent dedup set) → `sig-{runId}-{seq}` with a per-session base36 prefix; the mock keeps its old format. (2) DUPLICATE/ACCEPTED ack reasons were overwriting the risk-decision text on signal cards → confirmations now keep the decision text; only failure reasons replace it. Gates re-verified (lint, 56 Vitest).
+
+Next: Phase 10 - Persistence (PostgreSQL/Timescale) in phase-start — the user's precondition before any paper trading.
+
 ## 2026-07-11 - Phase 09 Implementation (Execution Bridge, observe/SIMULATED)
 
 Implemented against the user's explicit 10-point spec (design + 3 choices validated first: transitional in-browser decision loop; `simulated` status + `execution.order.simulated` + canonical ack payload; 5s timeout with one same-id retry).

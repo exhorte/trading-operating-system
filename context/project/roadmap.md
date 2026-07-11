@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-11: Phases 00–08 Closed; Phase 09 (Execution Bridge, observe/SIMULATED slice) Delivered (awaiting the user's live run); Phase 10 = Persistence (PostgreSQL/Timescale, before any paper trading), Backtesting shifts to 11. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
+As of 2026-07-11: Phases 00–09 Closed (Phase 09 validated live, real DUPLICATE-dedup exercised); Phase 10 = Persistence (PostgreSQL/Timescale, before any paper trading) is the active next phase; Backtesting shifts to 11. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -120,7 +120,7 @@ Deliverables:
 - C# domain/contract mirrors
 - dashboard SignalR client behind the RealtimeClient seam
 
-## Phase 09 - Execution Bridge — Delivered (2026-07-11, observe/SIMULATED slice, awaiting live run)
+## Phase 09 - Execution Bridge — Closed (2026-07-11, observe/SIMULATED slice, validated live)
 
 Connect decisions to the MT5 agent in a controlled environment. This slice (ADR 0010): full command loop in observe mode — risk-gated command builder, hub mode guard, lean flatten, agent validation/dedup/ack, SIMULATED reports, store lifecycle, timeout + single idempotent retry. Deferred: modify/close/cancel, paper/live terminal actions (gated on persistence).
 
