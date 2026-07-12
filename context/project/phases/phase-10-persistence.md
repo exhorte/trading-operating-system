@@ -1,6 +1,6 @@
 # Phase 10 - Persistence (PostgreSQL/TimescaleDB)
 
-Status: implemented 2026-07-12 (design validated first: Dapper + versioned schema.sql; signals/decisions routed through the hub; full slice scope). The user set persistence as the precondition before any paper trading. Awaiting the user's live run before closure.
+Status: closed 2026-07-12 (committed `bc48110`; design validated first: Dapper + versioned schema.sql; signals/decisions routed through the hub; full slice scope). **Validated live by the user**: `/health` db ok with thousands of envelopes persisted and 0 dropped; direct SQL over the audit tables working; `/api/audit/recent` returning 200 after the reader fix (Dapper timestamptz→DateTime mapping — the 503 had been hidden by a bare catch; the endpoint now logs and surfaces the real exception, and an integration test guards the read path against the live DB). The persistence precondition before paper trading is met.
 
 ## Objective
 

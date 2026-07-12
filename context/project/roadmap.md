@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-12: Phases 00–09 Closed; Phase 10 (Persistence) Delivered (awaiting the user's live run); Phase 11 (Backtesting/replay/DB-backed analytics) Planned. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
+As of 2026-07-12: Phases 00–10 Closed (Phase 10 validated live: thousands of envelopes persisted, 0 dropped, read path fixed + integration-tested); Phase 11 (Backtesting/replay/DB-backed analytics) is the active next phase. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -124,7 +124,7 @@ Deliverables:
 
 Connect decisions to the MT5 agent in a controlled environment. This slice (ADR 0010): full command loop in observe mode — risk-gated command builder, hub mode guard, lean flatten, agent validation/dedup/ack, SIMULATED reports, store lifecycle, timeout + single idempotent retry. Deferred: modify/close/cancel, paper/live terminal actions (gated on persistence).
 
-## Phase 10 - Persistence — Delivered (2026-07-12, awaiting live run)
+## Phase 10 - Persistence — Closed (2026-07-12, validated live)
 
 PostgreSQL/TimescaleDB before any paper trading (user decision): commands, risk decisions, acks, reports, candles, ticks and the full JSONB envelope audit are written server-side (ADR 0011). Docker compose (port 5433), Dapper + idempotent schema.sql, never-blocking bounded-channel writer, hub-published signals (multi-tab consistent), `/api/audit/recent` read proof. Deferred: replay UI, DB-backed P&L, retention/compression, backups.
 

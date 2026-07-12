@@ -126,9 +126,14 @@ This file tracks meaningful changes to the project brain and architecture.
 - Hub `PublishEvent` (strict whitelist signal+decision, 64KB cap): persists and rebroadcasts — the hub is now the source of truth for the signal flow (multi-tab consistent). `signalr-client.publish()` with local-apply fallback.
 - ADR 0011 + `context/backend/persistence.md` runbook. Gates: dotnet 19/19, lint clean, source `tsc` exit 0, 56 Vitest.
 
+### Changed - Phase 10 Closed (validated live)
+
+- User's live run: `/health` db ok, thousands of envelopes persisted with 0 dropped, direct SQL working; `/api/audit/recent` 200 after the reader fix (Dapper timestamptz→DateTime; bare catch replaced by real logging + surfaced detail; integration test added against the live DB).
+- Updated phase file (closure), `project_state.md`, `roadmap.md`, `handoff.md`.
+
 ### Current Next Step
 
-User runs Phase 10 live (`docker compose up -d` + 3-terminal chain; check `/health` db: ok and the audit SQL queries), then close it. Phase 11: consume the data (replay, DB-backed P&L, backtesting) or open the paper-trading track.
+Phase 11 (phase-start): consume the stored data — backtesting MVP / replay / DB-backed P&L — or open the paper-trading track (persistence precondition met).
 
 ## 2026-07-09
 

@@ -2,6 +2,12 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-12 - Phase 10 Closed (validated live)
+
+The user's live run confirmed persistence end-to-end: `/health` db ok with thousands of envelopes persisted and 0 dropped; direct SQL over the audit tables; `/api/audit/recent` 200 after the reader fix. Root cause of the 503 the user caught: Npgsql materializes `timestamptz` as `DateTime` and Dapper's constructor mapping threw `InvalidCastException` against the record's `DateTimeOffset` parameter — hidden by a bare catch. Fixed (`AuditEntry.SentAt` = UTC `DateTime`), the endpoint now logs and surfaces the real exception, and `AuditRepositoryIntegrationTests` guards the read path against the live DB (early return when unreachable; xUnit v2 has no runtime skip). Lesson reinforced twice this phase: never swallow persistence errors silently.
+
+Committed `bc48110` + this closure. Next: Phase 11 in phase-start — consume the data (backtesting MVP / replay / DB-backed P&L) or open the paper-trading track (precondition met).
+
 ## 2026-07-12 - Phase 10 Implementation (Persistence)
 
 Implemented after design validation (Dapper + versioned schema.sql; signals/decisions routed through the hub; full slice scope). Key structural fix: signals/decisions were browser-local (Phase 09 transitional loop) — `CockpitHub.PublishEvent` (strict whitelist: `strategy.signal.created`, `risk.decision.made`; 64KB cap) now persists and rebroadcasts them, making the hub the source of truth and all tabs consistent.
