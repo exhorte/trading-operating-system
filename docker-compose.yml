@@ -1,0 +1,27 @@
+# Local infrastructure (Phase 10 — Persistence).
+# TimescaleDB = PostgreSQL + the timescaledb extension, one container.
+#   docker compose up -d      start
+#   docker compose down       stop (data survives in the volume)
+# Runbook: context/backend/persistence.md
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg17
+    container_name: tradingos-timescaledb
+    ports:
+      # 5433 on the host: avoids colliding with any locally installed Postgres.
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: tradingos
+      POSTGRES_USER: tradingos
+      # Local dev only — never a production credential.
+      POSTGRES_PASSWORD: tradingos_dev
+    volumes:
+      - tradingos-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradingos -d tradingos"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  tradingos-pgdata:

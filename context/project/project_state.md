@@ -52,9 +52,12 @@ Phase 08 - ASP.NET Core Backend Bootstrap: closed 2026-07-11 (committed `0977175
 
 Phase 09 - Execution Bridge (observe/SIMULATED): closed 2026-07-11 (committed `57e96b1` + closure fixes; user's 10-point spec, design validated first). Full command loop at zero risk, **validated live**: approved `RiskDecision` → `buildPlaceOrderCommand` (volume = approvedVolume) → `CockpitHub.SubmitCommand` (observe-mode guard) → lean `execution.order` → observer validation/dedup → `execution.ack` + `execution.report SIMULATED` (no trade call exists anywhere) → canonical `CommandAckPayload` + `execution.order.simulated` → store lifecycle. The live run exercised real idempotency (restart replayed ids → DUPLICATE acks, no double fill), which surfaced and fixed two defects: session-unique ids (`sig-{runId}-{seq}`) and confirmations no longer overwrite the risk-decision text. Gates: lint/tsc/56 Vitest, 14/14 xUnit, py_compile. ADR 0010.
 
+Phase 10 - Persistence: implemented 2026-07-12 (`project/phases/phase-10-persistence.md`, design validated first: Dapper + versioned schema.sql; hub-published signals; full slice). TimescaleDB via docker-compose on **host port 5433** (5432 collided with a locally installed Postgres). `TradingOs.Persistence`: embedded idempotent schema (8 tables incl. candles/ticks hypertables + JSONB `envelopes` audit), pure `PersistenceMapper` (+xUnit), `PersistenceWriter` (bounded channel, fire-and-forget, drop-with-counters, `/health` reports db/persisted/dropped/queued/dbError). Hub `PublishEvent` (whitelist: signal + decision; 64KB cap) persists + rebroadcasts — the hub is now the source of truth for the signal flow (multi-tab consistent). Read proof: `GET /api/audit/recent`. Gates: dotnet 19/19, lint/tsc/56 Vitest. **Awaiting the user's live run** (runbook `context/backend/persistence.md`).
+
 ## Next Up
 
-**Phase 10 - Persistence (PostgreSQL/Timescale)** — user decision, **before any paper trading**: store commands, risk decisions, acks, reports, candles, and audit traces; enable replay and the P&L calendar on real data. Start with phase-start (design → validation → code).
+- **User runs Phase 10 live**: `docker compose up -d` + the 3-terminal chain; verify `/health` shows `db: ok` with `persisted` climbing, and the audit queries return context→signal→decision→command→ack→report rows. Then close Phase 10.
+- Then **Phase 11**: consume the data — replay, DB-backed P&L calendar, backtesting foundation — or begin the paper-trading track (persistence precondition now met once closed).
 
 ## Decisions Already Made
 

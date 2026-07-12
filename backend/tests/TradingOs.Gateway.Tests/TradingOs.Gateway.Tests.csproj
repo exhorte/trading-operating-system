@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TradingOs.Gateway\TradingOs.Gateway.csproj" />
+    <ProjectReference Include="..\..\src\TradingOs.Persistence\TradingOs.Persistence.csproj" />
   </ItemGroup>
 
 </Project>

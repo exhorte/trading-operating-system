@@ -116,9 +116,19 @@ This file tracks meaningful changes to the project brain and architecture.
 - User's live run confirmed the full loop: signals both sides → risk-sized volumes (0.12–0.28 lot tracking stop distance) → ACCEPTED acks → `simulated` reports. A cockpit restart without restarting the observer replayed counter-based ids → the agent's persistent dedup set answered DUPLICATE and refused to re-simulate — the specified behavior, exercised in real conditions.
 - Fixes folded in at closure: session-unique signal/command ids (`sig-{runId}-{seq}`; cross-session/tab collisions eliminated) and ack confirmations no longer overwrite the risk-decision text on signal cards.
 
+## 2026-07-12
+
+### Added - Phase 10 Persistence (TimescaleDB, Dapper, hub-published signals)
+
+- Added `docker-compose.yml` (timescale/timescaledb:latest-pg17, volume, healthcheck) on **host port 5433** — 5432 collided with a locally installed Postgres (diagnosed live: `28P01` against the wrong server).
+- Added `TradingOs.Persistence`: embedded idempotent `schema.sql` (envelopes JSONB audit + candles/ticks hypertables + strategy_signals/risk_decisions/execution_commands/command_acks/execution_reports), pure `PersistenceMapper` (+5 xUnit tests), `PersistenceWriter` (bounded channel 10k, fire-and-forget, drop-with-counters, retry, `LastError` surfaced), `AuditRepository`.
+- Host: writer drained alongside the observer; hub command/rejection envelopes persisted; `/health` enriched (`db/persisted/dropped/queued/dbError`); `GET /api/audit/recent` read proof.
+- Hub `PublishEvent` (strict whitelist signal+decision, 64KB cap): persists and rebroadcasts — the hub is now the source of truth for the signal flow (multi-tab consistent). `signalr-client.publish()` with local-apply fallback.
+- ADR 0011 + `context/backend/persistence.md` runbook. Gates: dotnet 19/19, lint clean, source `tsc` exit 0, 56 Vitest.
+
 ### Current Next Step
 
-Phase 10 - Persistence (PostgreSQL/Timescale), before any paper trading: phase-start (design → validation → code) for storing commands, decisions, acks, reports, candles, and audit traces.
+User runs Phase 10 live (`docker compose up -d` + 3-terminal chain; check `/health` db: ok and the audit SQL queries), then close it. Phase 11: consume the data (replay, DB-backed P&L, backtesting) or open the paper-trading track.
 
 ## 2026-07-09
 

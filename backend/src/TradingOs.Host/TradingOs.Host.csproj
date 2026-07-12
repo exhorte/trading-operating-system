@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TradingOs.Gateway\TradingOs.Gateway.csproj" />
+    <ProjectReference Include="..\TradingOs.Persistence\TradingOs.Persistence.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

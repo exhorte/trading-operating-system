@@ -368,7 +368,10 @@ export class SignalRRealtimeClient implements RealtimeClient {
       seq: this.signalCounter,
       runId: this.runId,
     });
-    this.store.apply(
+    // Phase 10: signals/decisions are PUBLISHED through the hub, which
+    // persists them and rebroadcasts to every dashboard (multi-tab
+    // consistency + audit). The store applies them when they come back.
+    this.publish(
       makeEnvelope<SignalCreatedPayload>("strategy.signal.created", "cockpit-strategy-stub", {
         signal: toStrategySignalReadModel(signal),
       }),
@@ -384,7 +387,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
       policy: this.lastRisk.policy,
       now: new Date().toISOString(),
     });
-    this.store.apply(
+    this.publish(
       makeEnvelope<RiskDecisionMadePayload>("risk.decision.made", "cockpit-risk-engine", {
         decision: toRiskDecisionView(decision),
       }, signal.signalId),
@@ -401,6 +404,19 @@ export class SignalRRealtimeClient implements RealtimeClient {
     if (command) {
       this.submitCommand(command, false);
     }
+  }
+
+  /** Publish a whitelisted envelope through the hub (persist + rebroadcast).
+   *  Falls back to a local apply if the invoke fails, so the operator still
+   *  sees the fact even when the hub write is lost. */
+  private publish(envelope: Envelope<unknown>): void {
+    if (!this.connection) {
+      this.store.apply(envelope as Envelope);
+      return;
+    }
+    void this.connection.invoke("PublishEvent", envelope).catch(() => {
+      this.store.apply(envelope as Envelope);
+    });
   }
 
   /** Submit to the hub and arm the ack timeout (one idempotent retry, then failed). */

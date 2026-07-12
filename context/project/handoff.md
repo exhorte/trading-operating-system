@@ -2,6 +2,16 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-12 - Phase 10 Implementation (Persistence)
+
+Implemented after design validation (Dapper + versioned schema.sql; signals/decisions routed through the hub; full slice scope). Key structural fix: signals/decisions were browser-local (Phase 09 transitional loop) — `CockpitHub.PublishEvent` (strict whitelist: `strategy.signal.created`, `risk.decision.made`; 64KB cap) now persists and rebroadcasts them, making the hub the source of truth and all tabs consistent.
+
+Built: root `docker-compose.yml` (TimescaleDB pg17, **host port 5433** — 5432 collided with a locally installed Postgres, found via `28P01` auth failure against the wrong server; also: Docker Desktop had to be started), `TradingOs.Persistence` (embedded idempotent schema — 8 tables incl. 2 hypertables and the `envelopes` JSONB audit; pure `PersistenceMapper` + 5 xUnit tests; `PersistenceWriter` bounded-channel drain, fire-and-forget, drop-with-counters, `LastError` surfaced after an initial silent-catch made diagnosis impossible — lesson: never swallow persistence errors silently), Host wiring (`/health` + `/api/audit/recent`), client `publish()` with local-apply fallback.
+
+Gates: dotnet build 0 errors + 19/19 xUnit, lint clean, source tsc exit 0, 56 Vitest. The final DB smoke test on 5433 + the live run are pending (shell tool intermittently unavailable at time of writing; docs written meanwhile). Runbook: `context/backend/persistence.md`.
+
+Next: user's live run (compose up + 3 terminals; verify db: ok + audit rows), close Phase 10, then Phase 11 (consume the data: replay/P&L/backtesting) or the paper-trading track.
+
 ## 2026-07-11 - Phase 09 Closed (validated live; idempotency exercised for real)
 
 The user's 3-terminal run validated the whole loop: signals both sides (counter-bias sell 4/10 included) → risk-sized decisions with varied volumes (0.12–0.28 lot tracking stop distance) → commands → ACCEPTED acks → `simulated` reports ("observe mode, no broker order") in the cockpit feed.
