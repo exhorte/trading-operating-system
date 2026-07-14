@@ -42,6 +42,11 @@ yarn-error.log*
 backend/**/bin/
 backend/**/obj/
 
+# Python caches and generated history exports
+__pycache__/
+*.pyc
+tools/mt5-observer/*.jsonl
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

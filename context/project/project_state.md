@@ -54,9 +54,12 @@ Phase 09 - Execution Bridge (observe/SIMULATED): closed 2026-07-11 (committed `5
 
 Phase 10 - Persistence: closed 2026-07-12 (committed `bc48110`). TimescaleDB via docker-compose (host port **5433**), idempotent embedded schema (8 tables incl. hypertables + JSONB `envelopes` audit), never-blocking `PersistenceWriter`, hub `PublishEvent` (whitelisted, source of truth for signals, multi-tab consistent), `/api/audit/recent`. **Validated live**: thousands of envelopes persisted, 0 dropped, endpoint 200 after the Dapper timestamptz→DateTime reader fix (+ integration test). The persistence precondition before paper trading is met.
 
+Phase 11 - Backtesting MVP: implemented 2026-07-12 (`project/phases/phase-11-backtesting-mvp.md`, design validated first: MVP scope, ~1 year M15). History import (`import_history.py` read-only → JSONL → `import-candles.ts` idempotent upsert), pure tested `lib/backtest/{outcome,metrics}` (conservative both-touch rule, timeouts), `scripts/backtest.ts` runner reusing the live engines unmodified (walk-forward, 300-bar window, engine version tagged), `backtest_runs`/`backtest_trades` tables, `GET /api/backtests(/{id})`, real Backtests page under a permanent hypothesis banner. Dev deps: tsx, pg. ADR 0012. **Awaiting the user's first import + run + review of results.**
+
 ## Next Up
 
-**Phase 11** (in phase-start): consume the stored data. Candidates — backtesting MVP (historical candle import + run the pure TS engines over stored candles + outcome metrics: the manifesto's "backtest before confidence" step), replay UI, DB-backed P&L calendar, or opening the paper-trading track (precondition met).
+- **User runs the backtest pipeline** (`context/backtesting/backtest_mvp.md`): export ~26k M15 bars, import, `npx tsx scripts/backtest.ts`, review the metrics on the Backtests page. Close Phase 11 after review.
+- The results decide what's next: if the R distribution is poor → iterate the engine/strategy (weights, detectors) with the backtester as the feedback loop; if promising → cost modeling + account-level simulation, then the paper-trading track.
 
 ## Decisions Already Made
 

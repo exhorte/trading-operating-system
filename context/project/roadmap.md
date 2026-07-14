@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-12: Phases 00–10 Closed (Phase 10 validated live: thousands of envelopes persisted, 0 dropped, read path fixed + integration-tested); Phase 11 (Backtesting/replay/DB-backed analytics) is the active next phase. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
+As of 2026-07-12: Phases 00–10 Closed; Phase 11 (Backtesting MVP) Delivered (awaiting the user's first import + run + review); Phase 12+ Planned (cost modeling, account-level simulation, replay UI, paper-trading track). Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -128,14 +128,20 @@ Connect decisions to the MT5 agent in a controlled environment. This slice (ADR 
 
 PostgreSQL/TimescaleDB before any paper trading (user decision): commands, risk decisions, acks, reports, candles, ticks and the full JSONB envelope audit are written server-side (ADR 0011). Docker compose (port 5433), Dapper + idempotent schema.sql, never-blocking bounded-channel writer, hub-published signals (multi-tab consistent), `/api/audit/recent` read proof. Deferred: replay UI, DB-backed P&L, retention/compression, backups.
 
-## Phase 11 - Backtesting And Analytics
+## Phase 11 - Backtesting MVP — Delivered (2026-07-12, awaiting first run + review)
 
-Make decisions measurable and replayable.
+The manifesto's "backtest before confidence" step (ADR 0012). A Node runner replays the SAME pure TS engines (ICT/SMC + risk + strategy stub) walk-forward over stored candles and grades signal quality.
 
 Deliverables:
 
-- historical data import
-- scenario replay
-- trade attribution
-- metrics dashboard
-- strategy comparison
+- historical M15 import (read-only Python export → JSONL → idempotent bulk upsert)
+- `lib/backtest` pure outcome + metrics (conservative both-touch, timeouts)
+- `scripts/backtest.ts` runner (300-bar window like live, engine version tagged)
+- `backtest_runs`/`backtest_trades` tables + `GET /api/backtests(/{id})`
+- Backtests page (runs, metrics, trades) under a permanent hypothesis banner
+
+Deferred to a later phase: cost modeling (spread/slippage/commissions from stored ticks), account-level simulation (daily lockouts, overlapping positions, equity curve), strategy comparison, replay UI, charts.
+
+## Phase 12+ - Analytics & Paper Trading (Planned)
+
+Cost-aware / account-level simulation, replay UI, DB-backed P&L calendar, then the paper-trading track (persistence precondition met).

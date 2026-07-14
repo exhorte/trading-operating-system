@@ -131,9 +131,19 @@ This file tracks meaningful changes to the project brain and architecture.
 - User's live run: `/health` db ok, thousands of envelopes persisted with 0 dropped, direct SQL working; `/api/audit/recent` 200 after the reader fix (Dapper timestamptz→DateTime; bare catch replaced by real logging + surfaced detail; integration test added against the live DB).
 - Updated phase file (closure), `project_state.md`, `roadmap.md`, `handoff.md`.
 
+### Added - Phase 11 Backtesting MVP (ADR 0012)
+
+- Design validated first (MVP scope, ~1 year M15). The manifesto's "backtest before confidence" step, finally measurable now that history persists.
+- History import: `tools/mt5-observer/import_history.py` (read-only JSONL export, zero trade imports) + `scripts/import-candles.ts` (idempotent bulk upsert into the candles hypertable). Dev deps: `tsx`, `pg`, `@types/pg`.
+- `lib/backtest/outcome.ts` + `metrics.ts` — pure, tested (9 tests): binary SL/TP exits, conservative both-touch rule (loss, flagged), timeouts; win rate (decided), avg R (decided), expectancy R (all), max consecutive losses, cumulative R, both-touch count.
+- `scripts/backtest.ts` — Node/tsx runner reusing the SAME live engines (`lib/analysis` + `lib/risk` + strategy stub) walk-forward over stored candles (300-bar window like live, no-look-ahead), simulating each approved signal and persisting `backtest_runs`/`backtest_trades` tagged with the engine version.
+- Backend: `backtest_runs`/`backtest_trades` tables (idempotent schema additions), `BacktestRepository`, `GET /api/backtests(/{id})` (same error-logging discipline as the audit endpoint; timestamptz→DateTime lesson applied).
+- Real Backtests page (`components/cockpit/backtests-workspace.tsx`): runs list + metrics + trades table, under a permanent hypothesis banner; honest empty/unreachable states.
+- ADR 0012 + `context/backtesting/backtest_mvp.md` runbook.
+
 ### Current Next Step
 
-Phase 11 (phase-start): consume the stored data — backtesting MVP / replay / DB-backed P&L — or open the paper-trading track (persistence precondition met).
+User runs the backtest pipeline (import history → import-candles → `npx tsx scripts/backtest.ts` → review on the Backtests page), then close Phase 11. Results drive the next step: iterate the engine with the backtester as the feedback loop, or (if promising) cost modeling + account-level simulation, then paper trading.
 
 ## 2026-07-09
 

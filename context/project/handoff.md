@@ -2,6 +2,18 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-12 - Phase 11 Implementation (Backtesting MVP)
+
+Implemented after design validation (Backtesting MVP scope; ~1 year M15). This is the manifesto's "backtest before confidence" gate, now measurable because history persists (Phase 10).
+
+The whole point paid off: `scripts/backtest.ts` (Node, run via `tsx`) imports the SAME pure engines the platform runs live (`lib/analysis` ICT/SMC, `lib/risk` FTMO gates + sizing, the strategy stub) and replays them walk-forward over stored candles — no engine port, no reimplementation. The no-look-ahead invariant (tested since Phase 04) is what makes historical replay legitimate; same 300-bar rolling window as the live clients.
+
+Built: `import_history.py` (read-only JSONL export, zero trade imports) + `scripts/import-candles.ts` (idempotent bulk upsert; dev deps tsx/pg/@types/pg); `lib/backtest/{outcome,metrics}.ts` pure + 9 tests (binary SL/TP, conservative both-touch = loss + flag, timeouts; win rate/avg R decided, expectancy R over all, max consec losses, cumulative R, both-touch count); `backtest_runs`/`backtest_trades` tables (idempotent schema); `BacktestRepository` + `GET /api/backtests(/{id})` (audit-endpoint error discipline; timestamptz→DateTime lesson applied); real Backtests page under a permanent hypothesis banner.
+
+Honesty (surfaced everywhere): engine v0.1, no spread/slippage/costs, binary exits, no account-level simulation — results grade SIGNAL QUALITY (R distribution), never account performance.
+
+Gates run before commit (see below). Runbook: `context/backtesting/backtest_mvp.md`. Next: the user imports history and runs the first backtest; the resulting R distribution decides whether to iterate the engine (backtester as feedback loop) or move toward cost-aware simulation + paper trading. Not yet committed at time of writing.
+
 ## 2026-07-12 - Phase 10 Closed (validated live)
 
 The user's live run confirmed persistence end-to-end: `/health` db ok with thousands of envelopes persisted and 0 dropped; direct SQL over the audit tables; `/api/audit/recent` 200 after the reader fix. Root cause of the 503 the user caught: Npgsql materializes `timestamptz` as `DateTime` and Dapper's constructor mapping threw `InvalidCastException` against the record's `DateTimeOffset` parameter — hidden by a bare catch. Fixed (`AuditEntry.SentAt` = UTC `DateTime`), the endpoint now logs and surfaces the real exception, and `AuditRepositoryIntegrationTests` guards the read path against the live DB (early return when unreachable; xUnit v2 has no runtime skip). Lesson reinforced twice this phase: never swallow persistence errors silently.

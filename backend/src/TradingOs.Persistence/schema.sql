@@ -106,3 +106,48 @@ CREATE TABLE IF NOT EXISTS execution_reports (
     reported_at timestamptz NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_execution_reports_command ON execution_reports (command_id);
+
+-- Backtesting (Phase 11). Results are HYPOTHESIS TESTS of a tagged engine
+-- version — never validated performance. MVP has no spread/slippage/costs.
+CREATE TABLE IF NOT EXISTS backtest_runs (
+    run_id           text PRIMARY KEY,
+    symbol           text NOT NULL,
+    timeframe        text NOT NULL,
+    engine_version   text NOT NULL,
+    config           jsonb NOT NULL,
+    from_time        timestamptz NOT NULL,
+    to_time          timestamptz NOT NULL,
+    candle_count     integer NOT NULL,
+    signal_count     integer NOT NULL,
+    approved_count   integer NOT NULL,
+    trade_count      integer NOT NULL,
+    win_count        integer NOT NULL,
+    loss_count       integer NOT NULL,
+    timeout_count    integer NOT NULL,
+    both_touch_count integer NOT NULL,
+    win_rate         double precision NOT NULL,
+    avg_r            double precision NOT NULL,
+    expectancy_r     double precision NOT NULL,
+    max_consec_losses integer NOT NULL,
+    cumulative_r     double precision NOT NULL,
+    created_at       timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS backtest_trades (
+    run_id      text NOT NULL REFERENCES backtest_runs(run_id) ON DELETE CASCADE,
+    seq         integer NOT NULL,
+    signal_time timestamptz NOT NULL,
+    side        text NOT NULL,
+    entry_price double precision NOT NULL,
+    stop_loss   double precision NOT NULL,
+    take_profit double precision NOT NULL,
+    volume      double precision NOT NULL,
+    outcome     text NOT NULL, -- win | loss | timeout
+    both_touch  boolean NOT NULL,
+    r_multiple  double precision NOT NULL,
+    bars_held   integer NOT NULL,
+    exit_price  double precision NOT NULL,
+    score       integer NOT NULL,
+    reason      text NOT NULL,
+    PRIMARY KEY (run_id, seq)
+);
