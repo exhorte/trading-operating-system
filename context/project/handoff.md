@@ -2,6 +2,21 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-14 - Phase 11 Closed: the baseline is honestly negative
+
+The user ran the first real backtest (`bt-mrkx74n5-500ff1f8`, XAUUSDm M15, 13 months, 25,999 candles): 3,209 signals, 1,261 approved trades, **win rate 32.31%, expectancy −0.02R, cumulative −21.55R, max 21 consecutive losses**. With 2R targets the theoretical break-even is ≈33.3% — the stub strategy is statistically near-random, as one should expect from a stub. **Conclusion (user): engine v0.1 has no edge; no paper trading in this state.**
+
+This is the platform working as designed: the manifesto's "backtest before confidence" gate produced a number instead of a feeling, and the number said no. The pipeline itself (import → runner → persisted runs → Backtests page) is validated end-to-end.
+
+Key handoff for Phase 12 (Backtest Diagnostics & Strategy Refinement, user-specified):
+
+- Diagnose BEFORE changing rules: segmented analyses by side, session, day/month, bias, BOS/CHOCH, FVG/OB, score, liquidity type, planned RR, duration, timeout, both-touch, and risk gates (including WHY 1,948 signals were rejected).
+- **Important data gap**: `backtest_trades` does not yet store the signal's market-context features (bias, structure kind, PD arrays, liquidity, price location…) — the runner computes them but drops them. Phase 12 must add a `features` capture and re-run the baseline (idempotent; old run kept for comparison).
+- Anti-overfitting discipline is mandatory: chronological train/validation/out-of-sample split; iterate on train, confirm on validation, touch OOS once.
+- Explicitly deferred until the raw R distribution improves: cost modeling, paper trading.
+
+Also this session: `context/project/session-history.md` added; full history (17 commits) pushed to `https://github.com/exhorte/trading-operating-system.git`.
+
 ## 2026-07-12 - Phase 11 Implementation (Backtesting MVP)
 
 Implemented after design validation (Backtesting MVP scope; ~1 year M15). This is the manifesto's "backtest before confidence" gate, now measurable because history persists (Phase 10).

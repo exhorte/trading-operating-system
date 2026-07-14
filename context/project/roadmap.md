@@ -1,7 +1,7 @@
 # Roadmap
 
 Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-12: Phases 00–10 Closed; Phase 11 (Backtesting MVP) Delivered (awaiting the user's first import + run + review); Phase 12+ Planned (cost modeling, account-level simulation, replay UI, paper-trading track). Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
+As of 2026-07-14: Phases 00–11 Closed (Phase 11 baseline: engine v0.1 has NO edge — 32.31% win rate, −0.02R expectancy over 1,261 trades); Phase 12 (Backtest Diagnostics & Strategy Refinement) is the active next phase. Cost modeling and paper trading stay explicitly gated on an improved raw R distribution. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
 
 ## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
 
@@ -128,7 +128,7 @@ Connect decisions to the MT5 agent in a controlled environment. This slice (ADR 
 
 PostgreSQL/TimescaleDB before any paper trading (user decision): commands, risk decisions, acks, reports, candles, ticks and the full JSONB envelope audit are written server-side (ADR 0011). Docker compose (port 5433), Dapper + idempotent schema.sql, never-blocking bounded-channel writer, hub-published signals (multi-tab consistent), `/api/audit/recent` read proof. Deferred: replay UI, DB-backed P&L, retention/compression, backups.
 
-## Phase 11 - Backtesting MVP — Delivered (2026-07-12, awaiting first run + review)
+## Phase 11 - Backtesting MVP — Closed (2026-07-14, baseline: no edge)
 
 The manifesto's "backtest before confidence" step (ADR 0012). A Node runner replays the SAME pure TS engines (ICT/SMC + risk + strategy stub) walk-forward over stored candles and grades signal quality.
 
@@ -142,6 +142,10 @@ Deliverables:
 
 Deferred to a later phase: cost modeling (spread/slippage/commissions from stored ticks), account-level simulation (daily lockouts, overlapping positions, equity curve), strategy comparison, replay UI, charts.
 
-## Phase 12+ - Analytics & Paper Trading (Planned)
+## Phase 12 - Backtest Diagnostics & Strategy Refinement
 
-Cost-aware / account-level simulation, replay UI, DB-backed P&L calendar, then the paper-trading track (persistence precondition met).
+Identify precisely where the losses come from before modifying any rule: segmented analyses (side, session, day/month, bias, BOS/CHOCH, FVG/OB, score, liquidity type, planned RR, duration, timeout, both-touch, risk gates) with a train/validation/out-of-sample discipline against overfitting. Then data-driven refinement iterations measured by the backtester.
+
+## Phase 13+ - Costs, Simulation & Paper Trading (Planned, gated)
+
+Cost modeling (spread/slippage/commissions), account-level simulation (equity curve, lockouts, overlapping positions), replay UI, DB-backed P&L calendar, then the paper-trading track — all gated on an improved raw R distribution from Phase 12.

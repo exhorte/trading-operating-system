@@ -54,12 +54,11 @@ Phase 09 - Execution Bridge (observe/SIMULATED): closed 2026-07-11 (committed `5
 
 Phase 10 - Persistence: closed 2026-07-12 (committed `bc48110`). TimescaleDB via docker-compose (host port **5433**), idempotent embedded schema (8 tables incl. hypertables + JSONB `envelopes` audit), never-blocking `PersistenceWriter`, hub `PublishEvent` (whitelisted, source of truth for signals, multi-tab consistent), `/api/audit/recent`. **Validated live**: thousands of envelopes persisted, 0 dropped, endpoint 200 after the Dapper timestamptz→DateTime reader fix (+ integration test). The persistence precondition before paper trading is met.
 
-Phase 11 - Backtesting MVP: implemented 2026-07-12 (`project/phases/phase-11-backtesting-mvp.md`, design validated first: MVP scope, ~1 year M15). History import (`import_history.py` read-only → JSONL → `import-candles.ts` idempotent upsert), pure tested `lib/backtest/{outcome,metrics}` (conservative both-touch rule, timeouts), `scripts/backtest.ts` runner reusing the live engines unmodified (walk-forward, 300-bar window, engine version tagged), `backtest_runs`/`backtest_trades` tables, `GET /api/backtests(/{id})`, real Backtests page under a permanent hypothesis banner. Dev deps: tsx, pg. ADR 0012. **Awaiting the user's first import + run + review of results.**
+Phase 11 - Backtesting MVP: closed 2026-07-14 (committed `d7d9106`). Pipeline validated on the first real run (`bt-mrkx74n5-500ff1f8`: 25,999 M15 candles over ~13 months, 3,209 signals, 1,261 trades). **Baseline result is honestly negative: win rate 32.31%, expectancy −0.02R, cumulative −21.55R, max 21 consecutive losses** — engine v0.1 has no edge on this period even before costs; statistically near-random for a stub strategy. No paper trading in this state (user decision). The negative number IS the deliverable: the "backtest before confidence" gate now measures instead of hoping.
 
 ## Next Up
 
-- **User runs the backtest pipeline** (`context/backtesting/backtest_mvp.md`): export ~26k M15 bars, import, `npx tsx scripts/backtest.ts`, review the metrics on the Backtests page. Close Phase 11 after review.
-- The results decide what's next: if the R distribution is poor → iterate the engine/strategy (weights, detectors) with the backtester as the feedback loop; if promising → cost modeling + account-level simulation, then the paper-trading track.
+**Phase 12 - Backtest Diagnostics & Strategy Refinement** (in phase-start): identify precisely where the losses come from BEFORE modifying any rule. Segmented analyses (side, session, day/month, bias, BOS/CHOCH, FVG/OB, score, liquidity type, planned RR, duration, timeout, both-touch, risk gates) + a train/validation/out-of-sample split to prevent overfitting. Explicitly deferred until the raw R distribution improves: cost modeling and paper trading.
 
 ## Decisions Already Made
 

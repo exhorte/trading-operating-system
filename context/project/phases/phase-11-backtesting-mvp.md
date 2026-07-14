@@ -1,6 +1,13 @@
 # Phase 11 - Backtesting MVP
 
-Status: implemented 2026-07-12 (design validated first: Backtesting MVP scope; ~1 year of M15 history). Awaiting the user's first import + run + review of results before closure.
+Status: closed 2026-07-14 (implemented 2026-07-12, committed `d7d9106`; design validated first). **First real run completed and reviewed by the user** — the pipeline is validated as a technical and statistical baseline, and the result is honestly negative:
+
+- Run `bt-mrkx74n5-500ff1f8`, XAUUSDm M15, 2025-06-06 → 2026-07-14, 25,999 candles.
+- 3,209 signals → 1,261 approved (≈39%) → 1,261 trades.
+- **Win rate 32.31%** (2R targets → theoretical break-even ≈33.3%), **avg R −0.03**, **expectancy −0.02R**, **cumulative −21.55R**, max 21 consecutive losses, 54 both-touch bars.
+- Conclusion (user): **engine v0.1 has no positive edge on this period, even before spread/commissions/slippage** — statistically near-random for a stub strategy, as expected. **No paper trading in this state.**
+
+The negative result is the deliverable: the manifesto's "backtest before confidence" gate now produces numbers instead of hopes. Next: Phase 12 — Backtest Diagnostics & Strategy Refinement (segmented loss analysis + train/validation/out-of-sample discipline) before touching any rule.
 
 ## Objective
 

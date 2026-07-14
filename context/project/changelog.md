@@ -141,9 +141,17 @@ This file tracks meaningful changes to the project brain and architecture.
 - Real Backtests page (`components/cockpit/backtests-workspace.tsx`): runs list + metrics + trades table, under a permanent hypothesis banner; honest empty/unreachable states.
 - ADR 0012 + `context/backtesting/backtest_mvp.md` runbook.
 
+## 2026-07-14
+
+### Changed - Phase 11 Closed (baseline: engine v0.1 has no edge)
+
+- First real backtest run reviewed by the user (`bt-mrkx74n5-500ff1f8`): XAUUSDm M15, 2025-06-06 → 2026-07-14, 25,999 candles, 3,209 signals → 1,261 trades. **Win rate 32.31%, avg R −0.03, expectancy −0.02R, cumulative −21.55R, max 21 consecutive losses, 54 both-touch** — no positive edge, even before spread/commissions/slippage; near break-even-random for 2R targets (break-even ≈33.3%).
+- Recorded honestly as the deliverable: the "backtest before confidence" gate now measures. **No paper trading in this state** (user decision).
+- Also added `context/project/session-history.md` (durable log of the Phases 01–11 session) and pushed the full history to GitHub (`origin/main`, 17 commits).
+
 ### Current Next Step
 
-User runs the backtest pipeline (import history → import-candles → `npx tsx scripts/backtest.ts` → review on the Backtests page), then close Phase 11. Results drive the next step: iterate the engine with the backtester as the feedback loop, or (if promising) cost modeling + account-level simulation, then paper trading.
+Phase 12 - Backtest Diagnostics & Strategy Refinement (phase-start, design-first): segmented loss analyses (side, session, day/month, bias, BOS/CHOCH, FVG/OB, score, liquidity type, planned RR, duration, timeout, both-touch, gates) + train/validation/out-of-sample split. Costs and paper trading stay gated on an improved raw R distribution.
 
 ## 2026-07-09
 
