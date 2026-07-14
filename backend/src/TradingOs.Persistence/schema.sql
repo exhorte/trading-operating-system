@@ -151,3 +151,21 @@ CREATE TABLE IF NOT EXISTS backtest_trades (
     reason      text NOT NULL,
     PRIMARY KEY (run_id, seq)
 );
+-- Phase 12: frozen market-context features at signal time (diagnostics) and
+-- the chronological train/validation/oos split tag. Key set: ADR 0013.
+ALTER TABLE backtest_trades ADD COLUMN IF NOT EXISTS features jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE backtest_trades ADD COLUMN IF NOT EXISTS split text NOT NULL DEFAULT 'train';
+
+-- Phase 12: rejected signals with their reasons, so the "risk gates"
+-- dimension is analyzable (approved trades had open gates by definition).
+CREATE TABLE IF NOT EXISTS backtest_rejections (
+    run_id      text NOT NULL REFERENCES backtest_runs(run_id) ON DELETE CASCADE,
+    seq         integer NOT NULL,
+    signal_time timestamptz NOT NULL,
+    side        text NOT NULL,
+    score       integer NOT NULL,
+    session     text NOT NULL,
+    reason      text NOT NULL,
+    split       text NOT NULL DEFAULT 'train',
+    PRIMARY KEY (run_id, seq)
+);

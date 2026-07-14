@@ -2,6 +2,24 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-14 - Phase 12 Part A: Diagnostics tooling + first findings
+
+Built the diagnostics slice per the user's spec (design validated: 60/20/20 chronological splits; console+markdown report; OOS locked by tooling — `--unlock-oos` to be used once, at the end). Runner v2 captures frozen features per trade (ADR 0013 key set) and all rejections with reasons; `segments.ts` (pure, tested) + `backtest-report.ts` render 15 dimensions × split, worst buckets first, `⚠ low n` under 30 trades.
+
+Enriched baseline `bt-mrkz8r44-d57578d8` reproduced Phase 11 **bit-identically** (32.31% / −0.02R / −21.55R) — the pipeline is deterministic. Splits: train ≤ 2026-02-05, validation ≤ 2026-04-25, oos after.
+
+**Findings that survive train AND validation** (the only kind we act on):
+
+- Counter-bias probes bleed: −0.19R (n=189) / −0.14R (n=63). Mechanically explainable — the stub injects 1-in-4 deliberately.
+- Score is directionally informative: score 3 bleeds in both (−0.23R/−0.49R); score 6 is the only bucket positive in both.
+- Structural (not a filter): 1–2-bar losses dominate (−0.34R n=316 / −0.23R n=188) — entries die immediately; stop placement/entry timing is the weak joint.
+
+**Train-only mirages killed by validation** — side, structure kind (BOS>CHOCH reversed), stop distance (6.5 best→worst), session edge, bias direction. Without the split these would have shipped as "improvements"; the discipline the user demanded proved itself on day one.
+
+Rejections: 1,948, 100% session filter (Asia/NY-PM/off-session) — gates behaved exactly as configured.
+
+Next (Part B, after joint review): iteration 1 candidates — remove the stub's counter-bias probe; add a minimum-score threshold in the STRATEGY layer (the risk engine stays a risk engine). One hypothesis per iteration, `--to <trainEnd>` runs, validation must confirm. Not yet committed at time of writing.
+
 ## 2026-07-14 - Phase 11 Closed: the baseline is honestly negative
 
 The user ran the first real backtest (`bt-mrkx74n5-500ff1f8`, XAUUSDm M15, 13 months, 25,999 candles): 3,209 signals, 1,261 approved trades, **win rate 32.31%, expectancy −0.02R, cumulative −21.55R, max 21 consecutive losses**. With 2R targets the theoretical break-even is ≈33.3% — the stub strategy is statistically near-random, as one should expect from a stub. **Conclusion (user): engine v0.1 has no edge; no paper trading in this state.**

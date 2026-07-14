@@ -56,9 +56,11 @@ Phase 10 - Persistence: closed 2026-07-12 (committed `bc48110`). TimescaleDB via
 
 Phase 11 - Backtesting MVP: closed 2026-07-14 (committed `d7d9106`). Pipeline validated on the first real run (`bt-mrkx74n5-500ff1f8`: 25,999 M15 candles over ~13 months, 3,209 signals, 1,261 trades). **Baseline result is honestly negative: win rate 32.31%, expectancy −0.02R, cumulative −21.55R, max 21 consecutive losses** — engine v0.1 has no edge on this period even before costs; statistically near-random for a stub strategy. No paper trading in this state (user decision). The negative number IS the deliverable: the "backtest before confidence" gate now measures instead of hoping.
 
+Phase 12 - Backtest Diagnostics & Strategy Refinement: **Part A (tooling) delivered 2026-07-14** (`project/phases/phase-12-diagnostics.md`, ADR 0013). Feature capture (`features jsonb`), `backtest_rejections`, chronological 60/20/20 splits tagged by the runner, pure tested `segments.ts`, `backtest-report.ts` (15 dimensions × split, OOS **locked by tooling** until `--unlock-oos`). Enriched baseline `bt-mrkz8r44-d57578d8` reproduces Phase 11 bit-identically (deterministic). **First findings — robust across train+validation**: counter-bias probes bleed (−0.19R/−0.14R); low scores bleed while score 6 is positive in both; 1–2-bar losses dominate (entry timing/stop placement is the weak joint). **Train-only mirages killed by validation**: side, BOS/CHOCH, stop distance, session, bias direction. Rejections: 100% session filter, as configured.
+
 ## Next Up
 
-**Phase 12 - Backtest Diagnostics & Strategy Refinement** (in phase-start): identify precisely where the losses come from BEFORE modifying any rule. Segmented analyses (side, session, day/month, bias, BOS/CHOCH, FVG/OB, score, liquidity type, planned RR, duration, timeout, both-touch, risk gates) + a train/validation/out-of-sample split to prevent overfitting. Explicitly deferred until the raw R distribution improves: cost modeling and paper trading.
+**Phase 12 Part B — refinement iterations** (after joint review of the report): candidate hypotheses for iteration 1 — drop the stub's deliberate counter-bias probe; add a minimum-score threshold in the strategy. Discipline (`context/backtesting/diagnostics_workflow.md`): one hypothesis per iteration, run on train (`--to <trainEnd>`), confirm on validation, OOS read once at the very end. Costs and paper trading remain gated on an improved raw R distribution.
 
 ## Decisions Already Made
 

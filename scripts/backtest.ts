@@ -20,7 +20,9 @@ import { defaultRiskPolicy, evaluateRiskState, evaluateSignalRisk } from "@/lib/
 import { mockStrategySignal } from "@/lib/mock/signals";
 import { simulateTradeOutcome, type SimulatedTrade } from "@/lib/backtest/outcome";
 import { computeMetrics } from "@/lib/backtest/metrics";
+import type { MarketContextState } from "@/lib/domain/analysis";
 import type { Candle } from "@/lib/domain/market";
+import type { StrategySignal } from "@/lib/domain/strategy";
 
 const CONNECTION =
   process.env.TRADINGOS_DB ??
@@ -35,6 +37,8 @@ interface Args {
   timeframe: string;
   every: number; // evaluate a signal every N bars
   maxBars: number; // outcome horizon
+  from: string | null; // ISO date filter (train-only refinement runs)
+  to: string | null;
 }
 
 function parseArgs(): Args {
@@ -47,6 +51,46 @@ function parseArgs(): Args {
     timeframe: get("--timeframe", "M15"),
     every: Number(get("--every", "8")),
     maxBars: Number(get("--max-bars", "32")),
+    from: get("--from", "") || null,
+    to: get("--to", "") || null,
+  };
+}
+
+/** Chronological 60/20/20 split boundaries over the eligible signal range
+ *  (Phase 12 anti-overfitting discipline — ADR 0013). Time-based, not
+ *  trade-count-based, so trade density never leaks into the split. */
+function splitBoundaries(firstEligible: string, lastEligible: string): { trainEnd: number; valEnd: number } {
+  const start = Date.parse(firstEligible);
+  const end = Date.parse(lastEligible);
+  return { trainEnd: start + (end - start) * 0.6, valEnd: start + (end - start) * 0.8 };
+}
+
+function splitFor(timeIso: string, b: { trainEnd: number; valEnd: number }): "train" | "validation" | "oos" {
+  const t = Date.parse(timeIso);
+  return t <= b.trainEnd ? "train" : t <= b.valEnd ? "validation" : "oos";
+}
+
+/** Frozen diagnostic features at signal time. Key set documented in ADR 0013 —
+ *  keep stable, the report depends on them. */
+function extractFeatures(signal: StrategySignal, context: MarketContextState): Record<string, unknown> {
+  const alignedDir = signal.side === "buy" ? "bullish" : "bearish";
+  const withBias = context.bias === "bearish" ? "sell" : "buy";
+  const fvgs = context.activeFairValueGaps.filter((g) => g.direction === alignedDir);
+  const obs = context.activeOrderBlocks.filter((o) => o.direction === alignedDir);
+  return {
+    session: context.session,
+    bias: context.bias,
+    sideVsBias: signal.side === withBias ? "with" : "counter",
+    structure: context.lastStructureShift
+      ? context.lastStructureShift.kind === "break_of_structure" ? "bos" : "choch"
+      : "none",
+    stopDistance: Math.round(Math.abs(signal.entryPrice - signal.stopLoss) * 100) / 100,
+    scoreComponents: Object.fromEntries(context.scoreBreakdown.map((c) => [c.label, c.score])),
+    fvgAligned: fvgs.length,
+    fvgInside: fvgs.some((g) => signal.entryPrice >= g.low && signal.entryPrice <= g.high),
+    obAligned: obs.length,
+    obInside: obs.some((o) => signal.entryPrice >= o.low && signal.entryPrice <= o.high),
+    liqKinds: [...new Set(context.activeLiquidityLevels.map((l) => l.kind))],
   };
 }
 
@@ -60,6 +104,16 @@ interface TradeRecord {
   volume: number;
   score: number;
   reason: string;
+  features: Record<string, unknown>;
+}
+
+interface RejectionRecord {
+  seq: number;
+  signalTime: string;
+  side: string;
+  score: number;
+  session: string;
+  reason: string;
 }
 
 async function main(): Promise<void> {
@@ -67,11 +121,21 @@ async function main(): Promise<void> {
   const client = new Client({ connectionString: CONNECTION });
   await client.connect();
 
+  const filters: string[] = [];
+  const params: unknown[] = [args.symbol, args.timeframe];
+  if (args.from) {
+    params.push(args.from);
+    filters.push(`AND open_time >= $${params.length}::timestamptz`);
+  }
+  if (args.to) {
+    params.push(args.to);
+    filters.push(`AND open_time <= $${params.length}::timestamptz`);
+  }
   const { rows } = await client.query(
     `SELECT symbol, timeframe, open_time AS "openTime", open, high, low, close, volume, closed
-     FROM candles WHERE symbol = $1 AND timeframe = $2 AND closed = true
+     FROM candles WHERE symbol = $1 AND timeframe = $2 AND closed = true ${filters.join(" ")}
      ORDER BY open_time ASC`,
-    [args.symbol, args.timeframe],
+    params,
   );
   const candles: Candle[] = rows.map((r) => ({
     symbol: r.symbol,
@@ -107,7 +171,14 @@ async function main(): Promise<void> {
   let signalCount = 0;
   let approvedCount = 0;
   const records: TradeRecord[] = [];
+  const rejections: RejectionRecord[] = [];
   const runId = `bt-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+
+  // Chronological 60/20/20 split over the eligible signal range (ADR 0013).
+  const boundaries = splitBoundaries(
+    candles[WINDOW].openTime,
+    candles[candles.length - args.maxBars - 1].openTime,
+  );
 
   // Walk forward: at bar i, the engine sees ONLY candles up to i (the
   // engines' own no-look-ahead invariant guards the window content too).
@@ -155,6 +226,14 @@ async function main(): Promise<void> {
       now: bar.openTime,
     });
     if (!decision.approved || decision.approvedVolume === null) {
+      rejections.push({
+        seq: signalCount,
+        signalTime: bar.openTime,
+        side: signal.side,
+        score: signal.score,
+        session,
+        reason: decision.reason,
+      });
       continue;
     }
     approvedCount += 1;
@@ -180,6 +259,7 @@ async function main(): Promise<void> {
       volume: decision.approvedVolume,
       score: signal.score,
       reason: decision.reason,
+      features: extractFeatures(signal, context),
     });
   }
 
@@ -192,7 +272,19 @@ async function main(): Promise<void> {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [
       runId, args.symbol, args.timeframe, ENGINE_VERSION,
-      JSON.stringify({ every: args.every, maxBars: args.maxBars, window: WINDOW, note: "no spread/slippage/costs; both-touch = conservative loss" }),
+      JSON.stringify({
+        every: args.every,
+        maxBars: args.maxBars,
+        window: WINDOW,
+        from: args.from,
+        to: args.to,
+        splits: {
+          trainEnd: new Date(boundaries.trainEnd).toISOString(),
+          valEnd: new Date(boundaries.valEnd).toISOString(),
+          ratios: "60/20/20 chronological",
+        },
+        note: "no spread/slippage/costs; both-touch = conservative loss",
+      }),
       candles[0].openTime, candles.at(-1)!.openTime,
       candles.length, signalCount, approvedCount,
       metrics.tradeCount, metrics.winCount, metrics.lossCount, metrics.timeoutCount,
@@ -204,19 +296,32 @@ async function main(): Promise<void> {
     const r = records[seq];
     await client.query(
       `INSERT INTO backtest_trades (run_id, seq, signal_time, side, entry_price, stop_loss, take_profit,
-         volume, outcome, both_touch, r_multiple, bars_held, exit_price, score, reason)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+         volume, outcome, both_touch, r_multiple, bars_held, exit_price, score, reason, features, split)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17)`,
       [
         runId, seq, r.signalTime, r.side, r.entryPrice, r.stopLoss, r.takeProfit,
         r.volume, r.trade.outcome, r.trade.bothTouch, r.trade.rMultiple,
         r.trade.barsHeld, r.trade.exitPrice, r.score, r.reason,
+        JSON.stringify(r.features), splitFor(r.signalTime, boundaries),
+      ],
+    );
+  }
+  for (const rej of rejections) {
+    await client.query(
+      `INSERT INTO backtest_rejections (run_id, seq, signal_time, side, score, session, reason, split)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        runId, rej.seq, rej.signalTime, rej.side, rej.score, rej.session, rej.reason,
+        splitFor(rej.signalTime, boundaries),
       ],
     );
   }
   await client.end();
 
   console.log(`[backtest] run ${runId} persisted`);
-  console.log(`[backtest] signals=${signalCount} approved=${approvedCount} trades=${metrics.tradeCount}`);
+  console.log(`[backtest] signals=${signalCount} approved=${approvedCount} rejected=${rejections.length} trades=${metrics.tradeCount}`);
+  console.log(`[backtest] splits: train ≤ ${new Date(boundaries.trainEnd).toISOString()} < validation ≤ ${new Date(boundaries.valEnd).toISOString()} < oos`);
+  console.log(`[backtest] next: npx tsx scripts/backtest-report.ts ${runId}`);
   console.log(`[backtest] winRate=${metrics.winRate}% avgR=${metrics.avgR} expectancy=${metrics.expectancyR}R cumulative=${metrics.cumulativeR}R maxConsecLosses=${metrics.maxConsecutiveLosses} bothTouch=${metrics.bothTouchCount}`);
   console.log("[backtest] HYPOTHESIS ONLY — no costs modeled, engine v0.1");
 }

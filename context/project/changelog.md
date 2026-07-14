@@ -149,9 +149,18 @@ This file tracks meaningful changes to the project brain and architecture.
 - Recorded honestly as the deliverable: the "backtest before confidence" gate now measures. **No paper trading in this state** (user decision).
 - Also added `context/project/session-history.md` (durable log of the Phases 01–11 session) and pushed the full history to GitHub (`origin/main`, 17 commits).
 
+### Added - Phase 12 Part A: Diagnostics tooling (ADR 0013)
+
+- Schema: `backtest_trades` += `features jsonb` + `split`; new `backtest_rejections` table (risk-gates dimension lives on refusals).
+- Runner v2: frozen feature capture at signal time (stable key set per ADR 0013), time-based chronological 60/20/20 split tagging, rejection recording, `--from/--to` window filters.
+- `lib/backtest/segments.ts` (pure, 4 tests): per-bucket metrics, worst-first ordering, `⚠ low n` (<30) flag. `scripts/backtest-report.ts`: rejection breakdown + 15 dimensions × split, console + gitignored `backtest-reports/<runId>.md`, **OOS locked unless `--unlock-oos`**.
+- Enriched baseline `bt-mrkz8r44-d57578d8`: bit-identical to the Phase 11 baseline (deterministic pipeline); 1,948 rejections captured (100% session filter).
+- **Findings** — robust train+validation: counter-bias probes −0.19R/−0.14R; score 3 −0.23R/−0.49R vs score 6 positive in both; 1–2-bar losses dominate. Train-only mirages killed by validation: side, BOS/CHOCH, stop distance, session, bias direction.
+- Docs: ADR 0013, `context/backtesting/diagnostics_workflow.md`, phase-12 file. Gates: lint/tsc/69 Vitest, dotnet 20/20.
+
 ### Current Next Step
 
-Phase 12 - Backtest Diagnostics & Strategy Refinement (phase-start, design-first): segmented loss analyses (side, session, day/month, bias, BOS/CHOCH, FVG/OB, score, liquidity type, planned RR, duration, timeout, both-touch, gates) + train/validation/out-of-sample split. Costs and paper trading stay gated on an improved raw R distribution.
+Phase 12 Part B (after joint review): iteration 1 hypotheses — drop the counter-bias probe; minimum-score threshold in the strategy. One hypothesis per iteration, train-first, validation-confirmed, OOS once at the end.
 
 ## 2026-07-09
 
