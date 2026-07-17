@@ -56,11 +56,35 @@ Phase 10 - Persistence: closed 2026-07-12 (committed `bc48110`). TimescaleDB via
 
 Phase 11 - Backtesting MVP: closed 2026-07-14 (committed `d7d9106`). Pipeline validated on the first real run (`bt-mrkx74n5-500ff1f8`: 25,999 M15 candles over ~13 months, 3,209 signals, 1,261 trades). **Baseline result is honestly negative: win rate 32.31%, expectancy −0.02R, cumulative −21.55R, max 21 consecutive losses** — engine v0.1 has no edge on this period even before costs; statistically near-random for a stub strategy. No paper trading in this state (user decision). The negative number IS the deliverable: the "backtest before confidence" gate now measures instead of hoping.
 
-Phase 12 - Backtest Diagnostics & Strategy Refinement: **Part A (tooling) delivered 2026-07-14** (`project/phases/phase-12-diagnostics.md`, ADR 0013). Feature capture (`features jsonb`), `backtest_rejections`, chronological 60/20/20 splits tagged by the runner, pure tested `segments.ts`, `backtest-report.ts` (15 dimensions × split, OOS **locked by tooling** until `--unlock-oos`). Enriched baseline `bt-mrkz8r44-d57578d8` reproduces Phase 11 bit-identically (deterministic). **First findings — robust across train+validation**: counter-bias probes bleed (−0.19R/−0.14R); low scores bleed while score 6 is positive in both; 1–2-bar losses dominate (entry timing/stop placement is the weak joint). **Train-only mirages killed by validation**: side, BOS/CHOCH, stop distance, session, bias direction. Rejections: 100% session filter, as configured.
+Phase 12 - Backtest Diagnostics & Strategy Refinement: **Part A (tooling) delivered 2026-07-14** (`project/phases/phase-12-diagnostics.md`, ADR 0013). Feature capture (`features jsonb`), `backtest_rejections`, chronological 60/20/20 splits tagged by the runner, pure tested `segments.ts`, `backtest-report.ts` (15 dimensions × split, OOS **locked by tooling** until `--unlock-oos`). Enriched baseline `bt-mrkz8r44-d57578d8` reproduces Phase 11 bit-identically (deterministic).
+
+**Part A findings partially retracted 2026-07-17 — the stub was confounded.** `mockStrategySignal` keyed counter-bias (`seq % 4 === 0`), stop distance (`3.5 + (seq % 4) * 1.5`) and a `−3` score penalty off one counter, so counter-bias trades were *exactly* the 3.5-stop trades with a docked score — one cohort, three labels (the two dimensions are numerically identical in every split). **Surviving**: score 6 is the only bucket positive in both splits; 1–2-bar losses dominate — and the root cause is that the stub fires every 8 bars with no entry trigger and a noise-width stop, i.e. it samples arbitrary moments. **Not attributable**: counter-bias / 3.5-stop bleed (same cohort). **Contaminated**: low-score bleed. **Stop distance is no longer a "train-only mirage"** — 3.5 was consistently worst because it was the probe cohort in disguise. Rejections (100% session filter) unaffected.
+
+**Part B started 2026-07-17 — step 1 (de-confound) done**: `stopDistance` cycles on `seq % 3` (4.0/6.0/8.0) while `counterBias` stays on `seq % 4` (coprime → attributable); `score` is passed through undoctored; `segments.ts` reports the measured stop distance. Gates green (lint, tsc exit 0, 69 Vitest).
+
+**Part B step 2 done — de-confounded baseline read (user, 2026-07-17)**: it does **not** generalize (train ~neutral/slightly positive, validation negative). No dimension — side, sideVsBias, score, stopDistance, BOS/CHOCH, days, sessions — is stable enough to justify a filter. Robust finding stays the 1–2-bar loss concentration; the periodic stub without a setup is the priority structural cause. Inside-FVG is coherent across train+validation but validation n is still low.
+
+**OOS lock leak found (user) + fixed 2026-07-17**: the report headline read the whole-period `backtest_runs` row (1,261 trades / +9.1R incl. 254 OOS trades) while OOS was advertised as locked; the runner console leaked the same way on every run. Guard moved into pure tested code (`reportableTrades` + `summarize`). **`/backtests` page still leaks** — open decision (ADR 0013). Lesson: a display-layer lock must cover every derived figure, not just the hidden section.
+
+**Phase 12 Part B iteration 1 — entry trigger IMPLEMENTED 2026-07-17** (`project/phases/phase-12-iteration-1-design.md`). New pure `lib/strategy/` (ICT FVG-retest, `evaluateTrigger`, stateless by construction) + `lib/analysis/atr.ts` (Wilder ATR). Setup: bias → fresh aligned structure shift → fresh aligned FVG after it → **first** retest → confirmation close (**middle**, fixed a priori) → stop beyond the gap + ATR buffer → **2R unchanged**. Score/sessions/days/Risk Engine/target untouched — the experiment compares the periodic sampler (control) against a real entry condition, nothing else. Runner: `--strategy sampler|trigger` (trigger defaults `--every 1`; sampler path byte-identical); reporter range-buckets the now-continuous `stopDistance`. Gates: lint, tsc exit 0, **86 Vitest** (15 new). Behavioral smoke test (no DB, synthetic walk): 90 signals / 2,668 bars (3.4%), balanced sides, correct 2R geometry — wiring proven, says nothing about edge.
 
 ## Next Up
 
-**Phase 12 Part B — refinement iterations** (after joint review of the report): candidate hypotheses for iteration 1 — drop the stub's deliberate counter-bias probe; add a minimum-score threshold in the strategy. Discipline (`context/backtesting/diagnostics_workflow.md`): one hypothesis per iteration, run on train (`--to <trainEnd>`), confirm on validation, OOS read once at the very end. Costs and paper trading remain gated on an improved raw R distribution.
+**Run the trigger backtest and read train + validation** (the user's step — needs Docker + TimescaleDB, both down at implementation time):
+
+```powershell
+docker compose up -d
+npx tsx scripts/backtest.ts --symbol XAUUSDm --timeframe M15 --strategy trigger   # every defaults to 1
+npx tsx scripts/backtest-report.ts <runId>                                          # OOS stays locked
+```
+
+Compare against the de-confounded **sampler** control (`bt-mrowayu5-fdd94b71`): primary metric expectancy R on train then validation; secondary and the actual target, the share of losses in the 1–2 bar bucket (the trigger is meant to attack exactly this). **Ships only if it improves on train AND holds on validation.**
+
+**Pre-registered power rule** (decided before the number exists): if validation n < 30 → underpowered/inconclusive; do NOT loosen the trigger to chase n (overfitting by another route) — extend history or accept the inconclusive verdict. The smoke test's 3.4% rate is encouraging for n but not conclusive on real data.
+
+**Sequence agreed with the user**: fix OOS leak (done) → design trigger (done) → implement (done) → run on train → read train+validation → keep OOS locked → **later create a genuinely fresh holdout** (the current OOS was implicitly revealed by the leaked +9.1R headline = +19R OOS, so it is no longer pristine; a new untouched period must be reserved before any final validation).
+
+Discipline (`context/backtesting/diagnostics_workflow.md`): audit confounds before reading, no aggregate may include OOS while locked, one hypothesis per iteration. Still open: the `/backtests` page leaks OOS-inclusive metrics (ADR 0013 decision). Costs and paper trading remain gated on an improved raw R distribution.
 
 ## Decisions Already Made
 

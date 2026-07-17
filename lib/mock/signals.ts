@@ -27,14 +27,22 @@ export function mockStrategySignal(args: {
 }): StrategySignal {
   const { context, account, price, seq, runId } = args;
 
-  // Variety: every 4th signal is a counter-bias probe with a weaker score, so
-  // the queue shows both sides; stop distance cycles 3.5→8.0 so the risk
-  // engine sizes different volumes per signal.
+  // Variety: every 4th signal is a counter-bias probe so the queue shows both
+  // sides; stop distance cycles 4.0→8.0 so the risk engine sizes different
+  // volumes per signal.
+  //
+  // The two knobs MUST stay orthogonal — 4 and 3 are coprime, so every
+  // (side, stopDistance) combination occurs over a 12-signal period. Keying
+  // both off `seq % 4` aliased the counter-bias and tightest-stop cohorts into
+  // one indistinguishable bucket, making the Phase 12 diagnostics unable to
+  // attribute a loss to either factor. Likewise `score` stays the engine's
+  // context score: a strategy-applied penalty leaked the probe flag into the
+  // score dimension.
   const counterBias = seq % 4 === 0;
   const withBias: Side = context.bias === "bearish" ? "sell" : "buy";
   const side: Side = counterBias ? (withBias === "buy" ? "sell" : "buy") : withBias;
-  const score = counterBias ? Math.max(2, context.score - 3) : context.score;
-  const stopDistance = 3.5 + (seq % 4) * 1.5;
+  const score = context.score;
+  const stopDistance = 4 + (seq % 3) * 2;
 
   const stopLoss = side === "buy" ? price - stopDistance : price + stopDistance;
   const takeProfit = side === "buy" ? price + 2 * stopDistance : price - 2 * stopDistance;

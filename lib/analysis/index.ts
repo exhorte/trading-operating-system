@@ -7,6 +7,7 @@
  */
 
 export { analyzeMarketContext } from "./market-context";
+export { averageTrueRange } from "./atr";
 export {
   DEFAULT_ANALYSIS_CONFIG,
   DEFAULT_SESSION_WINDOWS,

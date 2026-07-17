@@ -158,9 +158,30 @@ This file tracks meaningful changes to the project brain and architecture.
 - **Findings** — robust train+validation: counter-bias probes −0.19R/−0.14R; score 3 −0.23R/−0.49R vs score 6 positive in both; 1–2-bar losses dominate. Train-only mirages killed by validation: side, BOS/CHOCH, stop distance, session, bias direction.
 - Docs: ADR 0013, `context/backtesting/diagnostics_workflow.md`, phase-12 file. Gates: lint/tsc/69 Vitest, dotnet 20/20.
 
+## 2026-07-17
+
+### Added - Phase 12 Part B iteration 1: a real entry trigger (`lib/strategy/`)
+
+- New pure `lib/strategy/` (imports only `lib/domain` + `lib/analysis`): `evaluateTrigger`, an ICT FVG-retest setup — bias → fresh aligned structure shift → fresh aligned FVG after it → **first** retest → confirmation close (**middle**, fixed a priori) → stop beyond the gap + ATR buffer → **2R unchanged**. Stateless by construction (`fvgId` is a rolling-window index, not stable across bars). + `lib/analysis/atr.ts` (Wilder ATR, standalone, does not touch the score/context). 15 new tests incl. no-look-ahead.
+- Runner `--strategy sampler|trigger` (trigger defaults `--every 1`; sampler byte-identical control); `engine_version`/`config.strategy` record the arm. Reporter range-buckets the now-continuous `stopDistance`.
+- Experiment constraint honored: score, sessions, days, Risk Engine, and the 2R target are untouched — only the entry condition changes.
+- Gates: lint, tsc exit 0, 86 Vitest. Smoke test (synthetic, no DB): 90 signals / 2,668 bars (3.4%), balanced sides, correct 2R geometry.
+
+### Fixed - OOS lock leak (found by the user)
+
+- The report headline and the runner console printed whole-period aggregates (incl. the 254 OOS trades: `1,261 trades / +9.1R`) while OOS was advertised as locked — the implicit OOS was ≈ +19R. Guard moved into pure tested code (`reportableTrades` + `summarize` in `lib/backtest/segments.ts`); headlines now cover train+validation only until `--unlock-oos`. **`/backtests` page still leaks — open decision** (ADR 0013). Lesson: a display-layer lock must cover every derived figure, not just the hidden section.
+
+### Changed - Phase 12 Part B step 1: de-confounded the strategy stub (Part A findings partially retracted)
+
+- **The Part A findings were read off a confounded stub.** `mockStrategySignal` keyed three variety knobs off one counter — `counterBias = seq % 4 === 0`, `stopDistance = 3.5 + (seq % 4) * 1.5`, and a `−3` score penalty applied only to probes — so counter-bias trades were *exactly* the 3.5-stop trades with a docked score. `sideVsBias=counter` and `stopDistance=3.5` are numerically identical in every split (n=189 / −0.19R / −36R; n=63 / −0.14R / −9R): one cohort, three labels.
+- **Re-graded**: score 6 positive in both splits *survives*; 1–2-bar losses dominating *survives* and is the real signal (the stub fires every 8 bars with no entry trigger and a noise-width stop — a random sampler). "Counter-bias bleeds" is *not attributable*; "low scores bleed" is *contaminated*; stop distance *leaves* the train-only-mirage list (3.5 was consistently worst because it was the probe cohort in disguise).
+- **Fix (experimental design, not a strategy hypothesis)**: `stopDistance` cycles on `seq % 3` (4.0/6.0/8.0) while `counterBias` stays on `seq % 4` — coprime, so all 12 (side, stop) combinations occur per period; `score` passes through undoctored; `segments.ts` reports the measured stop distance instead of snapping to the old hardcoded 3.5/5.0/6.5/8.0 lattice.
+- **Lesson**: splits catch effects that don't generalize across time; they do NOT catch an aliased design. Now ADR 0013 decision 7 + rule 4 of `diagnostics_workflow.md` — audit how the strategy generates its own variation before reading any segmented report.
+- Docs: ADR 0013, workflow, phase-12, project_state, handoff. Gates: lint clean, `tsc --noEmit` exit 0, 69 Vitest.
+
 ### Current Next Step
 
-Phase 12 Part B (after joint review): iteration 1 hypotheses — drop the counter-bias probe; minimum-score threshold in the strategy. One hypothesis per iteration, train-first, validation-confirmed, OOS once at the end.
+Run the trigger backtest (needs Docker + DB): `npx tsx scripts/backtest.ts --strategy trigger`, then the report. Compare vs the de-confounded sampler control `bt-mrowayu5-fdd94b71` on train then validation — primary expectancy R, secondary the 1–2-bar loss share. Ships only if it improves on train AND holds on validation. Pre-registered: validation n < 30 → inconclusive, do NOT loosen the trigger. OOS stays locked; reserve a genuinely fresh holdout later (the current OOS was implicitly revealed by the leak).
 
 ## 2026-07-09
 

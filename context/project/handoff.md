@@ -2,6 +2,58 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-17 - Phase 12 Part B iteration 1: entry trigger IMPLEMENTED (+ OOS leak fixed, verified)
+
+Verified the OOS leak fix (gates were pending in the prior entry): **71 → 86 Vitest**, tsc exit 0, lint clean. The de-confounded report `bt-mrowayu5-fdd94b71` confirms the user's read exactly — train +13.1R (buy +26.43 / sell −13.33), validation −23R (buy −22 / sell −1); 1–2-bar losses dominate both splits; inside-FVG coherent but validation n=19. The leaked headline (`+9.1R` over 1,261 incl. OOS) implies **OOS ≈ +19R** — a flattering number precisely of the kind that would tempt shipping. Hence the plan's last step: the current OOS is no longer pristine, a genuinely fresh holdout must be reserved later.
+
+Then implemented iteration 1 (the user's chosen direction — a real entry trigger, not a filter on the sampler):
+
+- **`lib/analysis/atr.ts`** — Wilder ATR, pure, `lib/domain` only. Deliberately a standalone helper: it does NOT touch `MarketContextState` or the score, so the analysis engine and its no-look-ahead invariant are untouched. + 4 tests.
+- **`lib/strategy/`** — new pure engine (imports only `lib/domain` + `lib/analysis`). `evaluateTrigger` is a pure `(window, context) → StrategySignal | null`. Setup: directional bias → fresh aligned structure shift → fresh aligned FVG formed after it → **first** retest of the gap → confirmation close → 2R. Stop = beyond the gap's far edge + ATR buffer (floored at ticks). + 11 tests covering each gate, first-retest-only, the three confirmation modes, expiry, neutral, and no-look-ahead.
+- **Two code traps that shaped the design** (both real, both in the repo): `fvgId` is a rolling-window index — NOT stable across bars — so the trigger is **stateless by construction** ("first retest" / "one per setup" derived from the window, never tracked); and `MarketContextState` cannot express "first retest" (`activeFairValueGaps` only drops 100%-filled gaps, `filledPercent` runs to the last candle), so the trigger scans the window itself. This is why it takes `(window, context)`, not context alone.
+- **Confirmation close fixed a priori to `middle`** (in bias direction AND holds the gap). All three modes are implemented so lenient/strict can be a *future* single-hypothesis iteration; not tuned now.
+- **Runner**: `--strategy sampler|trigger`; trigger defaults `--every 1` (a retest lands on any bar); `engine_version` + `config.strategy` record the arm. **The sampler path is byte-for-byte unchanged** — the control arm stays reproducible.
+- **Reporter**: `stopDistance` range-buckets (`<3 / 3-5 / 5-7 / 7-10 / 10+`) now that the stop is continuous.
+
+Gates: lint, tsc exit 0, **86 Vitest**. **Behavioral smoke test** (scratchpad, no DB — Docker was down): the real analysis engine + trigger over 2,668 bars of a noisy synthetic walk fired **90 signals (3.4% of bars)**, balanced buy/sell, all with correct 2R geometry and the score passed through untouched. Proves the wiring emits well-formed signals, the first-retest gate holds (not every bar), the setup is reachable (not zero). Synthetic data → indicative of firing rate only, nothing about edge.
+
+**Next (the user's step — needs Docker + DB):** `docker compose up -d`, then `npx tsx scripts/backtest.ts --strategy trigger`, then the report. Compare vs the de-confounded sampler control on train then validation; primary = expectancy R, secondary = the 1–2-bar loss share (what the trigger targets). Ships only if it improves on train AND holds on validation. **Pre-registered**: if validation n < 30 → inconclusive, do NOT loosen the trigger to chase n. OOS stays locked; a fresh holdout comes later. **Still open**: the `/backtests` page leaks OOS-inclusive metrics. Not committed at time of writing.
+
+## 2026-07-17 - Phase 12 Part B: OOS lock leak fixed; iteration 1 designed (entry trigger)
+
+**The user analyzed the de-confounded report and found a leak in the OOS lock.** The report headline (`1,261 trades / +9.1R`) was read straight off the `backtest_runs` row — a whole-period aggregate including the 254 OOS trades — while the OOS split was advertised as locked. Two further surfaces had the same bug: `scripts/backtest.ts` printed whole-run metrics on **every** run with no `--unlock-oos` concept at all (the worse leak — visible before the report is opened), and the `/backtests` page renders the run row permanently (**still open**, needs a product decision; treat as leaking).
+
+Fixed the two scripts; the guard now lives in pure tested code — `reportableTrades(trades, unlockOos)` + `summarize()` in `lib/backtest/segments.ts`, with a regression test asserting the headline never sees OOS R. Lesson (ADR 0013, workflow rule): a lock enforced at the display layer must cover every *derived figure*, not just the obvious section — "hide the section" is not "withhold the information". The revealed numbers cannot be unseen, so iteration 1 was designed without reference to them.
+
+**The user's read of the de-confounded baseline**: it doesn't generalize (train ~neutral/slightly positive, validation negative); no dimension — side, sideVsBias, score, stopDistance, BOS/CHOCH, days, sessions — is stable enough to justify a filter; the robust finding stays the 1–2-bar loss concentration; inside-FVG is coherent across train and validation but validation n is still low. **Decision: iteration 1 = design a real entry trigger, not filter the sampler.**
+
+**Design written** (`phase-12-iteration-1-design.md`, awaiting validation, no strategy code yet): bias → fresh structure shift → fresh FVG created after the displacement → first retest → confirmation close → one signal per setup → setup expiry → stop on structural invalidation + ATR buffer → 2R target unchanged → strict no-look-ahead. Score/sessions/days/Risk Engine/target explicitly untouched.
+
+Two code findings that shaped it:
+
+- **`fvgId` is not stable across bars** — `finalizeGap` emits `fvg-${formedAt}`, an index into the rolling 300-bar window, so ids shift as the window slides and get reused. Any strategy state keyed by `fvgId` would silently corrupt. → the trigger is **stateless by construction**; "first retest" and "one signal per setup" are derived from the window.
+- **`MarketContextState` cannot express "first retest"** — `activeFairValueGaps` only drops 100%-filled gaps, and `filledPercent` runs to the window's last candle, so at bar `i` a gap touched at `i` looks identical to one touched at `i-5`. → the trigger takes `(window, context)` and runs its own touch scan.
+
+Also flagged in the design: no ATR exists in the repo (add `lib/analysis/atr.ts`); `--every 8` must become 1 for the trigger (a retest lands on any bar); `--strategy sampler|trigger` keeps the control arm reproducible; `sideVsBias` collapses to `with` only and `stopDistance` becomes continuous (the reporter needs range bucketing). **Main risk, pre-registered**: a strict trigger may leave validation n < 30 → underpowered. Pre-commitment recorded *before* the number exists: do NOT loosen the trigger to chase n (that is overfitting by another route) — extend history or accept "inconclusive".
+
+Open question for validation: the confirmation-close definition (lenient / **middle, proposed** / strict) — it materially changes signal count and must be fixed a priori, not tuned.
+
+**Gates NOT run** for the leak fix: both shell tools were unavailable at time of writing. Unverified — run `npx vitest run`, `npx tsc --noEmit`, `npm run lint` before trusting it. Not committed.
+
+## 2026-07-17 - Phase 12 Part B step 1: the Part A findings were confounded
+
+Audited the Part A findings against the code that produced them before proposing iteration 1 — and the planned iteration was built on an aliased design.
+
+`mockStrategySignal` keyed **three** variety knobs off one counter: `counterBias = seq % 4 === 0`, `stopDistance = 3.5 + (seq % 4) * 1.5`, and a `−3` score penalty applied only to probes. Counter-bias trades were therefore *exactly* the 3.5-stop trades, carrying an artificially docked score — one cohort wearing three labels. The report proves it: `sideVsBias=counter` and `stopDistance=3.5` are numerically identical in every split (n=189 / −0.19R / −36R cum; n=63 / −0.14R / −9R cum).
+
+Why it mattered: running "drop the counter-bias probe" as iteration 1 would have silently deleted the entire tightest-stop cohort too, and the improvement would have been un-attributable — the exact false lesson the split discipline exists to prevent. **Splits catch effects that don't generalize across time; they do not catch a confounded design.** Recorded as ADR 0013 decision 7 and rule 4 of the workflow doc.
+
+Re-graded findings (details in `phase-12-diagnostics.md`): **score 6 positive in both splits** survives (nearly pure with-bias). **1–2-bar losses dominate** survives and is the real signal — the stub fires every 8 bars with *no entry trigger* and a fixed noise-width stop, so it samples arbitrary moments; −0.02R is a random sampler behaving like one. "Counter-bias bleeds" is not attributable; "low scores bleed" is contaminated; **stop distance is no longer a train-only mirage** (3.5 was consistently worst because it was the probe cohort in disguise).
+
+Step 1 shipped (user-validated, an experimental-design fix rather than a strategy hypothesis): `stopDistance` cycles on `seq % 3` (4.0/6.0/8.0) while `counterBias` stays on `seq % 4` — coprime, so all 12 (side, stop) combinations occur per 12-signal period; `score` is passed through undoctored; `segments.ts` reports the measured stop distance instead of snapping to the old hardcoded lattice. Gates: lint clean, `tsc --noEmit` exit 0, 69 Vitest. No tests covered `mockStrategySignal`; its three consumers (mock-client, signalr-client, backtest runner) are unchanged.
+
+Next: **Docker Desktop was down**, so the re-run is the user's step — `docker compose up -d`, then `npx tsx scripts/backtest.ts --symbol XAUUSDm --timeframe M15` and `npx tsx scripts/backtest-report.ts <runId>`. The new run is deliberately **not** bit-comparable to `bt-mrkz8r44-d57578d8`; keep the old one for the record. Then iteration 1 — settle first whether to filter the trigger-less stub (min-score threshold) or give it a real entry trigger (fresh structure shift + PD-array touch, ATR-derived stop), which is what the 1–2-bar-loss finding actually points at. Not yet committed at time of writing.
+
 ## 2026-07-14 - Phase 12 Part A: Diagnostics tooling + first findings
 
 Built the diagnostics slice per the user's spec (design validated: 60/20/20 chronological splits; console+markdown report; OOS locked by tooling — `--unlock-oos` to be used once, at the end). Runner v2 captures frozen features per trade (ADR 0013 key set) and all rejections with reasons; `segments.ts` (pure, tested) + `backtest-report.ts` render 15 dimensions × split, worst buckets first, `⚠ low n` under 30 trades.

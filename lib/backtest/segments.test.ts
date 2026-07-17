@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { DIMENSIONS, MIN_BUCKET_N, segmentBy, segmentByMulti, type DiagTrade } from "./segments";
+import {
+  DIMENSIONS,
+  MIN_BUCKET_N,
+  reportableTrades,
+  segmentBy,
+  segmentByMulti,
+  summarize,
+  type DiagTrade,
+} from "./segments";
 
 function trade(over: Partial<DiagTrade>): DiagTrade {
   return {
@@ -17,6 +25,34 @@ function trade(over: Partial<DiagTrade>): DiagTrade {
     ...over,
   };
 }
+
+describe("OOS lock (headline metrics must never include out-of-sample)", () => {
+  // Regression guard: the reporter headline and the runner console both used to
+  // aggregate over ALL trades, silently revealing OOS performance while the
+  // split was advertised as locked.
+  const mixed = [
+    ...Array.from({ length: 4 }, () => trade({ split: "train", outcome: "loss", rMultiple: -1 })),
+    ...Array.from({ length: 2 }, () => trade({ split: "validation", outcome: "loss", rMultiple: -1 })),
+    ...Array.from({ length: 3 }, () => trade({ split: "oos", outcome: "win", rMultiple: 2 })),
+  ];
+
+  it("excludes oos trades while locked, and the headline never sees their R", () => {
+    const locked = reportableTrades(mixed, false);
+    expect(locked).toHaveLength(6);
+    expect(locked.every((t) => t.split !== "oos")).toBe(true);
+
+    const headline = summarize("train+validation", locked);
+    expect(headline.n).toBe(6);
+    expect(headline.cumulativeR).toBe(-6); // not -6 + 6 = 0: the oos wins stay invisible
+    expect(headline.winRate).toBe(0);
+  });
+
+  it("includes every split once unlocked", () => {
+    const unlocked = reportableTrades(mixed, true);
+    expect(unlocked).toHaveLength(9);
+    expect(summarize("full period", unlocked).cumulativeR).toBe(0); // -6 + 6
+  });
+});
 
 describe("segmentBy", () => {
   it("groups, computes per-bucket metrics, and sorts worst-first", () => {

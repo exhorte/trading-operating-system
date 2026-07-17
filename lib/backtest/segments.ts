@@ -60,6 +60,22 @@ function stat(bucket: string, trades: DiagTrade[]): SegmentStat {
   };
 }
 
+/** Aggregate over an arbitrary trade set (one split, or train+validation).
+ *  Headline metrics MUST be built from this over `reportableTrades`, never from
+ *  the `backtest_runs` row: that row is computed over the whole period, so
+ *  printing it reveals OOS performance while the OOS split is locked. */
+export function summarize(bucket: string, trades: DiagTrade[]): SegmentStat {
+  return stat(bucket, trades);
+}
+
+/** The only trades whose AGGREGATE may be displayed under the OOS lock.
+ *  Splits are law (ADR 0013): OOS is read once, at the end of the campaign. An
+ *  aggregate that silently includes it is a leak — the number can't be unseen,
+ *  and it turns OOS into a second validation set. */
+export function reportableTrades(trades: DiagTrade[], unlockOos: boolean): DiagTrade[] {
+  return unlockOos ? trades : trades.filter((t) => t.split !== "oos");
+}
+
 /** Group by a single-valued key; buckets sorted by cumulative R ascending
  *  (worst first — this is a loss hunt). */
 export function segmentBy(
@@ -122,9 +138,16 @@ export const DIMENSIONS: Record<string, (t: DiagTrade) => string> = {
   sideVsBias: (t) => feature(t, "sideVsBias"),
   structure: (t) => feature(t, "structure"),
   score: (t) => `score ${t.score}`,
+  // Range buckets, not a fixed lattice: the trigger's ATR-derived stop is
+  // continuous, so exact-value labels would shatter into near-empty buckets.
+  // Ranges hold for both arms (the sampler's 4/6/8 land cleanly inside them).
   stopDistance: (t) => {
     const d = Math.abs(t.entryPrice - t.stopLoss);
-    return d < 4 ? "3.5" : d < 5.5 ? "5.0" : d < 7 ? "6.5" : "8.0";
+    if (d < 3) return "<3";
+    if (d < 5) return "3-5";
+    if (d < 7) return "5-7";
+    if (d < 10) return "7-10";
+    return "10+";
   },
   duration: (t) =>
     t.barsHeld <= 2 ? "1-2 bars" : t.barsHeld <= 8 ? "3-8 bars" : t.barsHeld <= 20 ? "9-20 bars" : "21+ bars",

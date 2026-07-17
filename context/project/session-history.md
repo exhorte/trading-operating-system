@@ -2,9 +2,9 @@
 
 A durable, human-readable log of the working session in which the Trading
 Operating System went from "Phases 01–03 delivered, awaiting review" to a
-persisted, backtestable end-to-end trading loop (Phases 04–11). It complements
-`changelog.md` (chronological facts), `handoff.md` (per-session narrative) and
-the per-phase files under `phases/`.
+persisted, backtestable, diagnostics-driven end-to-end trading loop (Phases
+04–12). It complements `changelog.md` (chronological facts), `handoff.md`
+(per-session narrative) and the per-phase files under `phases/`.
 
 > This file records what happened and why. For the authoritative current state,
 > always read `project_state.md` first.

@@ -5,7 +5,12 @@
  * simulates each approved signal's outcome, and persists the run + trades.
  *
  *   npx tsx scripts/backtest.ts [--symbol XAUUSDm] [--timeframe M15]
- *                               [--every 8] [--max-bars 32]
+ *                               [--strategy sampler|trigger] [--every N]
+ *                               [--max-bars 32] [--from ISO] [--to ISO]
+ *
+ * --strategy sampler (default): the periodic control arm (lib/mock/signals).
+ * --strategy trigger: the iteration-1 ICT FVG-retest entry (lib/strategy),
+ *   which defaults --every to 1 (a retest can land on any bar).
  *
  * HYPOTHESIS TESTING ONLY: engine v0.1, no spread/slippage/costs, binary
  * SL/TP exits (both-touch bars = conservative loss). Results grade signal
@@ -18,6 +23,7 @@ import { analyzeMarketContext, DEFAULT_SESSION_WINDOWS } from "@/lib/analysis";
 import { sessionEnabled, sessionForTimestamp } from "@/lib/analysis/sessions";
 import { defaultRiskPolicy, evaluateRiskState, evaluateSignalRisk } from "@/lib/risk";
 import { mockStrategySignal } from "@/lib/mock/signals";
+import { evaluateTrigger } from "@/lib/strategy";
 import { simulateTradeOutcome, type SimulatedTrade } from "@/lib/backtest/outcome";
 import { computeMetrics } from "@/lib/backtest/metrics";
 import type { MarketContextState } from "@/lib/domain/analysis";
@@ -28,13 +34,25 @@ const CONNECTION =
   process.env.TRADINGOS_DB ??
   "postgres://tradingos:tradingos_dev@localhost:5433/tradingos";
 
-const ENGINE_VERSION = "ict-smc v0.1 / risk v0.1 / stub-strategy";
 const WINDOW = 300; // same rolling window as the live clients
 const INITIAL_BALANCE = 10_000;
+/** XAUUSD tick size (MVP: single symbol). Generalise via SymbolMetadata later. */
+const TICK_SIZE = 0.01;
+
+/** Which strategy arm produced a run — recorded in engine_version so runs are
+ *  never ambiguous. `sampler` is the periodic control; `trigger` the treatment. */
+type StrategyArm = "sampler" | "trigger";
+
+function engineVersion(arm: StrategyArm): string {
+  return arm === "trigger"
+    ? "ict-smc v0.1 / risk v0.1 / trigger-strategy v0.1"
+    : "ict-smc v0.1 / risk v0.1 / stub-strategy";
+}
 
 interface Args {
   symbol: string;
   timeframe: string;
+  strategy: StrategyArm;
   every: number; // evaluate a signal every N bars
   maxBars: number; // outcome horizon
   from: string | null; // ISO date filter (train-only refinement runs)
@@ -46,10 +64,15 @@ function parseArgs(): Args {
     const i = process.argv.indexOf(flag);
     return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
   };
+  const strategy = (get("--strategy", "sampler") === "trigger" ? "trigger" : "sampler") as StrategyArm;
+  // A retest lands on ANY bar, so the trigger must see every bar; the sampler
+  // keeps its historical every-8 cadence unless overridden.
+  const everyDefault = strategy === "trigger" ? "1" : "8";
   return {
     symbol: get("--symbol", "XAUUSDm"),
     timeframe: get("--timeframe", "M15"),
-    every: Number(get("--every", "8")),
+    strategy,
+    every: Number(get("--every", everyDefault)),
     maxBars: Number(get("--max-bars", "32")),
     from: get("--from", "") || null,
     to: get("--to", "") || null,
@@ -191,14 +214,34 @@ async function main(): Promise<void> {
       candles: window,
     });
 
-    signalCount += 1;
-    const signal = mockStrategySignal({
-      context,
-      account,
-      price: bar.close,
-      seq: signalCount,
-      runId,
-    });
+    // Sampler (control): emits every bar — signalCount is per-bar, preserving
+    // the arm's exact historical behaviour. Trigger (treatment): emits only
+    // when a full setup is present, so a null bar is "no setup", not a
+    // rejection, and does not consume a sequence number.
+    let signal: StrategySignal | null;
+    if (args.strategy === "trigger") {
+      signal = evaluateTrigger({
+        window,
+        context,
+        accountId: "backtest",
+        tickSize: TICK_SIZE,
+        seq: signalCount + 1,
+        runId,
+      });
+      if (!signal) {
+        continue;
+      }
+      signalCount += 1;
+    } else {
+      signalCount += 1;
+      signal = mockStrategySignal({
+        context,
+        account,
+        price: bar.close,
+        seq: signalCount,
+        runId,
+      });
+    }
 
     const session = sessionForTimestamp(bar.openTime, DEFAULT_SESSION_WINDOWS);
     const riskState = evaluateRiskState({
@@ -271,8 +314,9 @@ async function main(): Promise<void> {
        both_touch_count, win_rate, avg_r, expectancy_r, max_consec_losses, cumulative_r)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [
-      runId, args.symbol, args.timeframe, ENGINE_VERSION,
+      runId, args.symbol, args.timeframe, engineVersion(args.strategy),
       JSON.stringify({
+        strategy: args.strategy,
         every: args.every,
         maxBars: args.maxBars,
         window: WINDOW,
@@ -318,11 +362,22 @@ async function main(): Promise<void> {
   }
   await client.end();
 
-  console.log(`[backtest] run ${runId} persisted`);
-  console.log(`[backtest] signals=${signalCount} approved=${approvedCount} rejected=${rejections.length} trades=${metrics.tradeCount}`);
+  // The whole-period metrics are PERSISTED (the run row is the record, read at
+  // --unlock-oos) but never PRINTED: this summary used to report them over all
+  // trades incl. OOS, leaking out-of-sample performance on every single run
+  // before the report was even opened — fixed 2026-07-17 (ADR 0013).
+  const reported = records
+    .filter((r) => splitFor(r.signalTime, boundaries) !== "oos")
+    .map((r) => r.trade);
+  const shown = computeMetrics(reported);
+  const oosCount = metrics.tradeCount - reported.length;
+
+  console.log(`[backtest] run ${runId} persisted (strategy=${args.strategy}, every=${args.every})`);
+  console.log(`[backtest] signals=${signalCount} approved=${approvedCount} rejected=${rejections.length}`);
   console.log(`[backtest] splits: train ≤ ${new Date(boundaries.trainEnd).toISOString()} < validation ≤ ${new Date(boundaries.valEnd).toISOString()} < oos`);
+  console.log(`[backtest] TRAIN+VALIDATION (${shown.tradeCount} trades): winRate=${shown.winRate}% avgR=${shown.avgR} expectancy=${shown.expectancyR}R cumulative=${shown.cumulativeR}R maxConsecLosses=${shown.maxConsecutiveLosses} bothTouch=${shown.bothTouchCount}`);
+  console.log(`[backtest] 🔒 ${oosCount} OOS trades reserved — metrics withheld until scripts/backtest-report.ts ${runId} --unlock-oos`);
   console.log(`[backtest] next: npx tsx scripts/backtest-report.ts ${runId}`);
-  console.log(`[backtest] winRate=${metrics.winRate}% avgR=${metrics.avgR} expectancy=${metrics.expectancyR}R cumulative=${metrics.cumulativeR}R maxConsecLosses=${metrics.maxConsecutiveLosses} bothTouch=${metrics.bothTouchCount}`);
   console.log("[backtest] HYPOTHESIS ONLY — no costs modeled, engine v0.1");
 }
 

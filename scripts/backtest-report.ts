@@ -18,8 +18,10 @@ import { Client } from "pg";
 import {
   DIMENSIONS,
   MULTI_DIMENSIONS,
+  reportableTrades,
   segmentBy,
   segmentByMulti,
+  summarize,
   type DiagTrade,
   type SegmentStat,
 } from "@/lib/backtest/segments";
@@ -92,9 +94,23 @@ async function main(): Promise<void> {
   emit(`> Multi-comparison warning: 13+ dimensions — act only on strong, explainable,`);
   emit(`> train+validation-consistent effects, never on a single ⚠ low-n bucket.`);
   emit("");
-  emit(`Period ${String(run.from_time).slice(0, 10)} → ${String(run.to_time).slice(0, 10)} · ${run.candle_count} candles · ` +
-       `${run.signal_count} signals → ${run.approved_count} trades · ` +
-       `win ${run.win_rate}% · exp ${run.expectancy_r}R · cum ${run.cumulative_r}R`);
+  // Headline is computed from the REPORTABLE trades only. Reading run.win_rate
+  // / run.expectancy_r / run.cumulative_r here leaked OOS performance into
+  // every locked report (they are whole-period aggregates) — fixed 2026-07-17.
+  const reportable = reportableTrades(trades, unlockOos);
+  const headline = summarize(unlockOos ? "full period" : "train+validation", reportable);
+  const oosCount = trades.filter((t) => t.split === "oos").length;
+
+  emit(`Period ${String(run.from_time).slice(0, 10)} → ${String(run.to_time).slice(0, 10)} · ` +
+       `${run.candle_count} candles · ${run.signal_count} signals`);
+  emit("");
+  emit(`**${headline.bucket}** · ${headline.n} trades · win ${headline.winRate}% · ` +
+       `exp ${headline.expectancyR}R · cum ${headline.cumulativeR}R`);
+  if (!unlockOos && oosCount > 0) {
+    emit("");
+    emit(`🔒 ${oosCount} OOS trades reserved — excluded from every figure above. ` +
+         `Whole-period aggregates (incl. the \`backtest_runs\` row) stay withheld until \`--unlock-oos\`.`);
+  }
   if (missingFeatures > 0) {
     emit("");
     emit(`⚠ ${missingFeatures}/${trades.length} trades have no features (pre-Phase-12 run) — re-run the backtest to enable all dimensions.`);
