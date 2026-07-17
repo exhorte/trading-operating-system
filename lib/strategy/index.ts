@@ -6,5 +6,5 @@
  * setup, the experimental treatment arm against the periodic sampler control.
  */
 
-export { evaluateTrigger, type TriggerInput } from "./trigger";
+export { evaluateTrigger, type TriggerInput, type TriggerResult, type TriggerSetup } from "./trigger";
 export { DEFAULT_TRIGGER_CONFIG, type TriggerConfig, type ConfirmationClose } from "./config";

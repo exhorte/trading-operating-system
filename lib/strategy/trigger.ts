@@ -45,6 +45,35 @@ export interface TriggerInput {
   config?: TriggerConfig;
 }
 
+/**
+ * The exact setup a trigger signal fired on — frozen diagnostic metadata.
+ * Exists because the generic `fvgInside` feature measures a DIFFERENT notion
+ * (entry price inside any aligned gap at signal time; the trigger's entry is
+ * the confirmation close, usually already outside the gap it retested). These
+ * fields describe the specific gap and displacement the trade was built on.
+ */
+export interface TriggerSetup {
+  fvgLow: number;
+  fvgHigh: number;
+  /** Gap size in price units (high − low). */
+  fvgSize: number;
+  /** Bars from the gap's formation to the retest (= current) bar. */
+  fvgAgeBars: number;
+  /** Bars from the structure shift to the retest bar. */
+  shiftAgeBars: number;
+  /** How deep the retest bar penetrated the gap, 0–100% of its size. */
+  retestDepthPercent: number;
+  /** Wilder ATR at the retest bar (stop-buffer volatility unit). */
+  atr: number;
+  /** Stop buffer actually applied beyond the gap's far edge. */
+  stopBuffer: number;
+}
+
+export interface TriggerResult {
+  signal: StrategySignal;
+  setup: TriggerSetup;
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -73,10 +102,10 @@ function isConfirmation(
 }
 
 /**
- * Evaluate the trigger at the last bar of the window. Returns a StrategySignal
- * when the full setup is present, otherwise null.
+ * Evaluate the trigger at the last bar of the window. Returns the signal plus
+ * the frozen setup metadata when the full setup is present, otherwise null.
  */
-export function evaluateTrigger(input: TriggerInput): StrategySignal | null {
+export function evaluateTrigger(input: TriggerInput): TriggerResult | null {
   const cfg = input.config ?? DEFAULT_TRIGGER_CONFIG;
   const { window, context, tickSize } = input;
   if (window.length < 3) {
@@ -85,6 +114,11 @@ export function evaluateTrigger(input: TriggerInput): StrategySignal | null {
 
   const currentIndex = window.length - 1;
   const bar = window[currentIndex];
+
+  // 0. Session allowlist (iteration 2): null = all sessions.
+  if (cfg.allowedSessions !== null && !cfg.allowedSessions.includes(context.session)) {
+    return null;
+  }
 
   // 1. Directional bias.
   if (context.bias !== "bullish" && context.bias !== "bearish") {
@@ -144,7 +178,7 @@ export function evaluateTrigger(input: TriggerInput): StrategySignal | null {
   const takeProfit = side === "buy" ? entry + cfg.rewardMultiple * risk : entry - cfg.rewardMultiple * risk;
 
   const now = bar.openTime;
-  return {
+  const signal: StrategySignal = {
     signalId: input.runId ? `sig-${input.runId}-${input.seq}` : `sig-${String(input.seq).padStart(3, "0")}`,
     strategyId: "ict-fvg-retest-v1",
     accountId: input.accountId,
@@ -161,4 +195,18 @@ export function evaluateTrigger(input: TriggerInput): StrategySignal | null {
     createdAt: now,
     expiresAt: new Date(new Date(now).getTime() + 5 * 60_000).toISOString(),
   };
+
+  const span = fvg.high - fvg.low;
+  const penetration = side === "buy" ? fvg.high - bar.low : bar.high - fvg.low;
+  const setup: TriggerSetup = {
+    fvgLow: fvg.low,
+    fvgHigh: fvg.high,
+    fvgSize: round2(span),
+    fvgAgeBars: currentIndex - fvgIndex,
+    shiftAgeBars: currentIndex - shiftIndex,
+    retestDepthPercent: round2(Math.min(100, Math.max(0, (penetration / span) * 100))),
+    atr: round2(atr),
+    stopBuffer: round2(buffer),
+  };
+  return { signal, setup };
 }

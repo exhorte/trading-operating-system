@@ -41,9 +41,38 @@ FROM backtest_trades WHERE run_id = '<run>' GROUP BY outcome;
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--every` | 8 | evaluate a signal every N bars (stub cadence) |
+| `--strategy` | sampler | `sampler` (periodic control) or `trigger` (iteration-1 FVG retest) |
+| `--sessions` | all | strategy-layer session allowlist, CSV (iteration 2: `new_york_am`) |
+| `--every` | 8 (sampler) / 1 (trigger) | evaluate every N bars — the trigger must see every bar, a retest can land on any of them |
 | `--max-bars` | 32 | outcome horizon before timeout (M15 → 8h) |
 | `TRADINGOS_DB` | localhost:5433 | Postgres connection string |
+
+## Timeouts: role and exit rule
+
+A trade that touches **neither** stop nor target within `--max-bars` future
+bars exits as a `timeout` **at the close of the last horizon bar**
+(`lib/backtest/outcome.ts`). Its R is the signed move from entry divided by
+the initial risk — strictly between −1 and the reward multiple, since touching
+either boundary would have decided the trade.
+
+How the metrics treat them (`lib/backtest/metrics.ts`):
+
+- **winRate and avgR exclude timeouts** — they are computed over *decided*
+  trades only (win + loss);
+- **expectancyR and cumulativeR include them** — expectancy is "the R of
+  taking a signal", whatever the exit;
+- a timeout with **negative** R counts toward loss streaks (`maxConsecLosses`).
+
+Why this matters when reading trigger runs: with ATR-derived stops the horizon
+truncates slow trades — the iteration-1 run has 17% timeouts (107/627) at
+**positive** average R (+0.4R train / +0.35R validation), i.e. trades drifting
+favourably that had not yet reached 2R. The win rate therefore *understates*
+the arm's quality on its own; always read expectancyR (which includes the
+timeout drift) alongside it. A timeout is an artifact of the measurement
+horizon, not a strategy exit rule — the live platform has no equivalent
+"close after 32 bars" behaviour. Widening `--max-bars` is a measurement
+change, not a strategy change, but treat it like any knob: don't tune it
+against results.
 
 ## Honest limits (MVP)
 

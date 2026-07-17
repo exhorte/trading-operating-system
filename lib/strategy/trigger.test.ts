@@ -71,18 +71,34 @@ function input(window: Candle[], context: MarketContextState, over: Partial<Trig
 describe("evaluateTrigger — happy path", () => {
   it("emits a buy on the first confirmed retest of an aligned fresh FVG", () => {
     const window = buildWindow({});
-    const signal = evaluateTrigger(input(window, bullishContext(window)));
+    const result = evaluateTrigger(input(window, bullishContext(window)));
 
-    expect(signal).not.toBeNull();
-    expect(signal!.side).toBe("buy");
-    expect(signal!.strategyId).toBe("ict-fvg-retest-v1");
-    expect(signal!.entryPrice).toBe(104); // the confirmed close
-    expect(signal!.score).toBe(6); // engine score passed through, undoctored
-    expect(signal!.stopLoss).toBeLessThan(100); // beyond the gap floor + buffer
+    expect(result).not.toBeNull();
+    const { signal } = result!;
+    expect(signal.side).toBe("buy");
+    expect(signal.strategyId).toBe("ict-fvg-retest-v1");
+    expect(signal.entryPrice).toBe(104); // the confirmed close
+    expect(signal.score).toBe(6); // engine score passed through, undoctored
+    expect(signal.stopLoss).toBeLessThan(100); // beyond the gap floor + buffer
     // 2R target by construction (within the 2-decimal rounding of each level).
-    const reward = signal!.takeProfit - signal!.entryPrice;
-    const risk = signal!.entryPrice - signal!.stopLoss;
+    const reward = signal.takeProfit - signal.entryPrice;
+    const risk = signal.entryPrice - signal.stopLoss;
     expect(Math.abs(reward - 2 * risk)).toBeLessThan(0.02);
+  });
+
+  it("freezes the exact setup traded (the diagnostics metadata)", () => {
+    const window = buildWindow({});
+    const { setup } = evaluateTrigger(input(window, bullishContext(window)))!;
+
+    expect(setup.fvgLow).toBe(100);
+    expect(setup.fvgHigh).toBe(103);
+    expect(setup.fvgSize).toBe(3);
+    expect(setup.fvgAgeBars).toBe(4); // formed at 6, retested at 10
+    expect(setup.shiftAgeBars).toBe(5); // shift at 5
+    // bar.low 100.5 → penetration = 103 − 100.5 = 2.5 of 3 ≈ 83.3%
+    expect(setup.retestDepthPercent).toBeCloseTo(83.33, 1);
+    expect(setup.stopBuffer).toBeGreaterThan(0);
+    expect(setup.atr).toBeGreaterThan(0);
   });
 });
 
@@ -128,6 +144,26 @@ describe("evaluateTrigger — gates each reject on their own", () => {
   });
 });
 
+describe("evaluateTrigger — session allowlist (iteration 2)", () => {
+  it("null allows every session (iteration-1 behavior)", () => {
+    const window = buildWindow({});
+    expect(evaluateTrigger(input(window, bullishContext(window)))).not.toBeNull(); // fixture session: london
+  });
+
+  it("fires when the context session is allowed", () => {
+    const window = buildWindow({});
+    const ctx = bullishContext(window, { session: "new_york_am" });
+    const result = evaluateTrigger(input(window, ctx, { config: { ...cfg(), allowedSessions: ["new_york_am"] } }));
+    expect(result).not.toBeNull();
+  });
+
+  it("stays silent outside the allowlist — no signal, not a rejection", () => {
+    const window = buildWindow({}); // fixture session: london
+    const result = evaluateTrigger(input(window, bullishContext(window), { config: { ...cfg(), allowedSessions: ["new_york_am"] } }));
+    expect(result).toBeNull();
+  });
+});
+
 describe("evaluateTrigger — confirmation close modes", () => {
   it("middle: needs a bias-direction close that holds the gap", () => {
     const window = buildWindow({ open: 104, close: 101 }); // bearish close, no confirmation
@@ -157,6 +193,7 @@ describe("evaluateTrigger — no look-ahead", () => {
 
 function cfg() {
   return {
+    allowedSessions: null,
     maxShiftAgeBars: 12,
     maxSetupAgeBars: 12,
     atrPeriod: 14,

@@ -11,6 +11,8 @@
  * --strategy sampler (default): the periodic control arm (lib/mock/signals).
  * --strategy trigger: the iteration-1 ICT FVG-retest entry (lib/strategy),
  *   which defaults --every to 1 (a retest can land on any bar).
+ * --sessions a,b: strategy-layer session allowlist (iteration 2, e.g.
+ *   --sessions new_york_am); omitted = all sessions.
  *
  * HYPOTHESIS TESTING ONLY: engine v0.1, no spread/slippage/costs, binary
  * SL/TP exits (both-touch bars = conservative loss). Results grade signal
@@ -23,7 +25,8 @@ import { analyzeMarketContext, DEFAULT_SESSION_WINDOWS } from "@/lib/analysis";
 import { sessionEnabled, sessionForTimestamp } from "@/lib/analysis/sessions";
 import { defaultRiskPolicy, evaluateRiskState, evaluateSignalRisk } from "@/lib/risk";
 import { mockStrategySignal } from "@/lib/mock/signals";
-import { evaluateTrigger } from "@/lib/strategy";
+import { DEFAULT_TRIGGER_CONFIG, evaluateTrigger } from "@/lib/strategy";
+import type { TradingSession } from "@/lib/domain/primitives";
 import { simulateTradeOutcome, type SimulatedTrade } from "@/lib/backtest/outcome";
 import { computeMetrics } from "@/lib/backtest/metrics";
 import type { MarketContextState } from "@/lib/domain/analysis";
@@ -53,6 +56,8 @@ interface Args {
   symbol: string;
   timeframe: string;
   strategy: StrategyArm;
+  /** Strategy-layer session allowlist (iteration 2+); null = all sessions. */
+  sessions: TradingSession[] | null;
   every: number; // evaluate a signal every N bars
   maxBars: number; // outcome horizon
   from: string | null; // ISO date filter (train-only refinement runs)
@@ -68,10 +73,14 @@ function parseArgs(): Args {
   // A retest lands on ANY bar, so the trigger must see every bar; the sampler
   // keeps its historical every-8 cadence unless overridden.
   const everyDefault = strategy === "trigger" ? "1" : "8";
+  const sessionsCsv = get("--sessions", "");
   return {
     symbol: get("--symbol", "XAUUSDm"),
     timeframe: get("--timeframe", "M15"),
     strategy,
+    sessions: sessionsCsv
+      ? (sessionsCsv.split(",").map((s) => s.trim()) as TradingSession[])
+      : null,
     every: Number(get("--every", everyDefault)),
     maxBars: Number(get("--max-bars", "32")),
     from: get("--from", "") || null,
@@ -219,18 +228,22 @@ async function main(): Promise<void> {
     // when a full setup is present, so a null bar is "no setup", not a
     // rejection, and does not consume a sequence number.
     let signal: StrategySignal | null;
+    let triggerSetup: Record<string, unknown> | null = null;
     if (args.strategy === "trigger") {
-      signal = evaluateTrigger({
+      const result = evaluateTrigger({
         window,
         context,
         accountId: "backtest",
         tickSize: TICK_SIZE,
         seq: signalCount + 1,
         runId,
+        config: { ...DEFAULT_TRIGGER_CONFIG, allowedSessions: args.sessions },
       });
-      if (!signal) {
+      if (!result) {
         continue;
       }
+      signal = result.signal;
+      triggerSetup = { ...result.setup };
       signalCount += 1;
     } else {
       signalCount += 1;
@@ -302,7 +315,12 @@ async function main(): Promise<void> {
       volume: decision.approvedVolume,
       score: signal.score,
       reason: decision.reason,
-      features: extractFeatures(signal, context),
+      // Trigger runs append the EXACT setup traded (fvgSize/fvgAgeBars/
+      // shiftAgeBars/retestDepthPercent/atr/stopBuffer…) — additive keys on
+      // top of the frozen ADR 0013 set. The generic fvgInside stays but
+      // measures a different notion (entry inside ANY aligned gap at signal
+      // time); the trigger's own gap lives in these keys.
+      features: { ...extractFeatures(signal, context), ...(triggerSetup ?? {}) },
     });
   }
 
@@ -317,6 +335,7 @@ async function main(): Promise<void> {
       runId, args.symbol, args.timeframe, engineVersion(args.strategy),
       JSON.stringify({
         strategy: args.strategy,
+        sessions: args.sessions,
         every: args.every,
         maxBars: args.maxBars,
         window: WINDOW,
@@ -372,7 +391,7 @@ async function main(): Promise<void> {
   const shown = computeMetrics(reported);
   const oosCount = metrics.tradeCount - reported.length;
 
-  console.log(`[backtest] run ${runId} persisted (strategy=${args.strategy}, every=${args.every})`);
+  console.log(`[backtest] run ${runId} persisted (strategy=${args.strategy}, every=${args.every}, sessions=${args.sessions?.join(",") ?? "all"})`);
   console.log(`[backtest] signals=${signalCount} approved=${approvedCount} rejected=${rejections.length}`);
   console.log(`[backtest] splits: train ≤ ${new Date(boundaries.trainEnd).toISOString()} < validation ≤ ${new Date(boundaries.valEnd).toISOString()} < oos`);
   console.log(`[backtest] TRAIN+VALIDATION (${shown.tradeCount} trades): winRate=${shown.winRate}% avgR=${shown.avgR} expectancy=${shown.expectancyR}R cumulative=${shown.cumulativeR}R maxConsecLosses=${shown.maxConsecutiveLosses} bothTouch=${shown.bothTouchCount}`);

@@ -8,9 +8,19 @@
  * touched here.
  */
 
+import type { TradingSession } from "@/lib/domain/primitives";
+
 export type ConfirmationClose = "lenient" | "middle" | "strict";
 
 export interface TriggerConfig {
+  /**
+   * Sessions the strategy may trade; null = all (iteration-1 behavior).
+   * Iteration 2 passes ["new_york_am"] — the restriction lives HERE, in the
+   * strategy layer: the Risk Engine's session gate is a safety control and
+   * keeps its own config (a strategy choosing when to trade is not a risk
+   * override).
+   */
+  allowedSessions: TradingSession[] | null;
   /** Max bars between the structure shift and the current bar. ~3h on M15. */
   maxShiftAgeBars: number;
   /** Max bars between the FVG's formation and the current (retest) bar. */
@@ -33,6 +43,7 @@ export interface TriggerConfig {
 }
 
 export const DEFAULT_TRIGGER_CONFIG: TriggerConfig = {
+  allowedSessions: null,
   maxShiftAgeBars: 12,
   maxSetupAgeBars: 12,
   atrPeriod: 14,

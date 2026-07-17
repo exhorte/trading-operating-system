@@ -158,6 +158,29 @@ This file tracks meaningful changes to the project brain and architecture.
 - **Findings** — robust train+validation: counter-bias probes −0.19R/−0.14R; score 3 −0.23R/−0.49R vs score 6 positive in both; 1–2-bar losses dominate. Train-only mirages killed by validation: side, BOS/CHOCH, stop distance, session, bias direction.
 - Docs: ADR 0013, `context/backtesting/diagnostics_workflow.md`, phase-12 file. Gates: lint/tsc/69 Vitest, dotnet 20/20.
 
+## 2026-07-18
+
+### Changed - Iteration 1 read and committed (`6203da8`); result: behavioral target hit, not promoted
+
+- Run `bt-mrp973lv-965814cc` (trigger) vs control `bt-mrowayu5-fdd94b71` (sampler): 1–2-bar trades collapse (train 315/756 → 79/496; val 192/251 → 19/131), validation cum −23R → −3.67R at n=131, both-touch → 0. Still negative + no costs → audited experiment, **no paper trading** (user). Robust finding: session split (NY AM +0.23R/+0.21R; London −0.22R/−0.36R).
+
+### Fixed - `/backtests` page OOS leak (the deferred third surface)
+
+- `BacktestRepository` recomputes all displayed aggregates in SQL over non-OOS trades (mirrors `metrics.ts`; validated value-for-value against the live DB, incl. loss streaks) and excludes OOS rows from the trade list (individual Rs are summable). `oosTradeCount` → 🔒 note in the workspace. Legacy split-less runs count fully.
+
+### Added - Trigger setup metadata + timeouts doc
+
+- `evaluateTrigger` → `{ signal, setup }`: exact traded setup (fvg bounds/size/age, shift age, retest depth %, atr, stop buffer) recorded as additive feature keys; 3 new report dimensions. Root cause: `fvgInside` measures entry-inside-any-aligned-gap, not the trigger's own gap (3/496 nonsense).
+- `backtest_mvp.md`: timeout exit rule (last horizon bar close), metric treatment (excluded from winRate/avgR, included in expectancy), 17% positive-drift timeouts understate the trigger arm's win rate; `--max-bars` is measurement, not strategy — don't tune it against results.
+
+### Added - Iteration 2 designed and implemented (run pending)
+
+- `phase-12-iteration-2-design.md`: trigger restricted to NY AM via `TriggerConfig.allowedSessions` (strategy layer; Risk Engine untouched); runner `--sessions new_york_am`. Nothing else moves. **Pre-registered**: result must be bit-identical to iteration 1's NY-AM buckets (stateless trigger, independent trades) — deviation = pipeline defect. Gates: 90 Vitest, tsc 0, lint clean, dotnet 0/0 + 20/20.
+
+### Current Next Step
+
+Run iteration 2 (`npx tsx scripts/backtest.ts --strategy trigger --sessions new_york_am`), confirm the bit-identical prediction, record the run id. Campaign end: fresh holdout (current OOS compromised), then costs.
+
 ## 2026-07-17
 
 ### Added - Phase 12 Part B iteration 1: a real entry trigger (`lib/strategy/`)
@@ -178,10 +201,6 @@ This file tracks meaningful changes to the project brain and architecture.
 - **Fix (experimental design, not a strategy hypothesis)**: `stopDistance` cycles on `seq % 3` (4.0/6.0/8.0) while `counterBias` stays on `seq % 4` — coprime, so all 12 (side, stop) combinations occur per period; `score` passes through undoctored; `segments.ts` reports the measured stop distance instead of snapping to the old hardcoded 3.5/5.0/6.5/8.0 lattice.
 - **Lesson**: splits catch effects that don't generalize across time; they do NOT catch an aliased design. Now ADR 0013 decision 7 + rule 4 of `diagnostics_workflow.md` — audit how the strategy generates its own variation before reading any segmented report.
 - Docs: ADR 0013, workflow, phase-12, project_state, handoff. Gates: lint clean, `tsc --noEmit` exit 0, 69 Vitest.
-
-### Current Next Step
-
-Run the trigger backtest (needs Docker + DB): `npx tsx scripts/backtest.ts --strategy trigger`, then the report. Compare vs the de-confounded sampler control `bt-mrowayu5-fdd94b71` on train then validation — primary expectancy R, secondary the 1–2-bar loss share. Ships only if it improves on train AND holds on validation. Pre-registered: validation n < 30 → inconclusive, do NOT loosen the trigger. OOS stays locked; reserve a genuinely fresh holdout later (the current OOS was implicitly revealed by the leak).
 
 ## 2026-07-09
 

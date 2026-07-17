@@ -151,6 +151,23 @@ export const DIMENSIONS: Record<string, (t: DiagTrade) => string> = {
   },
   duration: (t) =>
     t.barsHeld <= 2 ? "1-2 bars" : t.barsHeld <= 8 ? "3-8 bars" : t.barsHeld <= 20 ? "9-20 bars" : "21+ bars",
+  // Trigger-setup dimensions (Phase 12 iteration 1+). Sampler runs have no
+  // setup keys → "(missing)" bucket; that is expected, not a data bug.
+  setupFvgSize: (t) => {
+    const v = t.features.fvgSize;
+    if (typeof v !== "number") return "(missing)";
+    return v < 0.5 ? "<0.5" : v < 1 ? "0.5-1" : v < 2 ? "1-2" : v < 4 ? "2-4" : "4+";
+  },
+  setupFvgAge: (t) => {
+    const v = t.features.fvgAgeBars;
+    if (typeof v !== "number") return "(missing)";
+    return v <= 2 ? "1-2 bars" : v <= 5 ? "3-5 bars" : "6-12 bars";
+  },
+  setupRetestDepth: (t) => {
+    const v = t.features.retestDepthPercent;
+    if (typeof v !== "number") return "(missing)";
+    return v < 25 ? "<25%" : v < 50 ? "25-50%" : v < 75 ? "50-75%" : "75-100%";
+  },
   outcome: (t) => t.outcome,
   bothTouch: (t) => (t.bothTouch ? "both-touch" : "clean"),
   fvgInside: (t) => (feature(t, "fvgInside") === "true" ? "inside FVG" : "outside FVG"),

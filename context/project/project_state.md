@@ -68,23 +68,22 @@ Phase 12 - Backtest Diagnostics & Strategy Refinement: **Part A (tooling) delive
 
 **Phase 12 Part B iteration 1 — entry trigger IMPLEMENTED 2026-07-17** (`project/phases/phase-12-iteration-1-design.md`). New pure `lib/strategy/` (ICT FVG-retest, `evaluateTrigger`, stateless by construction) + `lib/analysis/atr.ts` (Wilder ATR). Setup: bias → fresh aligned structure shift → fresh aligned FVG after it → **first** retest → confirmation close (**middle**, fixed a priori) → stop beyond the gap + ATR buffer → **2R unchanged**. Score/sessions/days/Risk Engine/target untouched — the experiment compares the periodic sampler (control) against a real entry condition, nothing else. Runner: `--strategy sampler|trigger` (trigger defaults `--every 1`; sampler path byte-identical); reporter range-buckets the now-continuous `stopDistance`. Gates: lint, tsc exit 0, **86 Vitest** (15 new). Behavioral smoke test (no DB, synthetic walk): 90 signals / 2,668 bars (3.4%), balanced sides, correct 2R geometry — wiring proven, says nothing about edge.
 
+**Iteration 1 result read (user, 2026-07-18; run `bt-mrp973lv-965814cc` vs control `bt-mrowayu5-fdd94b71`, committed `6203da8`)**: the trigger hits its behavioral target — 1–2-bar trades collapse (train 315/756 → 79/496; validation 192/251 → 19/131), validation cum −23R → −3.67R, exp ≈−0.09R → −0.03R, both-touch 23 → 0, **n=131 so the read is powered**. Still negative on validation and costs are unmodeled → **audited, promising experiment; NOT promoted to paper trading** (user decision). The robust train+validation finding is the session split: **NY AM +0.23R (n=270) / +0.21R (n=76) vs London −0.22R (n=226) / −0.36R (n=55)** — the only finding meeting all four rule-3 criteria.
+
+**Pre-run fixes delivered 2026-07-18**: (1) `/backtests` OOS leak closed — `BacktestRepository` recomputes every displayed aggregate in SQL over non-OOS trades (formulas mirror `metrics.ts`, validated value-for-value against the live DB on both Phase-12 runs) and excludes OOS rows from the trade list (individual R multiples are summable); UI shows a 🔒 lock note via `oosTradeCount`; legacy split-less runs count fully (pre-discipline, already read). (2) `evaluateTrigger` now returns `{ signal, setup }` — the EXACT setup traded (fvgLow/High/Size, fvgAgeBars, shiftAgeBars, retestDepthPercent, atr, stopBuffer) recorded as additive feature keys with 3 new report dimensions (`setupFvgSize`/`setupFvgAge`/`setupRetestDepth`); the generic `fvgInside` measures a different notion (entry inside ANY aligned gap — the trigger's confirmation close usually sits outside the gap it retested, hence 3/496). (3) Timeouts documented in `backtest_mvp.md`: no-touch within `--max-bars` → exit at last horizon bar's close; excluded from winRate/avgR, included in expectancy/cumulative; negative timeouts count in loss streaks; iteration 1 has 17% timeouts at +0.4R avg so the win rate understates the arm — a measurement artifact, not a strategy exit.
+
 ## Next Up
 
-**Run the trigger backtest and read train + validation** (the user's step — needs Docker + TimescaleDB, both down at implementation time):
+**Iteration 2 — trigger restricted to New York AM** (`project/phases/phase-12-iteration-2-design.md`, user-specified). One question: the effect of excluding London. `TriggerConfig.allowedSessions` (strategy layer — the Risk Engine's session gate is untouched), runner `--sessions new_york_am`. **Nothing else moves**: no score filter, no Risk Engine change, 2R target, middle confirmation, same stop, no BUY/SELL filter, OOS locked.
 
 ```powershell
-docker compose up -d
-npx tsx scripts/backtest.ts --symbol XAUUSDm --timeframe M15 --strategy trigger   # every defaults to 1
-npx tsx scripts/backtest-report.ts <runId>                                          # OOS stays locked
+npx tsx scripts/backtest.ts --symbol XAUUSDm --timeframe M15 --strategy trigger --sessions new_york_am
+npx tsx scripts/backtest-report.ts <runId>
 ```
 
-Compare against the de-confounded **sampler** control (`bt-mrowayu5-fdd94b71`): primary metric expectancy R on train then validation; secondary and the actual target, the share of losses in the 1–2 bar bucket (the trigger is meant to attack exactly this). **Ships only if it improves on train AND holds on validation.**
+**Pre-registered prediction**: the trigger is stateless and trades are simulated independently, so iteration 2 must be **bit-identical to the `session=new_york_am` buckets of `bt-mrp973lv-965814cc`** (train n=270 / +0.23R; validation n=76 / +0.21R). Match → the run is the auditable record and the discussion moves to "is +0.21R at n=76 enough, costs still unmodeled". Deviation → a pipeline defect to fix, not a result to interpret. The mechanical story (setups form on Asia liquidity/London displacement, resolve in NY AM) is plausible but post-hoc out of ~15 dimensions — only the campaign-end read on a **fresh holdout** (current OOS is compromised by the leak) settles it.
 
-**Pre-registered power rule** (decided before the number exists): if validation n < 30 → underpowered/inconclusive; do NOT loosen the trigger to chase n (overfitting by another route) — extend history or accept the inconclusive verdict. The smoke test's 3.4% rate is encouraging for n but not conclusive on real data.
-
-**Sequence agreed with the user**: fix OOS leak (done) → design trigger (done) → implement (done) → run on train → read train+validation → keep OOS locked → **later create a genuinely fresh holdout** (the current OOS was implicitly revealed by the leaked +9.1R headline = +19R OOS, so it is no longer pristine; a new untouched period must be reserved before any final validation).
-
-Discipline (`context/backtesting/diagnostics_workflow.md`): audit confounds before reading, no aggregate may include OOS while locked, one hypothesis per iteration. Still open: the `/backtests` page leaks OOS-inclusive metrics (ADR 0013 decision). Costs and paper trading remain gated on an improved raw R distribution.
+Discipline unchanged: one hypothesis per iteration, train then validation, OOS locked, costs and paper trading gated on an improved raw R distribution.
 
 ## Decisions Already Made
 

@@ -1,6 +1,6 @@
 # Phase 12 Part B — Iteration 1: a real entry trigger
 
-Status: **implemented 2026-07-17** (pure code + tests + runner/reporter wiring; gates green). **The train/validation backtest run is the user's step — it needs Docker + the TimescaleDB container, which were down at implementation time.** Discipline: `context/backtesting/diagnostics_workflow.md`, ADR 0013.
+Status: **closed 2026-07-18** — run `bt-mrp973lv-965814cc` read by the user against control `bt-mrowayu5-fdd94b71` and committed (`6203da8`). Behavioral target hit: 1–2-bar trades collapse (train 315/756 → 79/496; validation 192/251 → 19/131), validation cum −23R → −3.67R at n=131 (powered), both-touch → 0. Still negative + costs unmodeled → **audited, promising, NOT promoted to paper trading** (user decision). Robust finding for iteration 2: the session split (NY AM +0.23R/+0.21R vs London −0.22R/−0.36R). Discipline: `context/backtesting/diagnostics_workflow.md`, ADR 0013.
 
 ## Implementation (done)
 

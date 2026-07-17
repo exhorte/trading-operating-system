@@ -30,6 +30,8 @@ interface BacktestRun {
   expectancyR: number;
   maxConsecLosses: number;
   cumulativeR: number;
+  /** Locked out-of-sample trades excluded from every metric above (ADR 0013). */
+  oosTradeCount: number;
   createdAt: string;
 }
 
@@ -184,6 +186,13 @@ export function BacktestsWorkspace() {
 
         <div className="flex flex-col gap-3">
           <Card title={`Run ${selected.runId}`}>
+            {selected.oosTradeCount > 0 && (
+              <p className="mb-2 rounded border border-border bg-surface-elevated px-2 py-1.5 text-[11px] text-muted">
+                🔒 {selected.oosTradeCount} out-of-sample trades reserved — every figure and the
+                trade list below cover train+validation only, until the campaign-end{" "}
+                <code>--unlock-oos</code> read (ADR 0013).
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
               <Metric label="Trades" value={`${selected.tradeCount} / ${selected.signalCount} signals`} />
               <Metric label="Win rate" value={`${selected.winRate}%`} />

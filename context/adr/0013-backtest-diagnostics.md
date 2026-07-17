@@ -46,7 +46,7 @@ Fixed 1 and 2; the guard now lives in pure tested code (`reportableTrades` + `su
 ## Consequences
 
 - Rule changes are now hypothesis-driven and survivable-by-validation, or they don't ship.
-- **Open**: the `/backtests` page still shows OOS-inclusive run metrics. It is a product surface over a run archive, so it can't simply be blanked — decide between (a) rendering split-scoped metrics while a run's campaign is live, (b) a per-run `oos_unlocked` flag gating the aggregate, or (c) accepting the page as an unlock surface and documenting it. Until decided, **treat the page as leaking**.
+- ~~**Open**: the `/backtests` page still shows OOS-inclusive run metrics.~~ **Resolved 2026-07-18 — option (a)**: `BacktestRepository` recomputes every displayed aggregate in SQL over non-OOS trades (formulas mirror `lib/backtest/metrics.ts` — keep the two in sync) and excludes OOS rows from the trade list (individual R multiples are summable, so the list is under the same lock). `OosTradeCount` drives a 🔒 note in the UI. Legacy split-less runs count fully (pre-discipline, already read). The stored `backtest_runs` row remains whole-period — it is the record read at `--unlock-oos`, it is just never rendered while locked.
 - Split discipline catches effects that don't generalize across time; it does **not** catch a confounded experimental design. Auditing how the strategy generates its own variation is a prerequisite to reading any segmented report.
 - Old (feature-less) runs remain readable; the report flags them and advises a re-run.
 - Deferred still: costs, account-level simulation, paper trading — gated on an improved raw R distribution.
