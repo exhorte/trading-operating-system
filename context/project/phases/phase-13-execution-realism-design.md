@@ -1,11 +1,61 @@
-# Phase 13 — Execution Realism & Virgin Holdout (design)
+# Phase 13 — Execution Realism & Virgin Holdout
 
-Status: **design — awaiting user validation. No code written.**
-Date: 2026-07-18. Prerequisites: Phase 12 closed with the frozen candidate
-`CANDIDATE_CONFIG_2026_07_18` (trigger, NY AM only, 2R, middle confirmation,
-structural stop + 0.5 ATR). Standing rules: old OOS never unlocked; no new
-filters on the consumed 2025-06→2026-07 dataset; no paper trading before the
-holdout verdict AND net-of-costs metrics.
+Status: **implemented 2026-07-18** per the user's validated decisions (exact
+bounds, frozen cost profile, pre-registered bar, verdict-mode requirements).
+**The verdict run has NOT been launched** — user rule: review of hashes,
+bounds, cost profile, and pass bar first. Prerequisites: Phase 12 closed with
+the frozen candidate `CANDIDATE_CONFIG_2026_07_18`. Standing rules: old OOS
+never unlocked; no new filters on the consumed dataset; no paper trading
+before the holdout verdict AND net metrics.
+
+## User decisions of 2026-07-18 (all implemented)
+
+1. **Holdout bounds (exact, no overlap)**: from **2024-06-01T00:00:00Z**
+   inclusive to **2025-06-06T13:30:00Z exclusive** — verified against the DB:
+   the dev set's first candle opens exactly at the exclusive bound.
+2. **Frozen cost profile** (`FROZEN_COST_PROFILE_2026_07_18`):
+   commission 0/side · slippage 0.05/leg · spread = max(floor 0.20, observed
+   p95) = **0.26 persisted literally**. **Calibration caveat for review**: the
+   stored ticks hold ZERO NY AM observations — the only observed window is
+   London 2026-07-12 09:26→10:20 UTC (n=3,158, constant 0.26 = p50 = p95 =
+   p99). Using the 0.20 floor when 0.26 was observed would be
+   anti-conservative, hence 0.26. To recalibrate on true NY AM data, run the
+   observer 12:00–16:00 UTC BEFORE the verdict, then re-freeze.
+   Stress (informative only): spread max(0.30, p99 0.26) = 0.30, slippage
+   0.10/leg. **Swap invariant**: profile has `swap: null` → the verdict
+   REFUSES itself if any trade crosses a 21:00 or 22:00 UTC rollover
+   (both plausible server midnights probed), with no metric computed — the
+   holdout stays virgin on refusal. Providing Exness swap rates + rollover
+   hour, re-freezing, and committing enables the retry.
+3. **Pre-registered bar** (`VERDICT_CRITERIA_2026_07_18`, verbatim where
+   quantified): PASS = n≥100 ∧ netExp≥+0.05R ∧ netCum>0 ∧ BUY/SELL n≥30 ∧ no
+   side ≤ −0.10R ∧ no month >50% of net cum ∧ bootstrap p2.5 > −0.05R ∧ no
+   omitted cost/swap. FAIL-first precedence (a fragile positive with a FAIL
+   condition is FAIL, not INCONCLUSIVE). Operationalizations flagged for
+   review: "interval too wide" = width > 0.40R (at expected n≈300-400 a
+   normal-variance CI is ~0.29R; n=150 alone breaches it); month share only
+   defined for a positive total; side rules apply at n≥30; bootstrap =
+   10,000 seeded iterations (seed 20260718 → bit-reproducible).
+4. **Verdict mode** (`--verdict-holdout`): rejects every override flag ·
+   refuses a dirty tree (records commit hash) · single read enforced by the
+   `holdout_verdicts` PRIMARY KEY, not just code · records commit/dataset/
+   candidate/cost-profile sha256 hashes · zero metric output before the final
+   block · attempts audited in `holdout_attempts` (technical failure before
+   the verdict row exists → audited retry; row exists → consumed forever).
+   All guards behaviorally verified (override rejection, dirty-tree refusal,
+   ordinary-path clip inert on dev data).
+
+## Review checklist before the verdict run (user)
+
+- [ ] Bounds in `lib/backtest/holdout.ts` (2024-06-01 → 2025-06-06T13:30 excl.)
+- [ ] Cost profile 0.26/0.05/0 + provenance (or collect NY AM ticks and re-freeze)
+- [ ] Swap: provide Exness rates + rollover hour, or accept refusal-on-crossing
+- [ ] Bar operationalizations (width 0.40R, FAIL precedence, month rule)
+- [ ] Then: import anterior history → commit → `npx tsx scripts/backtest.ts --verdict-holdout`
+
+---
+
+## Original design (for the record)
 
 ## Objective
 

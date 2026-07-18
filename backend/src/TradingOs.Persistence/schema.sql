@@ -169,3 +169,43 @@ CREATE TABLE IF NOT EXISTS backtest_rejections (
     split       text NOT NULL DEFAULT 'train',
     PRIMARY KEY (run_id, seq)
 );
+
+-- Phase 13: conservative cost layer. NULL on ordinary (gross-only) runs;
+-- populated by the verdict mode. net_r_multiple = r_multiple - cost_r.
+ALTER TABLE backtest_trades ADD COLUMN IF NOT EXISTS cost_r double precision;
+ALTER TABLE backtest_trades ADD COLUMN IF NOT EXISTS net_r_multiple double precision;
+
+-- Phase 13: single-read virgin-holdout verdict. The PRIMARY KEY on the window
+-- makes the read unique AT THE DATABASE LEVEL - a second verdict run cannot
+-- insert. Immutable by convention: never UPDATE or DELETE rows here.
+CREATE TABLE IF NOT EXISTS holdout_verdicts (
+    holdout_from      timestamptz NOT NULL,
+    holdout_to        timestamptz NOT NULL,
+    verdict           text NOT NULL, -- PASS | INCONCLUSIVE | FAIL
+    run_id            text NOT NULL,
+    commit_hash       text NOT NULL,
+    dataset_hash      text NOT NULL,
+    candidate_hash    text NOT NULL,
+    cost_profile_hash text NOT NULL,
+    metrics           jsonb NOT NULL,
+    stress            jsonb NOT NULL,
+    criteria          jsonb NOT NULL,
+    reasons           jsonb NOT NULL,
+    created_at        timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (holdout_from, holdout_to)
+);
+
+-- Phase 13: audit trail of every verdict attempt, successful or not. A
+-- technical failure BEFORE metrics exist permits an audited retry; the
+-- refused_swap_invariant status records an aborted read that revealed no
+-- performance (the holdout stays virgin in that case).
+CREATE TABLE IF NOT EXISTS holdout_attempts (
+    id           bigserial PRIMARY KEY,
+    holdout_from timestamptz NOT NULL,
+    holdout_to   timestamptz NOT NULL,
+    status       text NOT NULL, -- started | completed | aborted_technical | refused_swap_invariant | refused_guard
+    detail       text NOT NULL DEFAULT '',
+    run_id       text,
+    started_at   timestamptz NOT NULL DEFAULT now(),
+    finished_at  timestamptz
+);

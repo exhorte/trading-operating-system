@@ -189,9 +189,17 @@ This file tracks meaningful changes to the project brain and architecture.
 - Cost model: separate post-processing (`costR = (spread + 2×slippage + commission/contractSize)/riskDistance`), conservative constants fixed before the run (spread 0.20 ∨ tick-calibrated worse, slippage 0.05/leg), schema += `cost_r`/`net_r_multiple`, gross AND net displayed. Outcome simulation untouched → gross stays cross-run comparable.
 - To fix at validation: pass bar (proposal: net exp > 0, n ≥ 100, no catastrophic side) and cost params.
 
+### Added - Phase 13 implemented: holdout lock, frozen costs, verdict machinery (run NOT launched)
+
+- `lib/backtest/holdout.ts`: exact user bounds (2024-06-01T00:00Z → 2025-06-06T13:30Z **exclusive**, DB-verified); ordinary runs clip holdout candles, full-inside ranges refused.
+- `lib/backtest/costs.ts`: frozen profile — spread **0.26 persisted literally** (= max(floor 0.20, observed p95); caveat: zero NY AM ticks stored, London-window proxy n=3,158 constant 0.26 — flagged for review), slippage 0.05/leg, commission 0, `swap: null`; stress 0.30/0.10 informative-only; rollover/swap helpers (Wednesday ×3).
+- `lib/backtest/verdict.ts`: pre-registered bar verbatim, FAIL-first precedence (test-pinned), seeded 10k bootstrap (seed 20260718) → bit-reproducible; proposed operationalizations flagged (CI width cap 0.40R, positive-total month rule, side rules at n≥30).
+- Runner `--verdict-holdout`: isolated code path; rejects overrides; dirty-tree refusal; sha256 commit/dataset/candidate/cost-profile; single read via `holdout_verdicts` PRIMARY KEY; audited `holdout_attempts`; **swap invariant** — any 21:00/22:00 UTC crossing with swap unmodeled → refusal with zero metrics, holdout stays virgin.
+- Schema: `cost_r`, `net_r_multiple`, `holdout_verdicts`, `holdout_attempts` (idempotent, applied live). Gates: 116 Vitest, tsc 0, lint clean, dotnet 0/0 + 20/20; guards behaviorally verified.
+
 ### Current Next Step
 
-User validates the Phase 13 design (holdout window, cost parameters, pass bar) → implement → import anterior history → the single verdict run. No exploration of the holdout, ever; old OOS stays locked forever.
+User review (bounds · cost profile 0.26 or NY AM recalibration · swap rates or accept refusal-on-crossing · bar operationalizations) → import anterior history → commit → the single `--verdict-holdout` run. Immutable verdict, whatever it says. No exploration of the holdout, ever; old OOS stays locked forever.
 
 ## 2026-07-17
 

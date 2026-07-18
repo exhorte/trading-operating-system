@@ -45,7 +45,22 @@ FROM backtest_trades WHERE run_id = '<run>' GROUP BY outcome;
 | `--sessions` | all | strategy-layer session allowlist, CSV (iteration 2: `new_york_am`) |
 | `--every` | 8 (sampler) / 1 (trigger) | evaluate every N bars — the trigger must see every bar, a retest can land on any of them |
 | `--max-bars` | 32 | outcome horizon before timeout (M15 → 8h) |
+| `--verdict-holdout` | — | Phase 13 single-read verdict: frozen candidate on the virgin holdout; rejects every other flag; requires a clean tree; refuses if a verdict exists or swap is needed but unmodeled |
 | `TRADINGOS_DB` | localhost:5433 | Postgres connection string |
+
+## Virgin holdout lock (Phase 13)
+
+Ordinary runs **clip** every candle inside the virgin holdout
+(2024-06-01T00:00Z → 2025-06-06T13:30Z exclusive, `lib/backtest/holdout.ts`)
+and refuse ranges entirely inside it. The single `--verdict-holdout` read
+computes gross + net (frozen cost profile `lib/backtest/costs.ts`) + an
+informative stress scenario, classifies against the pre-registered bar
+(`lib/backtest/verdict.ts`, seeded bootstrap → reproducible), and writes an
+immutable row in `holdout_verdicts` (DB primary key = single read). Attempts,
+including refusals, are audited in `holdout_attempts`. A technical failure
+before the verdict row exists permits an audited retry; once the row exists
+the holdout is consumed forever. The swap invariant refuses the verdict if any
+trade crosses a 21:00/22:00 UTC rollover while the profile models no swap.
 
 ## Timeouts: role and exit rule
 

@@ -19,7 +19,8 @@
  * quality, never account performance.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { execSync } from "node:child_process";
 import { Client } from "pg";
 import { analyzeMarketContext, DEFAULT_SESSION_WINDOWS } from "@/lib/analysis";
 import { sessionEnabled, sessionForTimestamp } from "@/lib/analysis/sessions";
@@ -29,6 +30,16 @@ import { DEFAULT_TRIGGER_CONFIG, evaluateTrigger } from "@/lib/strategy";
 import type { TradingSession } from "@/lib/domain/primitives";
 import { simulateTradeOutcome, type SimulatedTrade } from "@/lib/backtest/outcome";
 import { computeMetrics } from "@/lib/backtest/metrics";
+import { clipHoldout, onlyHoldout, VIRGIN_HOLDOUT } from "@/lib/backtest/holdout";
+import {
+  FROZEN_COST_PROFILE_2026_07_18,
+  STRESS_COST_PROFILE,
+  roundTripCostR,
+  rolloverCrossings,
+  swapCostR,
+} from "@/lib/backtest/costs";
+import { classifyVerdict, VERDICT_CRITERIA_2026_07_18 } from "@/lib/backtest/verdict";
+import { CANDIDATE_CONFIG_2026_07_18 } from "@/lib/strategy";
 import type { MarketContextState } from "@/lib/domain/analysis";
 import type { Candle } from "@/lib/domain/market";
 import type { StrategySignal } from "@/lib/domain/strategy";
@@ -53,6 +64,9 @@ function engineVersion(arm: StrategyArm): string {
 }
 
 interface Args {
+  /** Single-read verdict mode (Phase 13): frozen candidate on the virgin
+   *  holdout, no overrides, immutable outcome. */
+  verdictHoldout: boolean;
   symbol: string;
   timeframe: string;
   strategy: StrategyArm;
@@ -69,12 +83,24 @@ function parseArgs(): Args {
     const i = process.argv.indexOf(flag);
     return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
   };
+  const verdictHoldout = process.argv.includes("--verdict-holdout");
+  if (verdictHoldout) {
+    // The verdict accepts EXACTLY the frozen candidate — every override flag
+    // is rejected, not ignored (user spec 2026-07-18).
+    const forbidden = ["--strategy", "--sessions", "--every", "--from", "--to", "--max-bars", "--symbol", "--timeframe"];
+    const present = forbidden.filter((f) => process.argv.includes(f));
+    if (present.length > 0) {
+      console.error(`[verdict] REFUSED: --verdict-holdout accepts no override flags (got ${present.join(", ")})`);
+      process.exit(1);
+    }
+  }
   const strategy = (get("--strategy", "sampler") === "trigger" ? "trigger" : "sampler") as StrategyArm;
   // A retest lands on ANY bar, so the trigger must see every bar; the sampler
   // keeps its historical every-8 cadence unless overridden.
   const everyDefault = strategy === "trigger" ? "1" : "8";
   const sessionsCsv = get("--sessions", "");
   return {
+    verdictHoldout,
     symbol: get("--symbol", "XAUUSDm"),
     timeframe: get("--timeframe", "M15"),
     strategy,
@@ -148,10 +174,309 @@ interface RejectionRecord {
   reason: string;
 }
 
+/** Reference server midnights (UTC) used to DETECT rollover crossings when
+ *  the frozen profile has no swap spec: GMT+2 and GMT+3 brokers. If a trade
+ *  crosses either, the verdict refuses itself rather than assume a zero swap
+ *  (user invariant 2026-07-18). */
+const REFERENCE_ROLLOVER_HOURS_UTC = [21, 22];
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_k, v) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)),
+        )
+      : v,
+  );
+}
+
+function sha256(s: string): string {
+  return createHash("sha256").update(s).digest("hex");
+}
+
+/**
+ * Phase 13 single-read verdict (user spec 2026-07-18). Deliberately does NOT
+ * share the ordinary walk-forward code path: the verdict must be auditable in
+ * isolation and immune to ordinary-mode flags. Sequence:
+ * clean-tree + commit hash → single-read check (DB PK is the arbiter of
+ * "consumed") → audited attempt row → holdout candles only → silent
+ * walk-forward with EXACTLY the frozen candidate → swap invariant BEFORE any
+ * metric → costs → gross+net+stress metrics → pre-registered classification →
+ * immutable verdict row → the one and only read is printed.
+ */
+async function runVerdictHoldout(client: Client): Promise<void> {
+  const profile = FROZEN_COST_PROFILE_2026_07_18;
+  const criteria = VERDICT_CRITERIA_2026_07_18;
+  const maxBars = 32; // the default horizon, deliberately not overridable here
+
+  // Guard: the verdict records the commit hash, so the tree must be clean.
+  let commitHash: string;
+  try {
+    const dirty = execSync("git status --porcelain", { encoding: "utf-8" }).trim();
+    if (dirty.length > 0) {
+      console.error("[verdict] REFUSED: working tree is dirty — the verdict records the commit hash, commit first.");
+      process.exit(1);
+    }
+    commitHash = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+  } catch (err) {
+    console.error("[verdict] REFUSED: cannot resolve git state:", (err as Error).message);
+    process.exit(1);
+  }
+
+  // Guard: single read — enforced by the holdout_verdicts primary key; this
+  // check just gives a clear message before the INSERT would fail anyway.
+  const existing = await client.query(
+    "SELECT verdict, run_id, created_at FROM holdout_verdicts WHERE holdout_from = $1 AND holdout_to = $2",
+    [VIRGIN_HOLDOUT.fromUtc, VIRGIN_HOLDOUT.toUtc],
+  );
+  if (existing.rows.length > 0) {
+    const v = existing.rows[0];
+    console.error(`[verdict] REFUSED: the holdout was already read — ${v.verdict} (run ${v.run_id}, ${v.created_at}). Verdicts are immutable.`);
+    process.exit(1);
+  }
+
+  const attemptRow = await client.query(
+    "INSERT INTO holdout_attempts (holdout_from, holdout_to, status) VALUES ($1, $2, 'started') RETURNING id",
+    [VIRGIN_HOLDOUT.fromUtc, VIRGIN_HOLDOUT.toUtc],
+  );
+  const attemptId = attemptRow.rows[0].id as number;
+  const mark = (status: string, detail: string, runId: string | null = null) =>
+    client.query(
+      "UPDATE holdout_attempts SET status = $2, detail = $3, run_id = $4, finished_at = now() WHERE id = $1",
+      [attemptId, status, detail, runId],
+    );
+
+  try {
+    const { rows } = await client.query(
+      `SELECT symbol, timeframe, open_time AS "openTime", open, high, low, close, volume, closed
+       FROM candles
+       WHERE symbol = $1 AND timeframe = $2 AND closed = true
+         AND open_time >= $3::timestamptz AND open_time < $4::timestamptz
+       ORDER BY open_time ASC`,
+      [VIRGIN_HOLDOUT.symbol, VIRGIN_HOLDOUT.timeframe, VIRGIN_HOLDOUT.fromUtc, VIRGIN_HOLDOUT.toUtc],
+    );
+    const candles: Candle[] = onlyHoldout(
+      rows.map((r) => ({
+        symbol: r.symbol, timeframe: r.timeframe,
+        openTime: new Date(r.openTime).toISOString(),
+        open: Number(r.open), high: Number(r.high), low: Number(r.low), close: Number(r.close),
+        volume: Number(r.volume), closed: r.closed,
+      })),
+    );
+    if (candles.length < WINDOW + maxBars + 500) {
+      await mark("refused_guard", `only ${candles.length} holdout candles — import the anterior history first`);
+      console.error(`[verdict] REFUSED: only ${candles.length} holdout candles in the DB — import 2024-06-01 → 2025-06-06 first.`);
+      process.exit(1);
+    }
+    const datasetHash = sha256(
+      candles.map((c) => `${c.openTime}|${c.open}|${c.high}|${c.low}|${c.close}|${c.volume}`).join("\n"),
+    );
+
+    // --- Silent walk-forward with EXACTLY the frozen candidate. ---
+    const policy = defaultRiskPolicy("backtest");
+    const runId = `bt-verdict-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
+    interface VerdictTradeRecord {
+      trade: SimulatedTrade;
+      signalTime: string;
+      side: "buy" | "sell";
+      entryPrice: number;
+      stopLoss: number;
+      takeProfit: number;
+      volume: number;
+      score: number;
+      reason: string;
+      features: Record<string, unknown>;
+      riskDistance: number;
+    }
+    const records: VerdictTradeRecord[] = [];
+    let signalCount = 0;
+
+    for (let i = WINDOW; i < candles.length - maxBars; i += 1) {
+      const window = candles.slice(i - WINDOW, i + 1);
+      const bar = candles[i];
+      const context = analyzeMarketContext({
+        symbol: VIRGIN_HOLDOUT.symbol,
+        timeframe: VIRGIN_HOLDOUT.timeframe as Candle["timeframe"],
+        candles: window,
+      });
+      const result = evaluateTrigger({
+        window, context, accountId: "verdict", tickSize: TICK_SIZE,
+        seq: signalCount + 1, runId, config: CANDIDATE_CONFIG_2026_07_18,
+      });
+      if (!result) {
+        continue;
+      }
+      signalCount += 1;
+      const { signal } = result;
+
+      const session = sessionForTimestamp(bar.openTime, DEFAULT_SESSION_WINDOWS);
+      const riskState = evaluateRiskState({
+        policy, initialBalance: INITIAL_BALANCE, dayStartEquity: INITIAL_BALANCE,
+        equity: INITIAL_BALANCE, balance: INITIAL_BALANCE, positions: [],
+        tradesToday: null, consecutiveLosses: null, spreadPoints: null,
+        session, sessionTradingEnabled: sessionEnabled(session, DEFAULT_SESSION_WINDOWS),
+        now: bar.openTime,
+      });
+      const decision = evaluateSignalRisk({
+        signalId: signal.signalId, accountId: "verdict",
+        entryPrice: signal.entryPrice, stopLoss: signal.stopLoss,
+        balance: INITIAL_BALANCE, state: riskState, policy, now: bar.openTime,
+      });
+      if (!decision.approved || decision.approvedVolume === null) {
+        continue;
+      }
+      const trade = simulateTradeOutcome({
+        side: signal.side, entryPrice: signal.entryPrice, stopLoss: signal.stopLoss,
+        takeProfit: signal.takeProfit,
+        futureCandles: candles.slice(i + 1, i + 1 + maxBars), maxBars,
+      });
+      if (!trade) {
+        continue;
+      }
+      records.push({
+        trade, signalTime: bar.openTime, side: signal.side,
+        entryPrice: signal.entryPrice, stopLoss: signal.stopLoss, takeProfit: signal.takeProfit,
+        volume: decision.approvedVolume, score: signal.score, reason: decision.reason,
+        features: { ...extractFeatures(signal, context), ...result.setup },
+        riskDistance: Math.abs(signal.entryPrice - signal.stopLoss),
+      });
+    }
+
+    // --- Swap invariant BEFORE any metric (user 2026-07-18): no trade may
+    // cross a rollover with swap unmodeled — refuse instead of assuming 0. ---
+    const crossingHours = profile.swap !== null ? [profile.swap.rolloverHourUtc] : REFERENCE_ROLLOVER_HOURS_UTC;
+    const crossingCounts = records.map((r) =>
+      Math.max(
+        ...crossingHours.map((hour) =>
+          rolloverCrossings({
+            signalOpenTimeIso: r.signalTime, barsHeld: r.trade.barsHeld, barMinutes: 15,
+            swap: { rolloverHourUtc: hour, longUsdPerLotPerNight: 0, shortUsdPerLotPerNight: 0, tripleSwapWeekdayUtc: 3 },
+          }),
+        ),
+      ),
+    );
+    const crossingTrades = crossingCounts.filter((c) => c > 0).length;
+    if (profile.swap === null && crossingTrades > 0) {
+      await mark("refused_swap_invariant", `${crossingTrades}/${records.length} trades cross a 21/22 UTC rollover; swap unmodeled`);
+      console.error(
+        `[verdict] REFUSED (swap invariant): ${crossingTrades} of ${records.length} trades cross a possible rollover ` +
+        `(21:00/22:00 UTC) and the frozen profile models no swap. NO metrics were computed or revealed — the holdout stays virgin. ` +
+        `Provide Exness XAUUSDm swap rates (long/short USD per lot per night + server rollover hour), re-freeze the cost profile, commit, retry.`,
+      );
+      process.exit(1);
+    }
+
+    // --- Costs → net. From here on, metrics exist. ---
+    const netTrades = records.map((r, idx) => {
+      const costR = roundTripCostR(profile, r.riskDistance) +
+        swapCostR({ profile, side: r.side, crossings: crossingCounts[idx], riskDistance: r.riskDistance });
+      return {
+        costR: Math.round(costR * 10_000) / 10_000,
+        netR: Math.round((r.trade.rMultiple - costR) * 10_000) / 10_000,
+        side: r.side,
+        month: r.signalTime.slice(0, 7),
+      };
+    });
+    const gross = computeMetrics(records.map((r) => r.trade));
+    const verdict = classifyVerdict(netTrades.map((t) => ({ netR: t.netR, side: t.side, month: t.month })), criteria);
+    const stressNet = records.map((r, idx) => {
+      const costR = roundTripCostR(STRESS_COST_PROFILE, r.riskDistance) +
+        swapCostR({ profile: STRESS_COST_PROFILE, side: r.side, crossings: crossingCounts[idx], riskDistance: r.riskDistance });
+      return r.trade.rMultiple - costR;
+    });
+    const stress = {
+      profile: STRESS_COST_PROFILE.name,
+      netExpectancyR: Math.round((stressNet.reduce((s, v) => s + v, 0) / Math.max(1, stressNet.length)) * 10_000) / 10_000,
+      netCumulativeR: Math.round(stressNet.reduce((s, v) => s + v, 0) * 100) / 100,
+    };
+
+    const candidateHash = sha256(stableStringify(CANDIDATE_CONFIG_2026_07_18));
+    const costProfileHash = sha256(stableStringify(profile));
+
+    // --- Persist: run row, trades (split='holdout'), immutable verdict. ---
+    await client.query(
+      `INSERT INTO backtest_runs (run_id, symbol, timeframe, engine_version, config, from_time, to_time,
+         candle_count, signal_count, approved_count, trade_count, win_count, loss_count, timeout_count,
+         both_touch_count, win_rate, avg_r, expectancy_r, max_consec_losses, cumulative_r)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      [
+        runId, VIRGIN_HOLDOUT.symbol, VIRGIN_HOLDOUT.timeframe,
+        "ict-smc v0.1 / risk v0.1 / trigger-strategy v0.1 / VERDICT",
+        JSON.stringify({
+          mode: "verdict-holdout", holdout: VIRGIN_HOLDOUT, window: WINDOW, maxBars, every: 1,
+          candidate: CANDIDATE_CONFIG_2026_07_18, costProfile: profile, criteria,
+          hashes: { commitHash, datasetHash, candidateHash, costProfileHash },
+        }),
+        candles[0].openTime, candles.at(-1)!.openTime, candles.length,
+        signalCount, records.length, gross.tradeCount, gross.winCount, gross.lossCount,
+        gross.timeoutCount, gross.bothTouchCount, gross.winRate, gross.avgR, gross.expectancyR,
+        gross.maxConsecutiveLosses, gross.cumulativeR,
+      ],
+    );
+    for (let seq = 0; seq < records.length; seq += 1) {
+      const r = records[seq];
+      const n = netTrades[seq];
+      await client.query(
+        `INSERT INTO backtest_trades (run_id, seq, signal_time, side, entry_price, stop_loss, take_profit,
+           volume, outcome, both_touch, r_multiple, bars_held, exit_price, score, reason, features, split,
+           cost_r, net_r_multiple)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19)`,
+        [
+          runId, seq, r.signalTime, r.side, r.entryPrice, r.stopLoss, r.takeProfit,
+          r.volume, r.trade.outcome, r.trade.bothTouch, r.trade.rMultiple, r.trade.barsHeld,
+          r.trade.exitPrice, r.score, r.reason, JSON.stringify(r.features), "holdout",
+          n.costR, n.netR,
+        ],
+      );
+    }
+    await client.query(
+      `INSERT INTO holdout_verdicts (holdout_from, holdout_to, verdict, run_id, commit_hash, dataset_hash,
+         candidate_hash, cost_profile_hash, metrics, stress, criteria, reasons)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb)`,
+      [
+        VIRGIN_HOLDOUT.fromUtc, VIRGIN_HOLDOUT.toUtc, verdict.outcome, runId,
+        commitHash, datasetHash, candidateHash, costProfileHash,
+        JSON.stringify({ gross, net: verdict.metrics }), JSON.stringify(stress),
+        JSON.stringify(criteria), JSON.stringify(verdict.reasons),
+      ],
+    );
+    await mark("completed", verdict.outcome, runId);
+
+    // --- THE read. Printed once, after everything is durably recorded. ---
+    console.log("═".repeat(72));
+    console.log(`[verdict] ${verdict.outcome} — run ${runId}`);
+    console.log("═".repeat(72));
+    console.log(`holdout   ${VIRGIN_HOLDOUT.fromUtc} → ${VIRGIN_HOLDOUT.toUtc} (${candles.length} candles)`);
+    console.log(`hashes    commit=${commitHash.slice(0, 12)} dataset=${datasetHash.slice(0, 12)} candidate=${candidateHash.slice(0, 12)} costs=${costProfileHash.slice(0, 12)}`);
+    console.log(`gross     n=${gross.tradeCount} win=${gross.winRate}% exp=${gross.expectancyR}R cum=${gross.cumulativeR}R maxConsecLoss=${gross.maxConsecutiveLosses}`);
+    console.log(`net       n=${verdict.metrics.n} exp=${verdict.metrics.netExpectancyR}R cum=${verdict.metrics.netCumulativeR}R ` +
+      `BUY n=${verdict.metrics.buyN}/${verdict.metrics.buyExpectancyR}R SELL n=${verdict.metrics.sellN}/${verdict.metrics.sellExpectancyR}R`);
+    console.log(`bootstrap [${verdict.metrics.bootstrapLower}R, ${verdict.metrics.bootstrapUpper}R] width=${verdict.metrics.bootstrapWidth}R`);
+    console.log(`month     max share=${verdict.metrics.maxMonthShare === null ? "n/a" : `${Math.round(verdict.metrics.maxMonthShare * 100)}% (${verdict.metrics.maxMonth})`}`);
+    console.log(`stress    exp=${stress.netExpectancyR}R cum=${stress.netCumulativeR}R (informative only — never modifies the candidate)`);
+    console.log(`reasons   ${verdict.reasons.join(" · ")}`);
+    console.log("═".repeat(72));
+    console.log("[verdict] recorded immutably in holdout_verdicts — this holdout is now consumed.");
+  } catch (err) {
+    await mark("aborted_technical", String((err as Error)?.message ?? err));
+    console.error("[verdict] technical failure before the verdict row was written — no metrics were revealed; an audited retry is permitted.");
+    throw err;
+  }
+}
+
 async function main(): Promise<void> {
   const args = parseArgs();
   const client = new Client({ connectionString: CONNECTION });
   await client.connect();
+
+  if (args.verdictHoldout) {
+    try {
+      await runVerdictHoldout(client);
+    } finally {
+      await client.end();
+    }
+    return;
+  }
 
   const filters: string[] = [];
   const params: unknown[] = [args.symbol, args.timeframe];
@@ -169,7 +494,7 @@ async function main(): Promise<void> {
      ORDER BY open_time ASC`,
     params,
   );
-  const candles: Candle[] = rows.map((r) => ({
+  const loaded: Candle[] = rows.map((r) => ({
     symbol: r.symbol,
     timeframe: r.timeframe,
     openTime: new Date(r.openTime).toISOString(),
@@ -180,6 +505,17 @@ async function main(): Promise<void> {
     volume: Number(r.volume),
     closed: r.closed,
   }));
+  // VIRGIN HOLDOUT LOCK (Phase 13): ordinary runs can never see holdout
+  // candles — exploration is impossible by construction, not by discipline.
+  // The one-shot --verdict-holdout mode is the only reader.
+  const { kept: candles, removed } = clipHoldout(loaded);
+  if (removed > 0 && candles.length === 0) {
+    console.error(`[backtest] REFUSED: the requested range lies entirely inside the virgin holdout (${VIRGIN_HOLDOUT.fromUtc} → ${VIRGIN_HOLDOUT.toUtc}). Only --verdict-holdout may read it, once.`);
+    process.exit(1);
+  }
+  if (removed > 0) {
+    console.warn(`[backtest] ⚠ HOLDOUT LOCK: ${removed} candles inside the virgin holdout were clipped from this run.`);
+  }
   if (candles.length < WINDOW + args.maxBars) {
     console.error(`[backtest] not enough candles (${candles.length}); import history first`);
     process.exit(1);
