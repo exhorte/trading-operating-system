@@ -72,18 +72,17 @@ Phase 12 - Backtest Diagnostics & Strategy Refinement: **Part A (tooling) delive
 
 **Pre-run fixes delivered 2026-07-18**: (1) `/backtests` OOS leak closed — `BacktestRepository` recomputes every displayed aggregate in SQL over non-OOS trades (formulas mirror `metrics.ts`, validated value-for-value against the live DB on both Phase-12 runs) and excludes OOS rows from the trade list (individual R multiples are summable); UI shows a 🔒 lock note via `oosTradeCount`; legacy split-less runs count fully (pre-discipline, already read). (2) `evaluateTrigger` now returns `{ signal, setup }` — the EXACT setup traded (fvgLow/High/Size, fvgAgeBars, shiftAgeBars, retestDepthPercent, atr, stopBuffer) recorded as additive feature keys with 3 new report dimensions (`setupFvgSize`/`setupFvgAge`/`setupRetestDepth`); the generic `fvgInside` measures a different notion (entry inside ANY aligned gap — the trigger's confirmation close usually sits outside the gap it retested, hence 3/496). (3) Timeouts documented in `backtest_mvp.md`: no-touch within `--max-bars` → exit at last horizon bar's close; excluded from winRate/avgR, included in expectancy/cumulative; negative timeouts count in loss streaks; iteration 1 has 17% timeouts at +0.4R avg so the win rate understates the arm — a measurement artifact, not a strategy exit.
 
+**Iteration 2 closed 2026-07-18 (run `bt-mrpq4try-b20fc81b`, user-validated)**: the pre-registered invariant test passed **exactly** — train n=270 / +0.23R / +62.04R, validation n=76 / +0.21R / +16.08R, bit-identical to iteration 1's NY AM buckets. Validates the session filter, runner determinism, and no hidden London interaction. Not carried by timeouts alone (validation ≈ +9R decided-only). **⚠ Post-hoc**: NY AM was selected from iteration 1's segmentation and this run reproduces that subset — **not an independent validation; the old train/validation is consumed as development data.**
+
+**Candidate FROZEN 2026-07-18** (`CANDIDATE_CONFIG_2026_07_18` in `lib/strategy/config.ts`, locked by unit test): strategy=trigger, sessions=["new_york_am"], 2R target, middle confirmation, structural stop + 0.5 ATR (floor 1 tick), age caps 12, ATR 14, Risk Engine untouched. **No further filters.** Any change = a new candidate. Standing rules (workflow rule 7): no new filters mined from the consumed dataset; **old OOS never unlocked**; no paper trading before the Phase 13 virgin-holdout verdict AND net-of-costs metrics.
+
 ## Next Up
 
-**Iteration 2 — trigger restricted to New York AM** (`project/phases/phase-12-iteration-2-design.md`, user-specified). One question: the effect of excluding London. `TriggerConfig.allowedSessions` (strategy layer — the Risk Engine's session gate is untouched), runner `--sessions new_york_am`. **Nothing else moves**: no score filter, no Risk Engine change, 2R target, middle confirmation, same stop, no BUY/SELL filter, OOS locked.
+**Phase 13 — Execution Realism & Virgin Holdout: design written, awaiting user validation** (`project/phases/phase-13-execution-realism-design.md`). No code yet.
 
-```powershell
-npx tsx scripts/backtest.ts --symbol XAUUSDm --timeframe M15 --strategy trigger --sessions new_york_am
-npx tsx scripts/backtest-report.ts <runId>
-```
-
-**Pre-registered prediction**: the trigger is stateless and trades are simulated independently, so iteration 2 must be **bit-identical to the `session=new_york_am` buckets of `bt-mrp973lv-965814cc`** (train n=270 / +0.23R; validation n=76 / +0.21R). Match → the run is the auditable record and the discussion moves to "is +0.21R at n=76 enough, costs still unmodeled". Deviation → a pipeline defect to fix, not a result to interpret. The mechanical story (setups form on Asia liquidity/London displacement, resolve in NY AM) is plausible but post-hoc out of ~15 dimensions — only the campaign-end read on a **fresh holdout** (current OOS is compromised by the leak) settles it.
-
-Discipline unchanged: one hypothesis per iteration, train then validation, OOS locked, costs and paper trading gated on an improved raw R distribution.
+- **Virgin holdout declared**: anterior window **2024-06-01 → 2025-06-06** (never imported, so never consulted); forward holdout (post-2026-07-14) accumulates as complement. Tooling lock: the runner clips holdout candles out by default; a single `--verdict-holdout` mode runs exactly the frozen candidate, once. Regime caveat (gold bull 2024-25) recorded a priori.
+- **Cost model, conservative and separate**: post-processing `costR = (spread + 2×slippage + commission/contractSize) / riskDistance`, `netR = grossR − costR`; outcome simulation untouched so gross stays cross-run comparable. Proposed params (fixed before the run): spread 0.20 (to calibrate against stored live ticks, worse of the two), slippage 0.05/leg, commission per the user's account type. Schema += `cost_r`/`net_r_multiple`; report + `/backtests` show gross AND net.
+- **To fix with the user at validation**: the pass bar (proposal: net expectancy > 0, n ≥ 100, neither side catastrophic), cost parameters, then implement → import anterior history → the one verdict run.
 
 ## Decisions Already Made
 

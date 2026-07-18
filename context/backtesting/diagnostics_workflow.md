@@ -32,6 +32,15 @@ overfitting. Decision record: ADR 0013.
 5. **One hypothesis per iteration**, recorded in the brain (what/why/expected
    effect), then measured. Keep the run ids; runs are cheap, amnesia is not.
 6. Costs and paper trading stay out until the RAW R distribution improves.
+7. **The 2025-06→2026-07 dataset is CONSUMED as development data**
+   (fixed 2026-07-18, after iteration 2). NY AM was selected post-hoc from its
+   segmentation, so: **no new filters may be mined from this train/validation**;
+   the old OOS (2026-04-25→07-14) is **never unlocked** (compromised by the
+   display leak, adjacent to consumed data); the frozen candidate
+   (`CANDIDATE_CONFIG_2026_07_18`) faces exactly one remaining verdict — the
+   Phase 13 **virgin holdout**, with **net-of-costs** metrics. No paper trading
+   before both. Reading any holdout number before the single verdict run
+   consumes the holdout too — same law as rule 2.
 
 ## Commands
 

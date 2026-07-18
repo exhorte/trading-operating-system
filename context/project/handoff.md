@@ -2,6 +2,22 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-18 (2) - Iteration 2 validated bit-identical; candidate frozen; Phase 13 designed
+
+**Iteration 2 closed** (run `bt-mrpq4try-b20fc81b`, verified in the report): the pre-registered invariant held **exactly** — train n=270/+0.23R/+62.04R, validation n=76/+0.21R/+16.08R, bit-for-bit the NY AM buckets of iteration 1. That simultaneously confirms the session filter, the runner's determinism, and the absence of hidden coupling with the removed London trades. Validation timeouts contribute +7.08R of the +16.08R, so the decided-only result stays ≈ +9R — not a timeout artifact. 0 rejections (NY AM is risk-gate-enabled; the strategy filter and risk gate no longer overlap).
+
+**The user's framing is the load-bearing part**: this run is NOT an independent validation. NY AM came out of iteration 1's own segmentation; the run deliberately reproduces that subset. The old train/validation is now **consumed as development data**. Recorded as workflow rule 7: no new filters mined from the consumed dataset, **old OOS never unlocked** (leak-compromised), and the frozen candidate faces exactly one remaining verdict — a virgin holdout plus net-of-costs metrics. No paper trading before both.
+
+**Candidate frozen in code**: `CANDIDATE_CONFIG_2026_07_18` (lib/strategy/config.ts) — spelled out literally, deliberately NOT spread from `DEFAULT_TRIGGER_CONFIG` so default drift can't silently move it; a unit test locks every value; editing it = creating a new candidate.
+
+**Phase 13 designed, awaiting validation** (`phase-13-execution-realism-design.md`), design only — no code:
+
+- Virgin holdout: anterior **2024-06-01 → 2025-06-06** (never imported → provably unconsulted; declaring the boundary leaks nothing); forward holdout accumulates as complement; old OOS retired. Tooling lock applies the leak lessons BEFORE the data exists: default runs clip holdout candles out (exploration impossible by construction); `--verdict-holdout` runs exactly the frozen candidate and rejects every override flag; one read, ever. Regime caveat (2024-25 gold bull favors a bias-following long) recorded a priori with the mitigation: read BUY/SELL separately, trust the forward holdout more.
+- Costs: separate post-processing layer (`costs.ts` pure) — outcome simulation untouched so gross numbers stay comparable across all runs; `costR = (spread + 2×slippage + commission/contractSize)/riskDistance`, volume cancels; conservative asymmetries (no favorable slippage on TP); timeout exits pay full round trip. Proposed: spread 0.20 calibrated against stored live ticks (take the WORSE), slippage 0.05/leg, commission per the user's Exness account type. Parameters freeze before the verdict run. Schema += `cost_r`/`net_r_multiple` (additive); report + `/backtests` gross AND net.
+- **To fix with the user before implementation**: the pass bar (proposal: net expectancy > 0 at n ≥ 100, neither side catastrophically negative) and the cost parameters. The pass bar must be fixed BEFORE the read or it will be negotiated after it.
+
+Gates: 91 Vitest (frozen-candidate lock test added), tsc exit 0, lint clean. Committed as the Phase 12 closure commit (see changelog). Next session: user validates the Phase 13 design (holdout window, cost params, pass bar) → implement → import anterior history → the single verdict run.
+
 ## 2026-07-18 - Iteration 1 committed; /backtests lock; setup metadata; timeouts doc; iteration 2 ready
 
 **Iteration 1 verified and committed (`6203da8`)** after the user's run `bt-mrp973lv-965814cc`: every claimed number checks out against the report. The trigger did exactly what it was built to do — 1–2-bar trades collapse (train 42%→16% of trades, validation 76%→15%), validation cum −23R → −3.67R at n=131 (powered), both-touch 23→0. Verdict (user): audited and promising, **not** promoted to paper (validation still negative, no costs). The one finding passing all four rule-3 criteria is the session split: NY AM +0.23R/+0.21R vs London −0.22R/−0.36R, consistent train/validation with n ≥ 30 everywhere.

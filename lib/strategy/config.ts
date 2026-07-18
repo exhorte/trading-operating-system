@@ -52,3 +52,28 @@ export const DEFAULT_TRIGGER_CONFIG: TriggerConfig = {
   rewardMultiple: 2,
   confirmationClose: "middle",
 };
+
+/**
+ * FROZEN CANDIDATE — Phase 12 outcome, fixed 2026-07-18 (user decision).
+ *
+ * The configuration that produced runs bt-mrp973lv-965814cc (iteration 1,
+ * all sessions) and bt-mrpq4try-b20fc81b (iteration 2, NY AM: train n=270
+ * +0.23R, validation n=76 +0.21R — bit-identical invariant test).
+ *
+ * Deliberately spelled out literally, NOT spread from DEFAULT_TRIGGER_CONFIG:
+ * a drift of the default must never silently move the candidate. A unit test
+ * locks every value. Changing anything here is creating a NEW candidate, not
+ * editing this one. NY AM was selected post-hoc from iteration 1's report, so
+ * this candidate's only remaining verdict is the Phase 13 virgin holdout plus
+ * net-of-costs metrics — until then it is promising, NOT validated.
+ */
+export const CANDIDATE_CONFIG_2026_07_18: TriggerConfig = {
+  allowedSessions: ["new_york_am"],
+  maxShiftAgeBars: 12,
+  maxSetupAgeBars: 12,
+  atrPeriod: 14,
+  atrBufferMultiple: 0.5,
+  minStopTicks: 1,
+  rewardMultiple: 2,
+  confirmationClose: "middle",
+};

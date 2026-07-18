@@ -7,4 +7,9 @@
  */
 
 export { evaluateTrigger, type TriggerInput, type TriggerResult, type TriggerSetup } from "./trigger";
-export { DEFAULT_TRIGGER_CONFIG, type TriggerConfig, type ConfirmationClose } from "./config";
+export {
+  CANDIDATE_CONFIG_2026_07_18,
+  DEFAULT_TRIGGER_CONFIG,
+  type TriggerConfig,
+  type ConfirmationClose,
+} from "./config";

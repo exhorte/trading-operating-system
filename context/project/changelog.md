@@ -177,9 +177,21 @@ This file tracks meaningful changes to the project brain and architecture.
 
 - `phase-12-iteration-2-design.md`: trigger restricted to NY AM via `TriggerConfig.allowedSessions` (strategy layer; Risk Engine untouched); runner `--sessions new_york_am`. Nothing else moves. **Pre-registered**: result must be bit-identical to iteration 1's NY-AM buckets (stateless trigger, independent trades) — deviation = pipeline defect. Gates: 90 Vitest, tsc 0, lint clean, dotnet 0/0 + 20/20.
 
+### Changed - Iteration 2 closed: invariant test passed exactly; candidate frozen; dataset consumed
+
+- Run `bt-mrpq4try-b20fc81b`: train n=270/+0.23R/+62.04R, validation n=76/+0.21R/+16.08R — **bit-identical** to iteration 1's NY AM buckets, as pre-registered. Session filter, determinism, and no-hidden-coupling all confirmed. Decided-only validation ≈ +9R (not timeout-carried).
+- **⚠ Not an independent validation** (NY AM selected post-hoc from iteration 1's report): the old train/validation is consumed as development data. Workflow rule 7: no new filters from the consumed dataset; old OOS never unlocked; verdict = Phase 13 virgin holdout + net costs; no paper before both.
+- Candidate frozen: `CANDIDATE_CONFIG_2026_07_18` (literal, test-locked; editing = new candidate).
+
+### Added - Phase 13 design: Execution Realism & Virgin Holdout (awaiting validation)
+
+- Virgin holdout declared: anterior 2024-06-01 → 2025-06-06 (never imported = provably unconsulted) + forward holdout complement; tooling lock — default runs CLIP holdout candles; single `--verdict-holdout` mode, frozen candidate only, overrides rejected. Regime caveat recorded a priori.
+- Cost model: separate post-processing (`costR = (spread + 2×slippage + commission/contractSize)/riskDistance`), conservative constants fixed before the run (spread 0.20 ∨ tick-calibrated worse, slippage 0.05/leg), schema += `cost_r`/`net_r_multiple`, gross AND net displayed. Outcome simulation untouched → gross stays cross-run comparable.
+- To fix at validation: pass bar (proposal: net exp > 0, n ≥ 100, no catastrophic side) and cost params.
+
 ### Current Next Step
 
-Run iteration 2 (`npx tsx scripts/backtest.ts --strategy trigger --sessions new_york_am`), confirm the bit-identical prediction, record the run id. Campaign end: fresh holdout (current OOS compromised), then costs.
+User validates the Phase 13 design (holdout window, cost parameters, pass bar) → implement → import anterior history → the single verdict run. No exploration of the holdout, ever; old OOS stays locked forever.
 
 ## 2026-07-17
 

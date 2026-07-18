@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CANDIDATE_CONFIG_2026_07_18 } from "./config";
 import { evaluateTrigger, type TriggerInput } from "./trigger";
 import type { FairValueGap, MarketContextState, StructureShift } from "@/lib/domain/analysis";
 import type { Candle } from "@/lib/domain/market";
@@ -174,6 +175,24 @@ describe("evaluateTrigger — confirmation close modes", () => {
     const window = buildWindow({ low: 100.5, high: 103, open: 100.8, close: 102 }); // closes inside 100..103
     expect(evaluateTrigger(input(window, bullishContext(window), { config: { ...cfg(), confirmationClose: "strict" } }))).toBeNull();
     expect(evaluateTrigger(input(window, bullishContext(window), { config: { ...cfg(), confirmationClose: "middle" } }))).not.toBeNull();
+  });
+});
+
+describe("frozen candidate 2026-07-18", () => {
+  it("locks every value — changing one means creating a NEW candidate", () => {
+    // Runs bt-mrp973lv-965814cc / bt-mrpq4try-b20fc81b were produced by this
+    // exact configuration. If this test fails, someone edited the frozen
+    // candidate instead of declaring a new one — revert or rename.
+    expect(CANDIDATE_CONFIG_2026_07_18).toEqual({
+      allowedSessions: ["new_york_am"],
+      maxShiftAgeBars: 12,
+      maxSetupAgeBars: 12,
+      atrPeriod: 14,
+      atrBufferMultiple: 0.5,
+      minStopTicks: 1,
+      rewardMultiple: 2,
+      confirmationClose: "middle",
+    });
   });
 });
 

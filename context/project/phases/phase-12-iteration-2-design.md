@@ -1,6 +1,31 @@
 # Phase 12 Part B — Iteration 2: trigger restricted to New York AM
 
-Status: designed 2026-07-18 (user-specified hypothesis). Discipline: `context/backtesting/diagnostics_workflow.md`, ADR 0013.
+Status: **closed 2026-07-18** — run `bt-mrpq4try-b20fc81b` validated by the user. Discipline: `context/backtesting/diagnostics_workflow.md`, ADR 0013.
+
+## Result — the invariant test passed exactly
+
+- train: n=270, exp **+0.23R**, cum **+62.04R**;
+- validation: n=76, exp **+0.21R**, cum **+16.08R**;
+- **bit-identical to iteration 1's `session=new_york_am` buckets**, as pre-registered below. This validates the session filter, the runner's determinism, and the absence of hidden interaction with the removed London trades.
+- Reading: BUY/SELL and BOS/CHOCH stay broadly coherent; both-touch = 0 in validation; the result is not carried by timeouts alone (validation −7.08R of timeout drift still leaves ≈ +9R decided-only). 0 rejections — NY AM is a risk-gate-enabled session, so the strategy-layer filter and the risk gate no longer overlap.
+
+## ⚠ Post-hoc warning — this is NOT an independent validation
+
+NY AM was selected **from the previous report's segmentation**, and this run
+deliberately reproduces that same subset. The old validation split is therefore
+**consumed as development data** from this point on. Rules going forward
+(user-fixed): no new filters mined from the current train/validation; the old
+OOS stays locked forever (compromised by the leak, and now adjacent to consumed
+data); the only remaining verdict for this candidate is a **virgin holdout**
+(Phase 13) plus net-of-costs metrics. No paper trading before both.
+
+## Frozen candidate (2026-07-18)
+
+`CANDIDATE_CONFIG_2026_07_18` in `lib/strategy/config.ts` — strategy=trigger,
+sessions=["new_york_am"], target 2R, middle confirmation, structural stop +
+0.5 ATR buffer (floor 1 tick), shift/setup age 12 bars, ATR period 14. Risk
+Engine untouched. **No further filters.** Locked by a unit test; any change is
+a new candidate, not an edit.
 
 ## Experimental objective
 
