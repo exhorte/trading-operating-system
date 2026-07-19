@@ -2,6 +2,16 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## 2026-07-18 (4) - Pre-verdict tooling: spread calibration, swap inspection, exact-bounds import
+
+The user's second review validated the bounds and the bar **definitively** (CI width 0.40R, side rules n≥30, month rule on positive totals, FAIL precedence, 10k seeded bootstrap — frozen, may not change after the read) and asked to resolve both execution parameters properly instead of burning an attempt on the swap refusal. Delivered:
+
+- **`scripts/calibrate-spread.ts`** — NY AM (12:00–16:00 UTC) spread percentiles from stored ticks, per-session coverage table, **refuses to output under 3 distinct sessions** (target 5; verified behaviorally — current coverage is 0). Prints the literal finals per the user's formula: spreadBase = max(0.26, p95 NY AM), spreadStress = max(0.30, p99 NY AM), slippage 0.05/0.10 fixed. Output gets persisted into `costs.ts` with provenance, then committed. The 0.26 profile is explicitly marked INTERIM in `costs.ts` — the verdict must not run on it.
+- **`tools/mt5-observer/inspect_symbol.py`** — strictly read-only capture of swap_mode/swap_long/swap_short/swap_rollover3days/trade_contract_size/trade_tick_size/trade_tick_value + account/server/terminal provenance, written to a dated JSON. Normalization **respects swap_mode** (user requirement — raw values are NOT assumed USD/lot/night): POINTS → tick-value×point conversion; CURRENCY_DEPOSIT exact only on USD accounts; INTEREST_* → 360-day estimate flagged as such; CURRENCY_SYMBOL/MARGIN and unknown modes → `manual_required`. The user will separately confirm swap-free status in the Exness specs; then a SwapSpec (or swap-free) gets frozen into `costs.ts`.
+- **`import_history.py --from/--to`** — exact UTC bounds, `--to` exclusive, `[from, to)` filtered after fetch so the holdout dataset (and its sha256 in the verdict row) is reproducible bit-for-bit whenever the export runs. `--bars` mode kept for dev-style exports. py_compile OK.
+
+Remaining sequence (in the phase-13 doc as a checklist): user collects 3–5 NY AM tick sessions → calibrate → re-freeze costs → swap capture + specs confirmation → freeze SwapSpec/swap-free → import with exact bounds → gates + clean commit → **Claude presents the final pre-read summary (bounds, hashes, costs, criteria) → user approves → the single `--verdict-holdout` read**. Explicitly NOT launched before that.
+
 ## 2026-07-18 (3) - Phase 13 implemented: holdout lock, frozen costs, pre-registered verdict machinery
 
 Implemented the user's validated Phase 13 decisions end-to-end. **The verdict run is NOT launched** — their rule: review of hashes, bounds, cost profile, and pass bar first. Review checklist lives in `phase-13-execution-realism-design.md`.

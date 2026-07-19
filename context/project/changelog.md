@@ -197,9 +197,16 @@ This file tracks meaningful changes to the project brain and architecture.
 - Runner `--verdict-holdout`: isolated code path; rejects overrides; dirty-tree refusal; sha256 commit/dataset/candidate/cost-profile; single read via `holdout_verdicts` PRIMARY KEY; audited `holdout_attempts`; **swap invariant** — any 21:00/22:00 UTC crossing with swap unmodeled → refusal with zero metrics, holdout stays virgin.
 - Schema: `cost_r`, `net_r_multiple`, `holdout_verdicts`, `holdout_attempts` (idempotent, applied live). Gates: 116 Vitest, tsc 0, lint clean, dotnet 0/0 + 20/20; guards behaviorally verified.
 
+### Added - Pre-verdict tooling (user review round 2: bounds + bar validated definitively)
+
+- `scripts/calibrate-spread.ts`: NY AM spread p95/p99 from stored ticks, per-session coverage, refuses output under 3 distinct sessions (target 5; guard verified — coverage currently 0). Finals per the user's frozen formula: spreadBase = max(0.26, p95), spreadStress = max(0.30, p99).
+- `tools/mt5-observer/inspect_symbol.py`: read-only swap/spec capture (swap_mode/long/short/rollover3days/contract/tick size/value + provenance JSON), normalization mode-aware — never assumes raw swap values are USD/lot/night.
+- `import_history.py` += `--from/--to` exact UTC bounds (`--to` exclusive, [from,to) filtered) → reproducible holdout dataset + hash.
+- `costs.ts` profile marked INTERIM pending NY AM recalibration; bar rules frozen post-validation (width 0.40R, side n≥30, positive-total month rule, FAIL precedence, seeded 10k bootstrap).
+
 ### Current Next Step
 
-User review (bounds · cost profile 0.26 or NY AM recalibration · swap rates or accept refusal-on-crossing · bar operationalizations) → import anterior history → commit → the single `--verdict-holdout` run. Immutable verdict, whatever it says. No exploration of the holdout, ever; old OOS stays locked forever.
+User: collect 3–5 NY AM tick sessions → `calibrate-spread` → re-freeze costs → `inspect_symbol` + Exness specs (swap-free?) → freeze SwapSpec → import holdout with exact bounds → gates + commit → final pre-read summary (bounds/hashes/costs/criteria) → approval → the single `--verdict-holdout` read. Never before the summary approval.
 
 ## 2026-07-17
 

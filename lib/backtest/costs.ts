@@ -44,14 +44,23 @@ export interface CostProfile {
  * BEFORE the anterior import and the verdict run.
  *
  * spreadApplied = max(spreadFloor 0.20, observed p95) = 0.26. Calibration
- * caveat, surfaced for review: the stored ticks contain ZERO NY AM
- * observations — the only observed window is London 2026-07-12 09:26→10:20
- * UTC (n=3,158, spread constant 0.26 = p50 = p95 = p99). Using the 0.20 floor
- * when 0.26 was observed would be anti-conservative, so 0.26 is persisted.
- * Recalibrate ONLY by collecting real NY AM ticks BEFORE the verdict run.
+ * caveat: the stored ticks contain ZERO NY AM observations — the only
+ * observed window is London 2026-07-12 09:26→10:20 UTC (n=3,158, spread
+ * constant 0.26 = p50 = p95 = p99). Using the 0.20 floor when 0.26 was
+ * observed would be anti-conservative, so 0.26 is persisted.
  *
- * swap: null — Exness XAUUSDm swap rates were not provided. The verdict
- * refuses itself if any trade crosses the rollover while this is null.
+ * ⚠ RECALIBRATION PENDING (user decision 2026-07-18, second review): before
+ * the verdict, ≥3 (target 5) NY AM sessions of ticks will be collected and
+ * the FINAL profile re-frozen as spreadBase = max(0.26, p95 NY AM) and
+ * spreadStress = max(0.30, p99 NY AM) — run scripts/calibrate-spread.ts,
+ * persist its output literally here (with provenance), commit. Until then
+ * this profile is interim and the verdict must not run.
+ *
+ * swap: null — Exness XAUUSDm swap rates were not provided yet. Capture them
+ * with tools/mt5-observer/inspect_symbol.py (mode-aware normalization; never
+ * paste raw swap_long/short) + the user's swap-free confirmation from the
+ * contract specs, then freeze a SwapSpec here or keep null (the verdict
+ * refuses itself if any trade crosses the rollover while this is null).
  */
 export const FROZEN_COST_PROFILE_2026_07_18: CostProfile = {
   name: "xauusdm-standard-frozen-2026-07-18",

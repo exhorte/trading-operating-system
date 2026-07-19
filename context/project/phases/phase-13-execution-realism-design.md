@@ -45,13 +45,14 @@ before the holdout verdict AND net metrics.
    All guards behaviorally verified (override rejection, dirty-tree refusal,
    ordinary-path clip inert on dev data).
 
-## Review checklist before the verdict run (user)
+## Pre-verdict resolution plan (user review of 2026-07-18, second pass)
 
-- [ ] Bounds in `lib/backtest/holdout.ts` (2024-06-01 → 2025-06-06T13:30 excl.)
-- [ ] Cost profile 0.26/0.05/0 + provenance (or collect NY AM ticks and re-freeze)
-- [ ] Swap: provide Exness rates + rollover hour, or accept refusal-on-crossing
-- [ ] Bar operationalizations (width 0.40R, FAIL precedence, month rule)
-- [ ] Then: import anterior history → commit → `npx tsx scripts/backtest.ts --verdict-holdout`
+- [x] **Bounds validated**: 2024-06-01T00:00:00Z inclusive → 2025-06-06T13:30:00Z exclusive.
+- [x] **Bar validated definitively**: CI width cap 0.40R · side rules at n≥30 · month concentration on positive net totals only · FAIL-before-INCONCLUSIVE precedence · seeded 10k bootstrap. **These rules may not change after the read.**
+- [ ] **Spread recalibration** (user collects ≥3, target 5, NY AM sessions 12:00–16:00 UTC): final profile = spreadBase max(0.26, p95 NY AM) · spreadStress max(0.30, p99 NY AM) · slippage 0.05/0.10 per leg. Tooling: `scripts/calibrate-spread.ts` (per-session coverage table, REFUSES output under 3 sessions, prints the literal values + provenance to persist). Then re-freeze `costs.ts`, commit.
+- [ ] **Swap capture**: `tools/mt5-observer/inspect_symbol.py` (read-only) captures swap_mode/swap_long/swap_short/swap_rollover3days/contract/tick size/tick value + provenance (account, server, terminal build, UTC time), and normalizes to USD/lot/night **respecting swap_mode** — POINTS via tick-value conversion, CURRENCY_DEPOSIT only exact on USD accounts, INTEREST as flagged estimate, others marked manual. Never assumes raw values are USD/lot/night. The user additionally confirms swap-free status in the Exness contract specs. Then freeze a SwapSpec (or swap-free) into `costs.ts`.
+- [ ] **Holdout import with exact UTC bounds**: `import_history.py --from 2024-06-01T00:00:00Z --to 2025-06-06T13:30:00Z` (`--to` exclusive, filtered [from, to) after fetch) so the dataset and its hash are reproducible bit-for-bit regardless of export time.
+- [ ] **Final pre-read summary** (Claude presents: bounds, hashes, frozen costs, criteria) → user approves → the single `--verdict-holdout` read.
 
 ---
 
