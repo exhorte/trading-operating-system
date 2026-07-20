@@ -1,9 +1,10 @@
 # Session History
 
-A durable, human-readable log of the working session in which the Trading
+A durable, human-readable log of the working sessions in which the Trading
 Operating System went from "Phases 01–03 delivered, awaiting review" to a
-persisted, backtestable, diagnostics-driven end-to-end trading loop (Phases
-04–12). It complements `changelog.md` (chronological facts), `handoff.md`
+persisted, backtestable, diagnostics-driven end-to-end trading loop with a
+frozen strategy candidate awaiting its virgin-holdout verdict (Phases 04–13).
+It complements `changelog.md` (chronological facts), `handoff.md`
 (per-session narrative) and the per-phase files under `phases/`.
 
 > This file records what happened and why. For the authoritative current state,
@@ -28,9 +29,16 @@ persisted, backtestable, diagnostics-driven end-to-end trading loop (Phases
 | 09 | Closed; session-unique ids | `c16c033` | — |
 | 10 | Persistence (TimescaleDB, Dapper, hub-published signals) | `bc48110` | ✅ thousands persisted |
 | 10 | Closed; `/api/audit/recent` 200 after reader fix | `323d6e7` | ✅ |
-| 11 | Backtesting MVP (reuse live engines over stored candles) | `d7d9106` | user run pending |
+| 11 | Backtesting MVP (reuse live engines over stored candles) | `d7d9106` | ✅ first real run |
+| 11 | Closed: baseline honestly negative (−0.02R, no edge) | `1112e39` | ✅ user's run |
+| 12A | Diagnostics: features, 60/20/20 splits, locked OOS, 15-dim report | `b81c9ca` | ✅ bit-identical re-run |
+| 12B | De-confound stub, OOS lock hardening, iteration 1 entry trigger | `6203da8` | ✅ run `bt-mrp973lv` |
+| 12B | `/backtests` OOS lock, setup metadata, iteration 2 (NY AM) | `f8f4d9f` | ✅ run `bt-mrpq4try` |
+| 12 | Closed: invariant test bit-identical, candidate frozen | `9dbfb62` | ✅ |
+| 13 | Virgin-holdout lock, frozen cost profile, verdict machinery | `a537417` | guards verified |
+| 13 | Pre-verdict tooling: spread calibration, swap inspection, exact-bounds import | `963d1d0` | guards verified |
 
-Model note: the session ran mostly on Claude Fable 5, with a few segments on
+Model note: the sessions ran mostly on Claude Fable 5, with a few segments on
 Claude Opus 4.8.
 
 ## Chronological narrative
@@ -121,8 +129,71 @@ History import (read-only Python export → idempotent bulk upsert), pure tested
 `lib/backtest/{outcome,metrics}` (conservative both-touch rule, timeouts),
 `backtest_runs`/`backtest_trades` tables, `GET /api/backtests`, and a real
 Backtests page under a permanent **hypothesis banner** (engine v0.1, no costs —
-grades signal quality, never account performance). `d7d9106`. First real run is
-the user's pending step.
+grades signal quality, never account performance). `d7d9106`. The user's first
+real run (25,999 M15 candles, 3,209 signals, 1,261 trades) returned the honest
+answer: **win 32.31%, expectancy −0.02R — engine v0.1 has no edge**;
+near-random for a stub, no paper trading in that state. The negative number WAS
+the deliverable: the gate measured instead of hoping. Closed `1112e39`.
+
+### Phase 12 — Backtest Diagnostics & Strategy Refinement
+Part A (`b81c9ca`): frozen per-trade **feature capture**, rejection recording,
+chronological **60/20/20 train/validation/OOS splits**, and a 15-dimension
+segmented report with **OOS locked by tooling**. The enriched baseline
+reproduced Phase 11 **bit-identically** — the pipeline is deterministic.
+
+Part B opened with a hard lesson: the first findings were read off a
+**confounded stub** — counter-bias, stop distance and a score penalty all keyed
+off one counter, so three "effects" were one aliased cohort. Splits catch
+effects that don't generalize across time; they do NOT catch an aliased
+design. De-confounded (coprime knobs, undoctored score), and the user then
+caught an **OOS lock leak**: whole-period aggregates (report headline, runner
+console, later the `/backtests` page) silently included the locked OOS trades.
+The guard moved into pure tested code (`reportableTrades`/`summarize`), then
+into SQL for the page — "hide the section" is not "withhold the information".
+
+**Iteration 1** (`6203da8`): a real entry trigger (`lib/strategy`,
+`ict-fvg-retest-v1`) — bias → fresh aligned structure shift → fresh FVG formed
+after it → **first retest** → middle confirmation close → structural stop +
+0.5 Wilder-ATR buffer (new `lib/analysis/atr.ts`) → 2R unchanged. Stateless by
+construction (`fvgId` is a rolling-window index — any keyed state would
+corrupt). Run `bt-mrp973lv`: **1–2-bar losses collapse** (42%→16% of trades in
+train, 76%→15% in validation), validation −23R → −3.67R at n=131 — behavioral
+target hit, still negative, **not promoted**. Robust finding: the session
+split (NY AM +0.23R/+0.21R vs London −0.22R/−0.36R).
+
+**Iteration 2** (`f8f4d9f`): trigger restricted to NY AM, nothing else moved,
+with a **pre-registered prediction**: stateless trigger + independent trades ⇒
+the result must be bit-identical to iteration 1's NY-AM buckets. Run
+`bt-mrpq4try`: it was, exactly (train n=270/+0.23R/+62.04R, validation
+n=76/+0.21R/+16.08R) — validating the filter, the determinism, and the absence
+of hidden coupling in one shot. But NY AM was selected post-hoc from the same
+report, so the user ruled: **the dev dataset is consumed**, no further filter
+mining, old OOS never unlocked (leak-compromised), and the candidate —
+**frozen as `CANDIDATE_CONFIG_2026_07_18`**, test-locked — faces exactly one
+remaining verdict. Closed `9dbfb62`.
+
+### Phase 13 — Execution Realism & Virgin Holdout (in progress)
+Design validated by the user with exact bounds, then implemented (`a537417`):
+**virgin holdout** 2024-06-01T00:00Z → 2025-06-06T13:30Z *exclusive* (never
+imported — provably unconsulted; ordinary runs CLIP its candles by
+construction), **frozen conservative cost profile** (spread 0.26 persisted
+literally, slippage 0.05/leg, commission 0, `swap: null`; stress 0.30/0.10
+informative-only), and the **single-read verdict machinery**: pre-registered
+PASS/INCONCLUSIVE/FAIL bar (FAIL-first precedence, seeded 10k bootstrap →
+bit-reproducible), `--verdict-holdout` mode rejecting every override, dirty-tree
+refusal, sha256 hashes (commit/dataset/candidate/costs), single read enforced
+by a DB primary key, audited attempts, and a **swap invariant** that refuses
+the verdict with zero metrics computed if any trade crosses a 21:00/22:00 UTC
+rollover while swap is unmodeled — the holdout stays virgin on refusal.
+
+Second review (`963d1d0`): bounds and bar validated **definitively**; instead
+of burning an attempt on the swap refusal, pre-verdict tooling: NY AM spread
+calibration from stored ticks (coverage-guarded — refuses under 3 sessions),
+a read-only MT5 swap/spec inspector with **mode-aware normalization** (raw
+swap values are never assumed USD/lot/night), and `--from/--to` exact-UTC
+import bounds so the holdout dataset hash is reproducible bit-for-bit.
+Remaining: tick collection → re-freeze costs → swap freeze → import → final
+pre-read summary → user approval → **the one read**.
 
 ## Cross-cutting decisions
 - **Engine-first, backend-later**: pure domain engines in TS now, ported/mirrored
