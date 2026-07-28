@@ -40,8 +40,7 @@ export interface CostProfile {
 }
 
 /**
- * FROZEN COST PROFILE — fixed 2026-07-18 per the user's Phase 13 validation,
- * BEFORE the anterior import and the verdict run.
+ * FROZEN COST PROFILE — fixed 2026-07-18, swap frozen 2026-07-27.
  *
  * spreadApplied = max(spreadFloor 0.20, observed p95) = 0.26. Calibration
  * caveat: the stored ticks contain ZERO NY AM observations — the only
@@ -56,11 +55,11 @@ export interface CostProfile {
  * persist its output literally here (with provenance), commit. Until then
  * this profile is interim and the verdict must not run.
  *
- * swap: null — Exness XAUUSDm swap rates were not provided yet. Capture them
- * with tools/mt5-observer/inspect_symbol.py (mode-aware normalization; never
- * paste raw swap_long/short) + the user's swap-free confirmation from the
- * contract specs, then freeze a SwapSpec here or keep null (the verdict
- * refuses itself if any trade crosses the rollover while this is null).
+ * swap: captured 2026-07-27 via tools/mt5-observer/inspect_symbol.py on
+ * Exness-MT5Trial9 (Standard account, USD), mode POINTS, normalized to
+ * USD/lot/night. Account type confirmed STANDARD (not swap-free) by user.
+ * Triple-swap day = Wednesday (MQL5 day 3). Rollover hour verified by user:
+ * Exness server time = UTC+0 (2h behind local CEST) → server midnight = 00 UTC.
  */
 export const FROZEN_COST_PROFILE_2026_07_18: CostProfile = {
   name: "xauusdm-standard-frozen-2026-07-18",
@@ -68,24 +67,38 @@ export const FROZEN_COST_PROFILE_2026_07_18: CostProfile = {
   slippagePointsPerLeg: 0.05,
   commissionUsdPerLotPerSide: 0,
   contractSize: 100,
-  swap: null,
+  swap: {
+    rolloverHourUtc: 0,
+    longUsdPerLotPerNight: -48.28,
+    shortUsdPerLotPerNight: 0.0,
+    tripleSwapWeekdayUtc: 3,
+  },
   provenance:
     "spread = max(floor 0.20, p95 observed 0.26); observation = 3,158 stored live ticks, " +
     "single London window 2026-07-12 09:26-10:20 UTC, constant 0.26 (no NY AM ticks stored); " +
     "slippage 0.05/leg and commission 0 (Standard account) fixed by the user 2026-07-18; " +
-    "swap not modeled - verdict refuses on rollover crossings.",
+    "swap captured 2026-07-27: Exness Standard, XAUUSDm, POINTS mode, " +
+    "long -48.28 USD/lot/night, short 0.00 USD/lot/night, triple Wednesday, " +
+    "rollover 00 UTC (server UTC+0, verified); provenance file: tools/mt5-observer/swap_capture_XAUUSDm_2026-07-27.json.",
 };
 
-/** Informative stress scenario (user 2026-07-18). NEVER modifies the
- *  candidate or the verdict — reported alongside it. */
+/** Informative stress scenario (user 2026-07-18, swap 2026-07-27). NEVER modifies the
+ *  candidate or the verdict — reported alongside it.
+ *  Swap rates are contractual (not stressable), same as frozen. */
 export const STRESS_COST_PROFILE: CostProfile = {
   name: "xauusdm-stress-informative",
   spreadPoints: 0.3, // max(0.30, p99 observed 0.26)
   slippagePointsPerLeg: 0.1,
   commissionUsdPerLotPerSide: 0,
   contractSize: 100,
-  swap: null,
-  provenance: "stress: spread max(0.30, p99 0.26)=0.30, slippage 0.10/leg, commission 0.",
+  swap: {
+    rolloverHourUtc: 0,
+    longUsdPerLotPerNight: -48.28,
+    shortUsdPerLotPerNight: 0.0,
+    tripleSwapWeekdayUtc: 3,
+  },
+  provenance: "stress: spread max(0.30, p99 0.26)=0.30, slippage 0.10/leg, commission 0; " +
+    "swap same as frozen (contractual rate, not stressable).",
 };
 
 /** Adverse round-trip cost in R for a trade with the given risk distance.

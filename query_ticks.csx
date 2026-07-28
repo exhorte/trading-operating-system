@@ -1,0 +1,13 @@
+using Npgsql;
+var connStr = "Host=localhost;Port=5433;Database=tradingos;Username=tradingos;Password=tradingos_dev";
+using var conn = new NpgsqlConnection(connStr);
+conn.Open();
+using var cmd = conn.CreateCommand();
+cmd.CommandText = "SELECT count(*) FROM ticks WHERE symbol='@s' AND ts::time >= '12:00' AND ts::time < '16:00';";
+cmd.Parameters.AddWithValue("s", "XAUUSDm");
+var count = cmd.ExecuteScalar();
+cmd.CommandText = "SELECT max(ts) FROM ticks WHERE symbol='@s';";
+cmd.Parameters.AddWithValue("s", "XAUUSDm");
+var last = cmd.ExecuteScalar();
+Console.WriteLine($"NY_AM_FINAL={count}");
+Console.WriteLine($"LAST_TICK={last}");

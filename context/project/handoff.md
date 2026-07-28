@@ -2,6 +2,72 @@
 
 For concise chronological change tracking, also read `project/changelog.md`.
 
+## SESSION: `ny-am-tick-collection` (2026-07-27)
+
+**Status:** In progress — 2/3 NY AM sessions collected (Tue session in progress until 16:00 UTC). Resume me with: *"reprends la session ny-am-tick-collection"*
+
+### What this session is
+
+Collecting ≥3 NY AM (12:00–16:00 UTC) tick sessions from the live Exness demo to
+re-calibrate the spread for the Phase 13 virgin-holdout verdict. After ≥3
+sessions: `npx tsx scripts/calibrate-spread.ts` → freeze spread in
+`lib/backtest/costs.ts` → final pre-read summary → user approval → the single
+`--verdict-holdout` read.
+
+### Current state
+
+| Item | Value |
+|---|---|
+| Sessions collected | **2 of 3 minimum** (Mon 27 + Tue 28, both complete) |
+| Ticks (session 1) | 14,044 (Mon, 12:00:00 → 15:59:59 UTC, 0 drops) |
+| Ticks (session 2) | 14,146 (Tue, 12:00:00 → 15:59:59 UTC, 0 drops, 1 stall redémarré) |
+| Backend | Running detached (`dangerouslyDisableSandbox` + `&`) |
+| Observer | Running detached, ws://localhost:8765 |
+| TimescaleDB | Docker `tradingos-timescaledb`, port 5433, healthy |
+| MT5 account | 436634705 (Exness demo, XAUUSDm) |
+| Next session | Wed 2026-07-29, 12:00 UTC (cron: 11:57 UTC) → objectif 3ᵉ session |
+
+### How to resume
+
+1. **Verify Docker:** `docker ps` (if down: `docker start tradingos-timescaledb`)
+2. **Verify backend + observer** are still alive:
+   - `curl http://localhost:5080/health` (expect: `status: ok, db: ok`)
+   - If down, relaunch with `dangerouslyDisableSandbox` + `&`:
+     ```bash
+     dotnet run --project backend/src/TradingOs.Host &
+     python tools/mt5-observer/mt5_observer.py --symbol XAUUSDm &
+     ```
+3. **Check tick count** for any new sessions:
+   ```sql
+   SELECT ts::date, count(*) FROM ticks
+   WHERE symbol='XAUUSDm' AND ts::time >= '12:00' AND ts::time < '16:00'
+   GROUP BY ts::date ORDER BY ts::date;
+   ```
+4. **When ≥3 sessions:** `npx tsx scripts/calibrate-spread.ts`
+
+### Remaining sessions (reminders programmed)
+
+- ~~Tue 2026-07-28~~ (en cours, cron 16:05 UTC pour le bilan)
+- Wed 2026-07-29 (cron 11:57 UTC)
+- Thu 2026-07-30 (à programmer si nécessaire)
+- Fri 2026-07-31 (à programmer si nécessaire)
+
+### Incidents
+
+**2026-07-28 14:03 UTC — Observer stall.** Le flux de ticks s'est arrêté à 14:03
+(alors que le processus Python tournait encore, PID 60720). Cause probable : le
+terminal MT5 a pu être fermé/déconnecté, ou `symbol_info_tick` a cessé de
+retourner des données. Redémarrage de l'observer à 14:04, ticks repris
+immédiatement. Le backend a conservé la connexion WS et n'a pas perdu de données
+(les ticks manquants sont un trou d'~1 minute côté MT5, pas côté infrastructure).
+
+### Harness lesson (critical for relaunch)
+
+Background tasks (`run_in_background`) are killed after ≤10 min. Always use
+`dangerouslyDisableSandbox: true` + bash `&` to detach long-running processes.
+
+---
+
 ## 2026-07-18 (4) - Pre-verdict tooling: spread calibration, swap inspection, exact-bounds import
 
 The user's second review validated the bounds and the bar **definitively** (CI width 0.40R, side rules n≥30, month rule on positive totals, FAIL precedence, 10k seeded bootstrap — frozen, may not change after the read) and asked to resolve both execution parameters properly instead of burning an attempt on the swap refusal. Delivered:
