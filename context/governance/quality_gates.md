@@ -1,43 +1,48 @@
 # Quality Gates
 
-## Before Product Code Changes
+Version 2 — 2026-09-04. Les gates de backtesting ont disparu avec la recherche d'edge (ADR 0002).
 
-- Relevant context files are read.
-- Existing structure is inspected.
-- Impact is understood.
-- For large work, a technical design exists.
+## Avant de modifier du code produit
 
-## Before Merge Or Phase Completion
+- Les fiches et documents de contexte pertinents sont lus.
+- Le code d'ancrage existant est inspecté — pas supposé.
+- L'impact est compris.
 
-- Lint passes.
-- Build passes when applicable.
-- New domain logic has tests or documented test gap.
-- Risk-related behavior is explicitly reviewed.
-- Project memory is updated.
+## Avant de clore un outil
 
-## Trading-Specific Gates
+```bash
+npm run lint          # ESLint
+npx tsc --noEmit      # typage, doit sortir 0
+npm test              # Vitest
+npm run build         # compilation Next.js
+cd backend && dotnet build && dotnet test   # C#
+python -m py_compile tools/mt5-observer/*.py
+```
 
-No live execution feature is acceptable unless:
+- Toutes vertes, sans exception tolérée en silence.
+- La nouvelle logique de domaine a des tests, ou l'absence de test est écrite dans la fiche.
+- Tout comportement lié au risque est relu explicitement.
+- Le critère de réussite de la fiche est atteint, ou la fiche reste ouverte.
 
-- commands are auditable
-- commands are sent through the approved realtime execution path
-- commands are idempotent and acknowledged
-- failures are reported
-- duplicate commands are handled
-- risk lockouts are enforced
-- emergency stop path exists
-- backtest/simulation path exists
-- reconnect/resync behavior is specified
+## Gates spécifiques au trading
 
-## Realtime Gates
+Aucune fonctionnalité touchant à l'exécution n'est acceptable si elle ne remplit pas toutes ces conditions :
 
-Any WebSocket/SignalR feature must define:
+- les commandes sont auditables ;
+- elles passent par le chemin temps réel approuvé `RiskDecision → Command → ACK → Report` ;
+- elles sont idempotentes et acquittées ;
+- les échecs sont rapportés ;
+- les doublons sont gérés ;
+- les verrous de risque sont appliqués côté moteur, pas côté interface ;
+- un arrêt d'urgence existe ;
+- le comportement de reconnexion et de resynchronisation est spécifié.
 
-- connection states
-- authentication/authorization assumptions
-- subscription scope
-- event envelope
-- reconnect behavior
-- stale data behavior
-- snapshot resync behavior
-- observability fields
+**Rappel** : aucun appel de trade n'existe nulle part dans ce dépôt. Le mode `observe` / SIMULATED est le seul chemin implémenté. Passer en mode live est une décision d'ADR, pas un changement de configuration.
+
+## Gates temps réel
+
+Toute fonctionnalité WebSocket/SignalR doit définir : états de connexion, hypothèses d'authentification, portée d'abonnement, enveloppe d'événement, reconnexion, comportement en donnée périmée, resynchronisation par snapshot, champs d'observabilité.
+
+## Gate IA
+
+Tout composant IA doit démontrer qu'il est en lecture (ADR 0005) : il ne produit ni signal, ni pondération de décision, ni modification de paramètre de risque. Un serveur MCP exposant ce projet est en lecture seule.

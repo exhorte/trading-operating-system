@@ -1,151 +1,79 @@
 # Roadmap
 
-Status legend: **Closed** · **Delivered (awaiting review)** · **Planned**.
-As of 2026-07-14: Phases 00–11 Closed (Phase 11 baseline: engine v0.1 has NO edge — 32.31% win rate, −0.02R expectancy over 1,261 trades); Phase 12 (Backtest Diagnostics & Strategy Refinement) is the active next phase. Cost modeling and paper trading stay explicitly gated on an improved raw R distribution. Note: phases were inserted ahead of the original plan (Live Observe Prototype as 05, Signal → Risk Review as 07, Backend Bootstrap as 08), shifting Execution Bridge and Backtesting down.
+Version 2 — 2026-09-04. L'unité de travail est **l'outil**, groupé en **vagues**. Les phases numérotées de la série 1 n'existent plus (ADR 0006).
 
-## Phase 00 - AI Project Brain Bootstrap — Closed (2026-07-06)
+Effort en jours de travail effectif, à la louche. Valeur = impact quotidien réel, 1 à 5.
 
-Create `.claude/` and `context/` so Claude Code can work with durable project memory.
+## Vague 1 — rendre la plateforme utile tous les jours
 
-Deliverables:
+Aucun de ces cinq outils ne dépend du multi-compte. Ensemble, ils transforment le cockpit d'un projet de recherche en un poste de travail.
 
-- Claude operating instructions
-- project manifesto
-- system overview
-- domain summaries
-- EA analysis
-- roadmap and phase system
-- governance and quality gates
+| Outil | Fiche | Effort | Valeur | Dépend de |
+|---|---|---|---|---|
+| T01 — Calculateur de taille one-click | `product/tools/T01-calculateur-taille.md` | 0,5–1 j | 5 | — |
+| T02 — Lockout comportemental | `product/tools/T02-lockout.md` | 1–2 j | 5 | — |
+| T03 — Gate calendrier économique | `product/tools/T03-gate-news.md` | 1–2 j | 5 | — |
+| T04 — Ticket pré-trade | `product/tools/T04-ticket-pretrade.md` | 1 j | 5 | — |
+| T05 — Captures automatiques | `product/tools/T05-captures-auto.md` | 1–2 j | 4 | — |
 
-## Phase 01 - Frontend Foundation — Closed (2026-07-08)
+**Total : 5 à 8 jours.** Ordre conseillé : T01 → T04 → T02 → T03 → T05.
 
-Build the first dashboard shell in Next.js.
+**Critère de sortie de vague** : une séance complète tradée en n'utilisant que le cockpit pour dimensionner, armer et journaliser — zéro calculatrice MT5, zéro capture manuelle.
 
-Deliverables:
+## Vague 2 — fermer la boucle d'apprentissage
 
-- app shell
-- navigation
-- dashboard layout
-- empty/loading/error states
-- theme and UI conventions
-- mock trading data contracts
-- websocket client boundary and mock realtime event stream
+| Outil | Effort | Valeur | Dépend de |
+|---|---|---|---|
+| T06 — Journal auto-alimenté, zéro saisie | 3–5 j | 5 | T04, T05 |
+| T07 — Tracker d'erreurs et taux de conformité | 1–2 j | 5 | T06 |
+| T15 — Serveur MCP « mon trading » (lecture seule) | 1–2 j | 4 | T06 |
+| T08 — Revue hebdomadaire générée | 1–2 j | 4 | T06 |
 
-## Phase 02 - Domain Model MVP — Closed (2026-07-08)
+**Total : 6 à 11 jours.**
 
-Define platform contracts before real trading.
+**Critère de sortie** : le taux de conformité hebdomadaire est calculé automatiquement et affiché en haut du cockpit.
 
-Deliverables:
+## Vague 3 — poste de travail complet
 
-- account model
-- symbol model
-- candle/tick model
-- trade/order/position model
-- market context model
-- risk policy model
-- strategy signal model
-- realtime event envelope
-- command/ack/report contracts
+| Outil | Effort | Valeur | Dépend de |
+|---|---|---|---|
+| T09 — Checklist de pré-vol exécutable | 1–2 j | 4 | T03 |
+| T10 — Brief pré-séance automatique | 2–3 j | 4 | T03 |
+| T11 — Multi-compte natif | 1–2 sem | 3 | — |
+| T12 — Prop Firm Control Center | 1–2 sem | 5 | T11 |
+| T13 — Simulateur de règles pré-trade | 1–2 j | 4 | T12 |
+| T14 — Alertes en lecture seule | 1 j | 3 | T12 (partiel) |
 
-## Phase 03 - MT5 Agent Specification — Closed (2026-07-08)
+**Total : 3 à 5 semaines.** T11 a une valeur propre faible mais débloque T12, qui vaut 5.
 
-Transform the existing EA into a future execution-agent specification.
+**Déclencheur d'anticipation** : si un deuxième compte prop firm est ouvert avant la fin de la Vague 2, T11 et T12 remontent immédiatement en tête.
 
-Deliverables:
+## Vague 4 — intelligence de marché
 
-- EA capability map
-- message contracts
-- telemetry contracts
-- execution command contracts
-- websocket session lifecycle
-- reconciliation workflow
-- MQL5 refactor plan
+Le déterministe d'abord, l'IA ensuite, et l'IA uniquement en lecture (ADR 0005).
 
-## Phase 04 - ICT/SMC Engine MVP — Closed (2026-07-08)
+| Outil | Effort | Valeur | Dépend de |
+|---|---|---|---|
+| T16 — Corrélations glissantes XAUUSD / DXY / US10Y / EURUSD / BTC | 3–5 j | 3 | — |
+| T19 — AI Analyst RAG sur journal + news | 1–2 sem | 3 | T06, T15 |
 
-Implement a first analysis engine outside MT5, in pure TypeScript (`lib/analysis/`, ADR 0006).
+## Outils standalone
 
-Deliverables:
+Hors plateforme, construisibles isolément, sans dépendance à l'avancement des vagues.
 
-- price/candle intake
-- swing engine
-- market structure (BOS/CHOCH)
-- liquidity engine (equal highs/lows, PDH/PDL, swept)
-- FVG + order-block detector
-- session engine
-- bias + weighted scoring
-- market context output (`MarketContextState`) + read-model projection
+| Outil | Effort | Valeur |
+|---|---|---|
+| S1 — Dictée vocale horodatée (Vozel) | 1–2 j | 4 |
+| S2 — Rapport hebdo CLI depuis l'export MT5 | 1 j | 3 |
+| S3 — Watcher de conditions de marché | 0,5 j | 2 |
 
-Deferred to later phases: SMT/divergence, news/macro, premium-discount OTE, breaker/mitigation blocks, entry-sequence and trade-management engines (see `engineering/analysis_engine_mvp.md`).
+## Hors périmètre, volontairement
 
-## Phase 05 - Live Observe Prototype — Closed (2026-07-08, validated live)
+- Bot d'exécution autonome, générateur de signaux IA, copy-trading.
+- Nouvelle recherche d'edge, optimiseur de stratégie, backtester.
+- Scraper ForexFactory.
+- Dashboard de marché temps réel dupliquant MT5.
+- Migration vers Nautilus, Lean ou Jesse.
+- Multi-tenant, authentification tierce, distribution.
 
-Stream real MT5 demo data into the cockpit in read-only `observe` mode to validate the connection chain (ADR 0007).
-
-Deliverables:
-
-- Python `MetaTrader5` read-only producer (`tools/mt5-observer/`)
-- lean-wire WebSocket + browser `LiveRealtimeClient` + pure translation mappers
-- real M15 candles → Phase 04 ICT/SMC engine → Market Context
-- DEMO badge, opt-in via env (mock stays default)
-
-Prototype only: browser-side translation is a shortcut; the production path keeps the .NET gateway (ADR 0005) + MQL5 EA/sidecar (Phase 03).
-
-## Phase 06 - Risk And Prop Firm Mode — Closed (2026-07-10)
-
-Build risk controls as independent services (pure TS, engine-first pattern; makes the observed account's risk panel real). Engine in `lib/risk/` (ADR 0008): gates + `evaluateRiskState` + `evaluateSignalRisk` (not wired). Deferred: news calendar, trailing drawdown, profit-target lockout, Friday/Sunday blocks, cooldown, ATR gate, multi-symbol sizing.
-
-Deliverables:
-
-- daily loss guard
-- max drawdown guard
-- risk per trade
-- consecutive loss guard
-- target reached lockout
-- news/spread/volatility gates
-
-## Phase 07 - Signal → Risk Review — Closed (2026-07-10)
-
-Wire the real risk engine into the signal pipeline: the mock emits domain signals from the computed market context, `evaluateSignalRisk` rules on each, and the audit-grade `risk.decision.made` contract carries the verdict. Includes the `/signals` audit workspace and rotating mock scenarios (real rejections). Live signals out of scope; execution loop deferred.
-
-## Phase 08 - ASP.NET Core Backend Bootstrap — Closed (2026-07-11, validated live)
-
-Stand up the real backend: host, SignalR hub for the dashboard, WebSocket Gateway ingesting the lean MT5 wire (replaces the Phase 05 browser-side translation, ADR 0007), C# mirrors of domain/contract schemas (ADR 0004).
-
-Deliverables:
-
-- ASP.NET Core solution (modular monolith)
-- SignalR hub broadcasting `Envelope<T>` to the dashboard
-- WebSocket Gateway for the lean MT5 wire (mt5-wire)
-- C# domain/contract mirrors
-- dashboard SignalR client behind the RealtimeClient seam
-
-## Phase 09 - Execution Bridge — Closed (2026-07-11, observe/SIMULATED slice, validated live)
-
-Connect decisions to the MT5 agent in a controlled environment. This slice (ADR 0010): full command loop in observe mode — risk-gated command builder, hub mode guard, lean flatten, agent validation/dedup/ack, SIMULATED reports, store lifecycle, timeout + single idempotent retry. Deferred: modify/close/cancel, paper/live terminal actions (gated on persistence).
-
-## Phase 10 - Persistence — Closed (2026-07-12, validated live)
-
-PostgreSQL/TimescaleDB before any paper trading (user decision): commands, risk decisions, acks, reports, candles, ticks and the full JSONB envelope audit are written server-side (ADR 0011). Docker compose (port 5433), Dapper + idempotent schema.sql, never-blocking bounded-channel writer, hub-published signals (multi-tab consistent), `/api/audit/recent` read proof. Deferred: replay UI, DB-backed P&L, retention/compression, backups.
-
-## Phase 11 - Backtesting MVP — Closed (2026-07-14, baseline: no edge)
-
-The manifesto's "backtest before confidence" step (ADR 0012). A Node runner replays the SAME pure TS engines (ICT/SMC + risk + strategy stub) walk-forward over stored candles and grades signal quality.
-
-Deliverables:
-
-- historical M15 import (read-only Python export → JSONL → idempotent bulk upsert)
-- `lib/backtest` pure outcome + metrics (conservative both-touch, timeouts)
-- `scripts/backtest.ts` runner (300-bar window like live, engine version tagged)
-- `backtest_runs`/`backtest_trades` tables + `GET /api/backtests(/{id})`
-- Backtests page (runs, metrics, trades) under a permanent hypothesis banner
-
-Deferred to a later phase: cost modeling (spread/slippage/commissions from stored ticks), account-level simulation (daily lockouts, overlapping positions, equity curve), strategy comparison, replay UI, charts.
-
-## Phase 12 - Backtest Diagnostics & Strategy Refinement
-
-Identify precisely where the losses come from before modifying any rule: segmented analyses (side, session, day/month, bias, BOS/CHOCH, FVG/OB, score, liquidity type, planned RR, duration, timeout, both-touch, risk gates) with a train/validation/out-of-sample discipline against overfitting. Then data-driven refinement iterations measured by the backtester.
-
-## Phase 13+ - Costs, Simulation & Paper Trading (Planned, gated)
-
-Cost modeling (spread/slippage/commissions), account-level simulation (equity curve, lockouts, overlapping positions), replay UI, DB-backed P&L calendar, then the paper-trading track — all gated on an improved raw R distribution from Phase 12.
+Le raisonnement complet est dans `context/product/catalogue.md`, section « Ce que je ne recommande pas de construire ».

@@ -1,58 +1,44 @@
-# Project Brain
+# Cerveau du projet
 
-This directory is the durable project brain for the Trading Operating System Algorithmique.
+Ce répertoire est la mémoire durable du projet. Il existe pour qu'une session Claude Code — ou l'utilisateur trois mois plus tard — comprenne le projet sans avoir à relire le code.
 
-It exists so that Claude Code and future AI coding assistants can understand the project beyond a single chat session.
+**Langue** : les documents de projet, produit et gouvernance sont en français (écrits ou réécrits le 2026-09-04). Les spécifications techniques héritées — `realtime/`, `architecture/`, `backend/`, `engineering/`, `domain/`, `frontend/`, `security/`, `monitoring/` — sont en anglais et restent exactes. Elles n'ont pas été traduites : leur contenu n'a pas changé.
 
-## Reading Order
+## Ordre de lecture
 
-1. `project/development_manifesto.md`
-2. `project/project_state.md`
-3. `project/roadmap.md`
-4. Current phase in `project/phases/`
-5. Relevant architecture and domain files
-6. `realtime/` files for dashboard, backend, MT5, execution, risk, or market data flows
-7. Governance, standards, templates, and workflows as needed
+1. `project/charter.md` — ce que le projet est, ce qu'il n'est plus, ses principes.
+2. `project/state.md` — ce qui existe et fonctionne, ce qui bloque, la prochaine action.
+3. `adr/` — les sept décisions qui gouvernent. Courts, à lire en entier.
+4. `project/roadmap.md` — les vagues et les outils.
+5. `product/tools/Tnn-*.md` — la fiche de l'outil en cours.
+6. Le reste selon le sujet touché.
 
-## Directory Map
+## Carte du répertoire
 
-- `project/` - vision, manifesto, roadmap, phases, memory, handoff.
-- `agents/` - specialist Claude role definitions for architecture, trading, risk, frontend, MT5, and QA.
-- `architecture/` - system design, bounded contexts, data flows.
-- `domain/` - trading, ICT/SMC, EA analysis, FTMO/risk knowledge.
-- `engineering/` - stack, standards, testing strategy.
-- `governance/` - quality gates and decision process.
-- `knowledge/` - source note index and long-term research memory.
-- `frontend/` - dashboard cockpit planning.
-- `backend/` - future server/platform planning.
-- `realtime/` - WebSocket-first architecture, event contracts, dashboard subscriptions, MT5 lifecycle.
-- `infrastructure/` - deployment and local infrastructure planning.
-- `backtesting/` - historical validation strategy.
-- `monitoring/` - observability and audit requirements.
-- `security/` - secrets, execution safety, and access control.
-- `ai/` - future AI-assisted optimization scope.
-- `workflows/` - repeatable development process.
-- `prompts/` - reusable prompts for Claude Code.
-- `templates/` - reusable document templates.
-- `adr/` - architecture decision records.
+| Dossier | Contenu |
+|---|---|
+| `project/` | Charte, état, roadmap, journal du pivot. |
+| `product/` | Catalogue d'outils, backlog, fiches d'outil. **L'unité de travail du projet.** |
+| `adr/` | Décisions d'architecture, série 2. |
+| `architecture/` | Vue d'ensemble du système, contextes bornés. |
+| `domain/` | Ontologie du trading, framework ICT/SMC, modèle de domaine, risque FTMO. |
+| `engineering/` | Stack, standards, stratégie de test, moteurs d'analyse et de risque. |
+| `realtime/` | Architecture WebSocket-first, contrats d'événements, protocole wire MT5, cycle de vie de l'observer. |
+| `backend/` | Bootstrap .NET, plan backend, persistance. |
+| `frontend/` | Spécification d'interface du cockpit, analyse des références visuelles. |
+| `infrastructure/` | **`runbook.md`** — démarrage de l'environnement. Plan d'infrastructure. |
+| `governance/` | Quality gates, processus de décision. |
+| `workflows/` | Cycle de développement d'un outil. |
+| `security/` | Secrets, sûreté d'exécution, contrôle d'accès. |
+| `monitoring/` | Observabilité et audit. |
+| `ai/` | Périmètre de l'IA — formalisé en ADR 0005. |
+| `templates/` | Modèles réutilisables et références visuelles. |
+| `knowledge/` | Vide depuis le pivot. |
 
-## History Files
+## Ce qui n'existe plus
 
-Use these files to understand project evolution:
+`project/phases/`, `agents/`, `backtesting/`, `prompts/`, l'ancienne série d'ADR 0001–0013, `changelog.md`, `session-history.md`, `handoff.md`, `memory.md`, `project_state.md`, `development_manifesto.md`.
 
-- `project/changelog.md` - chronological list of important changes.
-- `project/handoff.md` - narrative handoff between sessions.
-- `project/memory.md` - durable facts and recent project memory.
-- `project/project_state.md` - current state, next phase, decisions, open questions.
+Supprimés le 2026-09-04 avec la recherche d'edge. Tout reste lisible au tag **`archive/pre-pivot-2026-09-04`**. Le détail et les raisons sont dans `project/pivot-2026-09-04.md`.
 
-## Project Source Material
-
-The original notes live in `../NOTES/`.
-
-Those files define the founding intent:
-
-- Build a platform, not only an EA.
-- Use the EA as an execution connector and knowledge source.
-- Create a server-side ICT/SMC framework.
-- Keep risk management and prop firm constraints central.
-- Build a dashboard cockpit with explainable signals, risk, trades, and analytics.
+La gouvernance par phases numérotées est remplacée par une gouvernance par outils et vagues (ADR 0006).
