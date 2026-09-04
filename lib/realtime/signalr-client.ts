@@ -342,7 +342,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
   // --- Phase 09: Signal → RiskDecision → ExecutionCommand (observe loop) ---
   // Transitional: the strategy stub + risk review run in the browser on REAL
   // context/risk (engine port to the backend is a later phase, ADR 0010).
-  // Business logic lives in lib/strategy-stub, lib/risk, lib/execution.
+  // Business logic lives in lib/risk and lib/execution.
 
   private startSignalLoop(): void {
     if (this.signalTimer) {

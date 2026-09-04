@@ -19,7 +19,6 @@ builder.Services.AddSingleton<GatewayState>();
 builder.Services.AddSingleton(sp => new Mt5ObserverClient(sp.GetRequiredService<GatewayState>(), observerUrl));
 builder.Services.AddSingleton(new PersistenceWriter(connectionString));
 builder.Services.AddSingleton(new AuditRepository(connectionString));
-builder.Services.AddSingleton(new BacktestRepository(connectionString));
 builder.Services.AddHostedService<GatewayBridgeService>();
 
 var app = builder.Build();
@@ -52,31 +51,6 @@ app.MapGet("/api/audit/recent", async (
         // Log the real exception and surface its message — a bare 503 hid a
         // Dapper mapping bug (DateTimeOffset vs DateTime) on 2026-07-12.
         logger.LogError(ex, "/api/audit/recent failed");
-        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
-    }
-});
-app.MapGet("/api/backtests", async (BacktestRepository backtests, ILogger<Program> logger, CancellationToken ct) =>
-{
-    try
-    {
-        return Results.Ok(await backtests.RunsAsync(ct));
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "/api/backtests failed");
-        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
-    }
-});
-app.MapGet("/api/backtests/{runId}", async (string runId, BacktestRepository backtests, ILogger<Program> logger, CancellationToken ct) =>
-{
-    try
-    {
-        var (run, trades) = await backtests.RunAsync(runId, ct);
-        return run is null ? Results.NotFound() : Results.Ok(new { run, trades });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "/api/backtests/{RunId} failed", runId);
         return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
     }
 });

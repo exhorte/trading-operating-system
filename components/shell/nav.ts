@@ -25,7 +25,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Risk Monitor", href: "/risk", icon: "shield", section: "operate" },
   { label: "Trades Journal", href: "/journal", icon: "book", section: "analyze" },
   { label: "Replay", href: "/replay", icon: "replay", section: "analyze" },
-  { label: "Backtests", href: "/backtests", icon: "flask", section: "analyze" },
   { label: "Execution Agents", href: "/agents", icon: "cpu", section: "system" },
   { label: "Settings", href: "/settings", icon: "settings", section: "system" },
 ];
