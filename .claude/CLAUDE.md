@@ -1,64 +1,44 @@
-# Claude Operating Instructions
+# Instructions Claude
 
-This repository is the beginning of a Trading Operating System Algorithmique, not a simple MT5 Expert Advisor.
+Ce dépôt est un **poste de travail personnel pour trader intraday**. Ce n'est pas un EA, pas un bot, pas un backtester.
 
-Before any implementation, Claude must load the project brain:
+## Avant toute implémentation
 
-1. Read `AGENTS.md` and keep the local Next.js warning active.
-2. Read `context/README.md`.
-3. Read `context/project/development_manifesto.md`.
-4. Read `context/project/project_state.md`.
-5. Read the current phase document under `context/project/phases/`.
-6. Read the relevant domain, architecture, engineering, governance, and ADR files before touching code.
+1. Lire `AGENTS.md` et garder l'avertissement Next.js actif.
+2. Lire `context/project/charter.md` — ce que le projet est et ce qu'il n'est plus.
+3. Lire `context/project/state.md` — ce qui existe, ce qui vient d'être supprimé, la prochaine action.
+4. Lire `context/adr/` en entier. Sept ADR courts ; ils tranchent la plupart des questions.
+5. Lire la fiche de l'outil en cours dans `context/product/tools/`.
+6. Lire les documents de domaine, d'architecture et d'ingénierie pertinents **avant** de toucher au code.
 
-The source notes in `../NOTES/` are historical source material. They are not runtime code. Use them to understand the intent, especially:
+## Direction non négociable
 
-- `framework ICT_SMC_PART_1.md`
-- `framework ICT_SMC_PART_2.md`
-- `framework ICT_SMC_PART_3 STACK.md`
-- `Description Configuration EA FTMO.md`
-- `Ultimate_ICT_Gold_Scalper_v4.0.mq5`
+- **Le process est le produit, pas le signal.** Aucun module ne dit quoi trader, quand, ni dans quel sens (ADR 0001).
+- **La recherche d'edge est close** (ADR 0002). Ne pas proposer de backtester, d'optimiseur, de générateur de signaux, ni de « juste tester rapidement une idée ». `lib/analysis/` fournit du contexte, pas des signaux.
+- **L'EA n'est pas le cerveau.** MT5 est un point d'exécution et de télémétrie.
+- **Le Risk Engine est le point de contrôle unique** (ADR 0007). Toute règle passe par une gate testée, jamais par un bouton grisé.
+- **L'IA reste en lecture** (ADR 0005). Classer, résumer, retrouver, expliquer. Jamais décider, jamais ordonner.
+- Aucun appel de trade n'existe dans ce dépôt. Le mode `observe` / SIMULATED est le seul chemin implémenté.
+- Pas de martingale, pas de grille, pas de moyenne à la baisse.
+- Aucun identifiant de compte n'est jamais demandé, stocké ou partagé.
 
-## Non-Negotiable Direction
+## Mode de travail
 
-- The EA is not the brain of the system.
-- MT5 is an execution and telemetry endpoint.
-- Strategy intelligence belongs in the server-side platform and domain engines.
-- The dashboard observes, controls, configures, and explains through realtime channels; it does not secretly decide trades.
-- WebSocket/SignalR is the primary communication model for market data, account state, risk state, signals, execution commands, and execution reports.
-- REST/HTTP endpoints are secondary and should be limited to health checks, authentication handshakes, static configuration, exports, imports, or admin workflows that do not require realtime state.
-- Risk, drawdown, daily lockout, auditability, and explainability are first-class requirements.
-- No grid, no martingale, no hidden risk escalation.
-- Every trade decision must eventually be traceable to market context, risk context, strategy context, and execution context.
+Agir en ingénieur principal :
 
-## Working Mode
+1. Lire le contexte d'abord.
+2. Analyser l'impact.
+3. Concevoir avant de coder pour tout travail non trivial.
+4. Implémenter par incréments qui gardent les gates vertes.
+5. Vérifier — `context/governance/quality_gates.md`.
+6. Mettre à jour la fiche d'outil et, si nécessaire, `state.md` et les ADR.
 
-Act as a Principal Software Architect and Lead Engineer.
+Le cycle complet est décrit dans `context/workflows/development_workflow.md`. Commandes : `/outil-start Tnn`, `/outil-close Tnn`.
 
-For every meaningful phase:
+## Piège le plus fréquent dans ce dépôt
 
-1. Understand the repository and context.
-2. Perform impact analysis.
-3. Produce a technical design.
-4. Produce an implementation checklist.
-5. Wait for explicit user validation if the request is planning or phase-start oriented.
-6. Implement only after validation or when the user clearly asks for direct execution.
-7. Verify with lint/typecheck/build/tests as appropriate.
-8. Update `context/project/project_state.md`, `context/project/handoff.md`, ADRs, and phase notes after material changes.
+Réécrire du code qui existe déjà. `lib/risk/`, `lib/analysis/`, `lib/domain/`, `lib/contracts/` et toute la chaîne temps réel sont écrits, testés et **validés en live**. Les fiches d'outil nomment les fichiers d'ancrage : les lire avant de créer quoi que ce soit.
 
-## Architecture Bias
+## Sécurité
 
-Start as a modular monolith with clean boundaries, not premature distributed microservices.
-
-Long-term target:
-
-- Frontend: Next.js, React, TypeScript, Tailwind, shadcn/ui, TanStack Query, TradingView Lightweight Charts.
-- Backend: ASP.NET Core, SignalR-first realtime hubs, PostgreSQL, TimescaleDB, Redis, RabbitMQ.
-- Execution: MT5 EA agent first, later cTrader, Interactive Brokers, FIX, broker APIs.
-- Observability: structured logs, metrics, audit trail, decision replay.
-
-This Next.js repository is currently the frontend/bootstrap surface. Do not assume the final system is frontend-only.
-
-## Safety
-
-Trading software can cause financial loss. Never present untested strategy logic as profitable. Treat all performance targets as hypotheses until verified by backtests, forward tests, and risk review.
+Un logiciel de trading peut causer des pertes financières. Ne jamais présenter une logique non testée comme rentable. Tout objectif de performance est une hypothèse.

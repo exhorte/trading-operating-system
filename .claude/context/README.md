@@ -1,15 +1,7 @@
-# Claude Context Compatibility
+# Compatibilité contexte Claude
 
-The project brain lives in the repository-level `context/` directory.
+Le cerveau du projet vit dans le répertoire `context/` à la racine du dépôt.
 
-Claude instructions under `.claude/` should treat `context/` as the single source of truth for:
+Les instructions sous `.claude/` traitent `context/` comme la source de vérité unique pour : la charte, l'état, la roadmap, les fiches d'outil, l'architecture, le domaine, la gouvernance, les standards d'ingénierie et les workflows.
 
-- project memory
-- roadmap
-- phases
-- architecture
-- domain knowledge
-- governance
-- engineering standards
-- prompts and workflows
-
+Point d'entrée : `context/README.md`.
