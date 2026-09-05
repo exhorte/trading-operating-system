@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TradingOs.Contracts/TradingOs.Contracts.csproj" />
+    <Project Path="src/TradingOs.Gateway/TradingOs.Gateway.csproj" />
+    <Project Path="src/TradingOs.Host/TradingOs.Host.csproj" />
+    <Project Path="src/TradingOs.Persistence/TradingOs.Persistence.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TradingOs.Gateway.Tests/TradingOs.Gateway.Tests.csproj" />
+  </Folder>
+</Solution>

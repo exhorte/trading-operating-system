@@ -1,0 +1,44 @@
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { RealtimeProvider } from "@/lib/realtime/provider";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Trading OS — Cockpit",
+  description:
+    "Operational cockpit of the Trading Operating System Algorithmique (mock realtime data).",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // Browser extensions/theme scripts mutate <html> before hydration
+      // (e.g. injected data-* attributes); suppress the resulting warning at
+      // this level only — it does not hide mismatches inside the app tree.
+      suppressHydrationWarning
+    >
+      {/* suppressHydrationWarning: browser extensions (ColorZilla, Grammarly, …)
+          inject attributes like cz-shortcut-listen onto <body> before React
+          hydrates. Scoped to this element only; app markup is unaffected. */}
+      <body className="min-h-full" suppressHydrationWarning>
+        <RealtimeProvider>{children}</RealtimeProvider>
+      </body>
+    </html>
+  );
+}
