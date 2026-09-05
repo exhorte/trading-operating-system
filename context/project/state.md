@@ -1,10 +1,10 @@
 # État du projet
 
-Dernière mise à jour : 2026-09-04.
+Dernière mise à jour : 2026-09-05.
 
 ## En une phrase
 
-La plateforme sort de neuf mois de recherche d'edge abandonnée ; elle repart avec une base technique validée en live et zéro fonctionnalité quotidienne.
+La plateforme sort de neuf mois de recherche d'edge abandonnée ; le premier outil de la Vague 1 (T01, sizing) est livré.
 
 ## Ce qui existe et fonctionne
 
@@ -35,9 +35,11 @@ Rien de bloquant. Deux points de friction connus, hérités du 28 juillet 2026 :
 
 ## Prochaine action
 
-**Outil T01 — Calculateur de taille one-click.** Voir `context/product/tools/T01-calculateur-taille.md`.
+**Outil T04 — Ticket pré-trade.** Voir `context/product/tools/T04-ticket-pretrade.md`.
 
-C'est le meilleur ratio valeur/effort du catalogue, il ne dépend de rien, et `lib/risk/sizing.ts` est déjà écrit et testé — il ne manque que l'interface.
+T01 est livré le 2026-09-05 (panneau de sizing permanent dans le cockpit, voir
+sa fiche). Ordre conseillé de la roadmap : T04 avant T02, car le ticket
+produit les compteurs de séance dont le lockout a besoin.
 
 ## Questions ouvertes
 

@@ -8,7 +8,7 @@ La fiche est écrite **avant** de coder, complétée **pendant**, close **après
 
 | Fiche | Outil | Vague | Statut |
 |---|---|---|---|
-| T01 | Calculateur de taille one-click | 1 | à faire |
+| T01 | Calculateur de taille one-click | 1 | livré |
 | T02 | Lockout comportemental | 1 | à faire |
 | T03 | Gate calendrier économique | 1 | à faire |
 | T04 | Ticket pré-trade | 1 | à faire |
