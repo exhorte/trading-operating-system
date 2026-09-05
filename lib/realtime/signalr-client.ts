@@ -368,7 +368,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
       seq: this.signalCounter,
       runId: this.runId,
     });
-    // Phase 10: signals/decisions are PUBLISHED through the hub, which
+    // Signals/decisions are PUBLISHED through the hub, which
     // persists them and rebroadcasts to every dashboard (multi-tab
     // consistency + audit). The store applies them when they come back.
     this.publish(

@@ -1,6 +1,6 @@
 # Charte du projet
 
-Version 2 — 2026-09-04. Remplace `development_manifesto.md` et `project_state.md` (série 1, supprimés le 2026-09-04, récupérables au tag `archive/pre-pivot-2026-09-04`).
+Version 2 — 2026-09-04. Remplace `development_manifesto.md` et `project_state.md` (série 1, supprimés le 2026-09-04).
 
 ## Ce que ce projet est
 

@@ -5,7 +5,7 @@ export default function PositionsPage() {
     <EmptyState
       title="Positions & execution workspace not built yet"
       description="Pending commands, broker errors, and reconciliation state require the execution contracts. Open positions are visible on the Command Center."
-      hint="Planned: Phase 02 — Domain Model MVP"
+      hint="Not planned — live positions stay on the Command Center"
     />
   );
 }

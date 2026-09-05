@@ -8,7 +8,7 @@
 
 ## Trading Safety
 
-- Require explicit environment mode: mock, backtest, paper, demo, live.
+- Require explicit environment mode: mock, paper, demo, live.
 - Live execution must require deliberate configuration.
 - Emergency stop must be available before live execution.
 - WebSocket sessions must authenticate, authorize subscriptions, and reject commands from unauthorized clients.

@@ -5,7 +5,7 @@ export default function TradesJournalPage() {
     <EmptyState
       title="Trades Journal not built yet"
       description="The dense, filterable trade audit table (R multiples, setups, sessions, tags, replay links) arrives with analytics."
-      hint="Planned: Phase 07 — Backtesting And Analytics"
+      hint="Planned: T06 — Journal auto-alimenté, zéro saisie"
     />
   );
 }

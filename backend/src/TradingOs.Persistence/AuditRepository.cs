@@ -13,7 +13,7 @@ public sealed record AuditEntry(string MessageId, string CorrelationId, string T
 
 /// <summary>
 /// Minimal read proof for the slice (HTTP is allowed for exports/admin).
-/// Real consumers (replay, P&L calendar, backtesting) arrive in Phase 11.
+/// Real consumers (replay, P&L calendar) arrive with the analytics tools.
 /// </summary>
 public sealed class AuditRepository(string connectionString)
 {

@@ -47,8 +47,6 @@ __pycache__/
 *.pyc
 tools/mt5-observer/*.jsonl
 
-# Backtest diagnostic reports (generated artifacts)
-backtest-reports/
 
 # typescript
 *.tsbuildinfo

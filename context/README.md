@@ -39,6 +39,6 @@ Ce répertoire est la mémoire durable du projet. Il existe pour qu'une session 
 
 `project/phases/`, `agents/`, `backtesting/`, `prompts/`, l'ancienne série d'ADR 0001–0013, `changelog.md`, `session-history.md`, `handoff.md`, `memory.md`, `project_state.md`, `development_manifesto.md`.
 
-Supprimés le 2026-09-04 avec la recherche d'edge. Tout reste lisible au tag **`archive/pre-pivot-2026-09-04`**. Le détail et les raisons sont dans `project/pivot-2026-09-04.md`.
+Supprimés le 2026-09-04 avec la recherche d'edge. Le détail et les raisons sont dans `project/pivot-2026-09-04.md`.
 
 La gouvernance par phases numérotées est remplacée par une gouvernance par outils et vagues (ADR 0006).

@@ -1,5 +1,5 @@
 """
-One-shot historical candle export (Phase 11 backtesting).
+One-shot historical candle export.
 
 Reads closed M15 bars from the locally running, already-logged-in MT5 terminal
 and writes them as JSON Lines. STRICTLY READ-ONLY, no credentials — same
@@ -7,16 +7,15 @@ safety posture as mt5_observer.py (zero trade functions imported).
 
 Usage:
     python import_history.py --symbol XAUUSDm --bars 26000 --out candles.jsonl
-    # exact UTC bounds (Phase 13 holdout import — reproducible dataset + hash):
+    # exact UTC bounds:
     python import_history.py --symbol XAUUSDm \
-        --from 2024-06-01T00:00:00Z --to 2025-06-06T13:30:00Z --out holdout.jsonl
+        --from 2024-06-01T00:00:00Z --to 2025-06-06T13:30:00Z --out candles.jsonl
 Then load into TimescaleDB:
     npx tsx scripts/import-candles.ts candles.jsonl
 
---from is inclusive, --to is EXCLUSIVE — matching the virgin-holdout bounds
-convention (lib/backtest/holdout.ts), so the exported set and its dataset hash
-are reproducible bit-for-bit regardless of when the export runs. --bars mode
-remains for dev-dataset style exports.
+--from is inclusive, --to is EXCLUSIVE, so the exported set is reproducible
+bit-for-bit regardless of when the export runs. --bars mode remains for
+dev-dataset style exports.
 """
 
 from __future__ import annotations

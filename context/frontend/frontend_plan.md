@@ -12,7 +12,6 @@ It should show:
 - positions
 - orders
 - risk limits
-- active strategy signals
 - ICT/SMC market context
 - session/news status
 - execution connectivity
@@ -30,11 +29,10 @@ Visual direction is defined in:
 - Dashboard overview
 - Accounts
 - Market Context
-- Strategy Signals
+- Signals
 - Positions And Orders
 - Risk Monitor
 - Execution Agents
-- Backtests
 - Settings
 
 ## UI Direction

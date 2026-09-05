@@ -1,4 +1,4 @@
-# Persistence (Phase 10) — Runbook
+# Persistence — Runbook
 
 TimescaleDB stores every envelope (audit) plus typed tables for candles, ticks,
 signals, risk decisions, commands, acks and reports. Decision record: ADR 0011.
@@ -63,5 +63,5 @@ in this slice).
 ## Scope / not yet
 
 Replay UI, DB-backed P&L calendar, retention/compression policies, backups,
-Redis/RabbitMQ — later phases. Signals/decisions are published through the hub
+Redis/RabbitMQ — later. Signals/decisions are published through the hub
 (`PublishEvent`, whitelisted) so they persist and stay consistent across tabs.

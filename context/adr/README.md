@@ -1,6 +1,6 @@
 # Architecture Decision Records — série 2
 
-La série 1 (`0001-platform-over-ea` à `0013-backtest-diagnostics`, juillet 2026) a été supprimée le 2026-09-04 avec le reste de l'historique de recherche. Elle reste lisible au tag `archive/pre-pivot-2026-09-04`.
+La série 1 (`0001-platform-over-ea` à `0013-backtest-diagnostics`, juillet 2026) a été supprimée le 2026-09-04 avec le reste de l'historique de recherche.
 
 Les décisions de la série 1 qui gouvernent encore ont été reprises et réécrites ici. Celles qui portaient sur la recherche d'edge (moteur de signal, backtesting, diagnostics, holdout) sont caduques.
 

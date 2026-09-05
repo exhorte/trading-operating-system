@@ -1,4 +1,4 @@
--- TradingOS persistence schema v1 (Phase 10). Idempotent: safe to run at every
+-- TradingOS persistence schema v1. Idempotent: safe to run at every
 -- host startup. Timescale hypertables for time series; typed tables for the
 -- audit-grade entities; a JSONB envelopes table as the complete audit trail.
 

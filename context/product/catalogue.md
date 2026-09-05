@@ -18,7 +18,6 @@ Ce document **ne remplace pas** `2026-09-03-audit-reprise-et-recherche-verifiee.
 - **ADR 0001** — la plateforme est le produit, l'EA n'est pas le cerveau.
 - **`context/ai/ai_future.md`** — l'IA reste côté lecture, classement, résumé, explication. Jamais côté décision, jamais côté ordre.
 - **Usage strictement personnel** (décision du 2026-09-03). Aucun de ces outils n'est pensé pour être vendu.
-- **Étape 0 du plan de reprise** (débloquer + lecture unique du holdout) passe avant tout ce qui suit.
 - **Aucune nouvelle chasse à l'edge** avant que la plateforme tienne.
 
 ---
@@ -113,7 +112,7 @@ Le verrou vit dans le Risk Engine, pas dans l'interface — un refus doit être 
 
 **Problème.** Sur XAUUSD, les mouvements qui te sortent d'un trade correct viennent de publications programmées, connues à la minute près, des semaines à l'avance. Se faire sortir par un CPI qu'on avait oublié est une erreur d'agenda, pas d'analyse.
 
-**Ce que ça fait.** Un service qui charge les dates de publication à venir, les met en cache, expose `isNewsBlackout(t)` et alimente **une gate du Risk Engine** — pas une règle de stratégie, conformément au plan de reprise. Fenêtre par défaut : −30 / +30 min autour d'une publication à impact élevé. Affichage permanent dans le cockpit : « prochaine publication : CPI US dans 1 h 47, blackout à partir de 14:00 ».
+**Ce que ça fait.** Un service qui charge les dates de publication à venir, les met en cache, expose `isNewsBlackout(t)` et alimente **une gate du Risk Engine** — pas une règle de stratégie, conformément à l'ADR 0007. Fenêtre par défaut : −30 / +30 min autour d'une publication à impact élevé. Affichage permanent dans le cockpit : « prochaine publication : CPI US dans 1 h 47, blackout à partir de 14:00 ».
 
 **Source de données — le point qui bloquait.** L'audit notait qu'il n'existe que des scrapers ForexFactory fragiles et juridiquement exposés. La sortie, pour un usage personnel et pour un besoin qui se limite à *quand*, est l'API FRED de la Fed de Saint-Louis : l'endpoint `fred/releases/dates` retourne les dates de publication de toutes les séries, et avec `include_release_dates_with_no_data=true` il retourne **les dates futures** du calendrier de publication. Clé API gratuite, source officielle, licence claire. Il suffit de figer une liste blanche d'une dizaine de release IDs (CPI, NFP/Employment Situation, PCE, retail sales, ISM, FOMC) : cet ensemble est petit et stable.
 
@@ -267,7 +266,7 @@ Un bot Telegram ou une notification système en **lecture seule** : DD à 70 % d
 
 ## 7. Ce que je ne recommande pas de construire
 
-- **Un bot d'exécution autonome.** Contredit l'ADR 0001, et le seul candidat de stratégie que tu avais a été sélectionné post-hoc — le holdout n'est même pas encore lu.
+- **Un bot d'exécution autonome.** Contredit l'ADR 0001, et le seul candidat de stratégie existant a été sélectionné post-hoc puis abandonné (ADR 0002).
 - **Un générateur de signaux IA.** Le point est déjà tranché dans l'audit : sentiment ≠ direction, forecasting ≠ stratégie. Ces modèles restent côté lecture.
 - **Un scraper ForexFactory.** Fragile et juridiquement exposé. FRED règle le besoin réel (voir #3).
 - **Un dashboard de marché temps réel.** Tu as déjà MT5 pour ça, et il est meilleur. Ne reconstruis pas ce que tu regardes déjà ailleurs — construis ce que MT5 ne fait pas : ton process, tes règles, ton historique.
@@ -292,9 +291,6 @@ Un bot Telegram ou une notification système en **lecture seule** : DD à 70 % d
 ## 9. Ordre de construction proposé
 
 ```
-Étape 0 (plan de reprise) ─── lecture unique du holdout          [1–2 j]
-        │
-        ▼
 Vague 1 ─── #1 taille · #4 ticket · #2 lockout · #3 news · #5 captures
         │   plateforme utile tous les jours                      [5–8 j]
         ▼

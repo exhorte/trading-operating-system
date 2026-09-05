@@ -32,7 +32,6 @@ Primary navigation:
 - Replay
 - Risk Monitor
 - Execution Agents
-- Backtests
 - Settings
 
 Top command bar should include:
@@ -42,7 +41,6 @@ Top command bar should include:
 - active account selector
 - symbol selector
 - date range
-- strategy filter
 - emergency stop when authorized
 - AI assistant entry point as secondary action
 
@@ -211,13 +209,13 @@ Table requirements:
 - sticky header
 - horizontal scroll for many columns
 - status chips
-- strategy chips
+- setup chips
 - filters
 - bulk actions only for non-execution review operations
 
 ## Replay Workspace
 
-Future screen for backtesting, post-trade review, and strategy debugging.
+Future screen for decision replay and post-trade review.
 
 Layout:
 

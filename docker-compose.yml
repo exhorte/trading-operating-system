@@ -1,4 +1,4 @@
-# Local infrastructure (Phase 10 — Persistence).
+# Local infrastructure (TimescaleDB persistence).
 # TimescaleDB = PostgreSQL + the timescaledb extension, one container.
 #   docker compose up -d      start
 #   docker compose down       stop (data survives in the volume)

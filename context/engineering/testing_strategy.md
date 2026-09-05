@@ -27,7 +27,6 @@ Early bootstrap. Testing starts with lint/build verification and grows with doma
 
 ## Strategy
 
-- backtest before forward test
 - forward test before live money
 - prop firm mode dry-run before challenge account
 

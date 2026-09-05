@@ -57,4 +57,4 @@ Commencer par `context/README.md`, qui donne l'ordre de lecture. Les quatre docu
 
 ## Historique
 
-Le projet a passé juillet 2026 à chercher un edge algorithmique. Cette recherche a été **abandonnée sans verdict le 2026-09-04** (ADR 0002), et le code correspondant supprimé. L'état d'avant est conservé au tag `archive/pre-pivot-2026-09-04` ; les raisons sont dans `context/project/pivot-2026-09-04.md`.
+Le projet a passé juillet 2026 à chercher un edge algorithmique. Cette recherche a été **abandonnée sans verdict le 2026-09-04** (ADR 0002), et le code correspondant supprimé. Les raisons sont dans `context/project/pivot-2026-09-04.md`.

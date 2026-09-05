@@ -34,7 +34,7 @@ export function mockStrategySignal(args: {
   // The two knobs MUST stay orthogonal — 4 and 3 are coprime, so every
   // (side, stopDistance) combination occurs over a 12-signal period. Keying
   // both off `seq % 4` aliased the counter-bias and tightest-stop cohorts into
-  // one indistinguishable bucket, making the Phase 12 diagnostics unable to
+  // one indistinguishable bucket, making the diagnostics unable to
   // attribute a loss to either factor. Likewise `score` stays the engine's
   // context score: a strategy-applied penalty leaked the probe flag into the
   // score dimension.

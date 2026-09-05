@@ -18,7 +18,7 @@ cd backend && dotnet build && dotnet test
 
 Attendu : tout vert. Les tests supprimés avec `lib/backtest/` et `lib/strategy/` font mécaniquement baisser le compte de tests Vitest — c'est normal, ce n'est pas une régression.
 
-En cas d'échec, la référence d'avant-pivot est le tag `archive/pre-pivot-2026-09-04`.
+En cas d'échec, l'état d'avant-pivot reste consultable dans le reflog git du clone local (aucune référence n'existe côté distant).
 
 ## 1. Base de données
 

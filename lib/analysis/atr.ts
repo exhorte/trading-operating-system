@@ -1,10 +1,9 @@
 /**
  * Average True Range (Wilder). Pure; imports only lib/domain.
  *
- * Added for the Phase 12 iteration-1 entry trigger, which needs a volatility
- * unit to size its stop buffer instead of a fixed price offset. Kept as a
- * standalone helper — it does NOT touch MarketContextState or the score, so the
- * analysis engine and its no-look-ahead invariant are unchanged.
+ * A volatility unit for stop-buffer sizing instead of a fixed price offset.
+ * Kept as a standalone helper — it does NOT touch MarketContextState or the
+ * score, so the analysis engine and its no-look-ahead invariant are unchanged.
  *
  * Reads only candles up to the evaluation bar (the caller passes a slice), so
  * the value at bar i never depends on a future bar.

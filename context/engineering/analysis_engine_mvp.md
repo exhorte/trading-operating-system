@@ -6,7 +6,7 @@ imports only `lib/domain`. Decision recorded in ADR 0006; vocabulary source is
 `context/domain/ict_smc_framework.md`.
 
 > Everything here is a **hypothesis, not a validated edge**. The engine is
-> version `v0.1`; weights and tolerances are placeholders until backtested.
+> version `v0.1`; weights and tolerances are placeholders.
 
 ## Pipeline
 
@@ -55,7 +55,7 @@ reshaping the pipeline.
 
 - **No look-ahead.** A bar's state uses only candles up to that bar. Swings
   confirm `lookback` bars after they form; sweep and mitigation scans move
-  forward only. Asserted in tests; required for honest backtests (Phase 07).
+  forward only. Asserted in tests.
 - **Purity.** `lib/analysis` imports only `lib/domain`. The domain→read-model
   projection lives in `lib/contracts/projections.ts`, never inside the engine.
 - **Determinism.** Same candles + same config → same `MarketContextState`.

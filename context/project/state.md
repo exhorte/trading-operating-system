@@ -24,7 +24,7 @@ Tout ce qui suit a été **validé en live** contre le compte de démonstration 
 
 `lib/backtest/`, `lib/strategy/`, `scripts/backtest*.ts`, `scripts/calibrate-spread.ts`, `query_ticks.csx`, `app/(cockpit)/backtests/`, `components/cockpit/backtests-workspace.tsx`, `BacktestRepository.cs`, les endpoints `/api/backtests`, les tables `backtest_*` et `holdout_*` du schéma, `tools/mt5-observer/inspect_symbol.py`, les 24 fiches de phase, l'ancienne série d'ADR 0001–0013, `changelog.md`, `session-history.md`, `handoff.md`, `memory.md`, `project_state.md`, l'ancien `roadmap.md`, `development_manifesto.md`, `context/agents/`, `context/backtesting/`, `search.md`.
 
-Tout est récupérable au tag **`archive/pre-pivot-2026-09-04`** (commit `5f23ec6`).
+L'ancien contenu n'a plus de référence dans le dépôt ni sur GitHub ; il reste temporairement consultable dans le reflog git du clone local.
 
 ## Ce qui bloque
 
