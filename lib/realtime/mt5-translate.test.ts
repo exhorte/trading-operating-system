@@ -30,6 +30,7 @@ const hello: Mt5HelloMessage = {
   stopsLevelPoints: 0,
   mode: "observe",
   agentVersion: "0.1.0-observer",
+  serverUtcOffsetMinutes: 180,
 };
 
 describe("toAccountSummary", () => {

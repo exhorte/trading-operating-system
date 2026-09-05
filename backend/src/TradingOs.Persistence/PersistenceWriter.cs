@@ -177,6 +177,49 @@ public sealed class PersistenceWriter
                   @Status, @Detail, @ReportedAt)
                 ON CONFLICT (report_id) DO NOTHING
                 """,
+            TicketRow => """
+                INSERT INTO pretrade_tickets (ticket_id, account_id, symbol, setup, bias, entry_price,
+                  stop_loss, invalidation, confidence, take_profit, target_volume, target_risk_usd, created_at)
+                VALUES (@TicketId, @AccountId, @Symbol, @Setup, @Bias, @EntryPrice,
+                  @StopLoss, @Invalidation, @Confidence, @TakeProfit, @TargetVolume, @TargetRiskUsd, @CreatedAt)
+                ON CONFLICT (ticket_id) DO NOTHING
+                """,
+            DayAnchorRow => """
+                INSERT INTO trading_day_anchors (account_id, starts_at_utc)
+                VALUES (@AccountId, @StartsAtUtc)
+                ON CONFLICT (account_id, starts_at_utc) DO NOTHING
+                """,
+            // Only ever fills a still-unknown equity for the latest anchor —
+            // never overwrites one already captured, never guesses at a stale one.
+            DayAnchorEquityRow => """
+                UPDATE trading_day_anchors
+                SET day_start_equity = @Equity
+                WHERE account_id = @AccountId
+                  AND starts_at_utc = @StartsAtUtc
+                  AND day_start_equity IS NULL
+                """,
+            PositionOpenRow => """
+                INSERT INTO position_opens (account_id, broker_position_id, opened_at)
+                VALUES (@AccountId, @BrokerPositionId, @OpenedAt)
+                ON CONFLICT (account_id, broker_position_id) DO NOTHING
+                """,
+            LockoutEnabledRow => """
+                INSERT INTO risk_lockouts (lockout_id, account_id, reason, since, until)
+                VALUES (@LockoutId, @AccountId, @Reason, @Since, @Until)
+                ON CONFLICT (lockout_id) DO NOTHING
+                """,
+            // Clears the single currently-active lockout for this account —
+            // there is never more than one at a time (edge-triggered writes).
+            LockoutClearedRow => """
+                UPDATE risk_lockouts
+                SET cleared_at = now(), cleared_by = @ClearedBy
+                WHERE account_id = @AccountId AND cleared_at IS NULL
+                """,
+            KillSwitchAckRow => """
+                INSERT INTO kill_switch_acks (account_id, lockout_id, acknowledged_at)
+                VALUES (@AccountId, @LockoutId, @AcknowledgedAt)
+                ON CONFLICT (account_id, lockout_id) DO NOTHING
+                """,
             _ => null,
         };
         if (sql is not null)

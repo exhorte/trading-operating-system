@@ -10,6 +10,13 @@
 export { evaluateRiskState } from "./evaluate";
 export { evaluateSignalRisk, type SignalRiskInput } from "./sizing";
 export { computeSizingPanel, type SizingPanelInput, type SizingPanelResult } from "./sizing-panel";
+export {
+  applyActiveLockout,
+  detectNewLockout,
+  shouldAutoClearForNewDay,
+  KILL_SWITCH_REASON,
+  type ActiveLockout,
+} from "./lockout";
 export { openRiskPercent, positionRiskUsd } from "./open-risk";
 export { defaultRiskPolicy, WARNING_THRESHOLD } from "./policy";
 export type { RiskEvaluationInput, OpenRiskPosition } from "./types";

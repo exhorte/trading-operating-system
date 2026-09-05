@@ -65,6 +65,10 @@ public sealed record AccountSnapshotPayload(AccountSummary Account);
 
 public sealed record PositionsSnapshotPayload(Position[] Positions);
 
+/// <summary>T02a: the trading day's start, resolved from the MT5 terminal's
+/// server-UTC offset — never a client-computed guess.</summary>
+public sealed record DayAnchorResolvedPayload(string AccountId, string StartsAtUtc);
+
 /// <summary>Initial state a dashboard receives on hub connect (snapshot + events pattern).</summary>
 public sealed record CockpitSnapshotDto(
     AccountSummary? Account,

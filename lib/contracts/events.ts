@@ -41,6 +41,7 @@ import type {
   Candle,
   FairValueGap,
   LiquidityLevel,
+  PreTradeTicket,
   SpreadSample,
   StructureShift,
   SymbolCode,
@@ -127,14 +128,29 @@ export interface RiskDecisionMadePayload {
 }
 
 export interface RiskLockoutEnabledPayload {
+  /** T02a: the ledger is the source of truth for "locked now" — never re-derived. */
+  lockoutId: string;
   accountId: AccountId;
   reason: string;
-  /** Null when the lockout requires manual clearance. */
-  lockoutUntil: UtcTimestamp | null;
+  since: UtcTimestamp;
+  /** Null when the lockout requires manual/next-day clearance (daily loss,
+   *  max trades, kill switch). Set when it auto-expires (T02b's pause). */
+  until: UtcTimestamp | null;
 }
 
 export interface RiskLockoutClearedPayload {
   accountId: AccountId;
+  /** "kill-switch-ack" | "next-day-reset" | "manual" — audit trail, not a union
+   *  the reader needs to exhaust. */
+  clearedBy: string;
+}
+
+/** T02a: the trader's proof of having closed positions manually — the kill
+ *  switch never sends a close_all command, so this ack is the only record. */
+export interface RiskLockoutAcknowledgedPayload {
+  accountId: AccountId;
+  lockoutId: string;
+  acknowledgedAt: UtcTimestamp;
 }
 
 // --- agent ---
@@ -172,6 +188,35 @@ export interface ExecutionReportPayload {
 
 export interface AlertPayload {
   alert: CockpitAlert;
+}
+
+// --- journal (T04) ---
+
+export interface TicketCreatedPayload {
+  ticket: PreTradeTicket;
+}
+
+// --- T02a: trading-day anchor + real trade counting ---
+
+/** Gateway-originated only — needs the MT5 terminal's server-UTC offset. */
+export interface DayAnchorResolvedPayload {
+  accountId: AccountId;
+  startsAtUtc: UtcTimestamp;
+}
+
+/** Dashboard-observed: the first live equity seen on/after the anchor. */
+export interface DayAnchorEquityObservedPayload {
+  accountId: AccountId;
+  startsAtUtc: UtcTimestamp;
+  equity: number;
+}
+
+/** One real position opened (brokerPositionId first seen) — no P&L needed
+ *  for the max-trades gate, just a count since the day anchor. */
+export interface PositionOpenedPayload {
+  accountId: AccountId;
+  brokerPositionId: string;
+  openedAt: UtcTimestamp;
 }
 
 /**
@@ -224,6 +269,11 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "dashboard.unsubscribe": RealtimeSubscription;
   "dashboard.snapshot.requested": SnapshotRequestPayload;
   "dashboard.alert.acknowledged": AlertAcknowledgedPayload;
+  "journal.ticket.created": TicketCreatedPayload;
+  "journal.position.opened": PositionOpenedPayload;
+  "risk.day_anchor.resolved": DayAnchorResolvedPayload;
+  "risk.day_anchor.equity_observed": DayAnchorEquityObservedPayload;
+  "risk.lockout.acknowledged": RiskLockoutAcknowledgedPayload;
 }
 
 /** An envelope whose payload type is derived from its event type. */

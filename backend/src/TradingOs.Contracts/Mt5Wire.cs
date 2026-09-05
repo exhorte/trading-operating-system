@@ -13,7 +13,8 @@ public sealed record Mt5HelloMessage(
     int Version, string Type, string AccountId, long Time,
     string AgentId, string Symbol, string Broker, string Server,
     string[] OrderTypes, double MinVolume, double MaxVolume, double VolumeStep,
-    string FillingMode, int StopsLevelPoints, string Mode, string AgentVersion)
+    string FillingMode, int StopsLevelPoints, string Mode, string AgentVersion,
+    int ServerUtcOffsetMinutes)
     : Mt5Message(Version, Type, AccountId, Time);
 
 public sealed record Mt5HeartbeatMessage(

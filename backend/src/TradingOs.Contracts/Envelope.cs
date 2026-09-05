@@ -46,4 +46,7 @@ public static class EventTypes
     public const string ExecutionCommandAcknowledged = "execution.command.acknowledged";
     public const string ExecutionCommandRejected = "execution.command.rejected";
     public const string ExecutionOrderSimulated = "execution.order.simulated";
+    /// <summary>T02a: Gateway-originated (needs the MT5 terminal's server-time
+    /// offset), never client-published — no PublishEvent whitelist entry.</summary>
+    public const string RiskDayAnchorResolved = "risk.day_anchor.resolved";
 }

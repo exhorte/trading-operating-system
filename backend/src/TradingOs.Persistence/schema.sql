@@ -94,6 +94,81 @@ CREATE TABLE IF NOT EXISTS command_acks (
 );
 CREATE INDEX IF NOT EXISTS idx_command_acks_command ON command_acks (command_id);
 
+-- T04: pre-trade tickets. No commandId exists for a manual trade (this repo
+-- has no order-sending path), so matched_position_id/matched_trade_id start
+-- NULL and stay NULL until T06 reconciles them against positions/trades —
+-- never written by the ticket itself.
+CREATE TABLE IF NOT EXISTS pretrade_tickets (
+    ticket_id           text PRIMARY KEY,
+    account_id          text NOT NULL,
+    symbol              text NOT NULL,
+    setup               text NOT NULL,
+    bias                text NOT NULL,
+    entry_price         double precision NOT NULL,
+    stop_loss           double precision NOT NULL,
+    invalidation        double precision NOT NULL,
+    confidence          smallint NOT NULL CHECK (confidence BETWEEN 1 AND 5),
+    take_profit         double precision,
+    target_volume       double precision,
+    target_risk_usd     double precision,
+    created_at          timestamptz NOT NULL,
+    matched_position_id text,
+    matched_trade_id    text
+);
+CREATE INDEX IF NOT EXISTS idx_pretrade_tickets_created ON pretrade_tickets (created_at DESC);
+
+-- T02a: trading-day anchor, resolved from the MT5 terminal's server-UTC
+-- offset (never 00:00 UTC, never hardcoded — see TradingDayAnchor.cs).
+-- day_start_equity is filled in later, once the live equity stream confirms
+-- it (NULL means unknown, never zero, until then).
+CREATE TABLE IF NOT EXISTS trading_day_anchors (
+    account_id       text NOT NULL,
+    starts_at_utc    timestamptz NOT NULL,
+    day_start_equity double precision,
+    PRIMARY KEY (account_id, starts_at_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_trading_day_anchors_account_time
+    ON trading_day_anchors (account_id, starts_at_utc DESC);
+
+-- T02a: one row per position actually opened (brokerPositionId first seen),
+-- detected client-side from real positions.snapshot diffs. tradesToday is a
+-- COUNT of these since the current day anchor — no P&L needed for this gate.
+CREATE TABLE IF NOT EXISTS position_opens (
+    account_id          text NOT NULL,
+    broker_position_id  text NOT NULL,
+    opened_at           timestamptz NOT NULL,
+    PRIMARY KEY (account_id, broker_position_id)
+);
+CREATE INDEX IF NOT EXISTS idx_position_opens_account_time
+    ON position_opens (account_id, opened_at DESC);
+
+-- T02a: the lockout ledger. "Currently locked" is read from here — never
+-- re-derived purely from live gate evaluation, which a missing event or a
+-- shifted day boundary could otherwise silently undo.
+CREATE TABLE IF NOT EXISTS risk_lockouts (
+    lockout_id  text PRIMARY KEY,
+    account_id  text NOT NULL,
+    reason      text NOT NULL,
+    since       timestamptz NOT NULL,
+    -- NULL = requires manual/next-day clearance (daily loss, max trades,
+    -- kill switch). Set = auto-expires (T02b's 30-min consecutive-loss pause).
+    until       timestamptz,
+    cleared_at  timestamptz,
+    cleared_by  text  -- "kill-switch-ack" | "next-day-reset" | "manual"
+);
+CREATE INDEX IF NOT EXISTS idx_risk_lockouts_account_since
+    ON risk_lockouts (account_id, since DESC);
+
+-- T02a: the kill switch never closes anything real (no close_all command
+-- exists) — this is the only proof the trader actually saw and acted on the
+-- "close your positions manually" banner.
+CREATE TABLE IF NOT EXISTS kill_switch_acks (
+    account_id      text NOT NULL,
+    lockout_id      text NOT NULL REFERENCES risk_lockouts (lockout_id),
+    acknowledged_at timestamptz NOT NULL,
+    PRIMARY KEY (account_id, lockout_id)
+);
+
 CREATE TABLE IF NOT EXISTS execution_reports (
     report_id   text PRIMARY KEY,
     command_id  text NOT NULL,

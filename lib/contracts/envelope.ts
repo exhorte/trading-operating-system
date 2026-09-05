@@ -56,7 +56,18 @@ export type EventType =
   | "dashboard.subscribe"
   | "dashboard.unsubscribe"
   | "dashboard.snapshot.requested"
-  | "dashboard.alert.acknowledged";
+  | "dashboard.alert.acknowledged"
+  // journal (T04: dashboard-originated, published through the same
+  // whitelisted PublishEvent path as strategy.signal.created)
+  | "journal.ticket.created"
+  // T02a: journal.position.opened and risk.day_anchor.equity_observed are
+  // dashboard-observed facts (published like the ticket above);
+  // risk.day_anchor.resolved is Gateway-only (needs the MT5 terminal's
+  // server-UTC offset) — never published by a dashboard.
+  | "journal.position.opened"
+  | "risk.day_anchor.resolved"
+  | "risk.day_anchor.equity_observed"
+  | "risk.lockout.acknowledged";
 
 export interface Envelope<TPayload = unknown> {
   messageId: string;

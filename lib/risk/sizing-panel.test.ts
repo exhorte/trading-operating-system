@@ -25,6 +25,7 @@ const normalRisk: RiskStatus = {
   tradesToday: 0,
   consecutiveLosses: 0,
   lockoutReason: null,
+  lockoutUntil: null,
   gates: [
     { gateId: "gate-spread", label: "Spread gate", state: "open", detail: "20 pts < 40 pts limit" },
   ],

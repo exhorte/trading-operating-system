@@ -35,10 +35,14 @@ import type {
   MarketTickPayload,
   PositionsSnapshotPayload,
   RiskDecisionMadePayload,
+  RiskLockoutAcknowledgedPayload,
+  RiskLockoutEnabledPayload,
   RiskStateUpdatedPayload,
   SignalCreatedPayload,
   SignalUpdatedPayload,
+  TicketCreatedPayload,
 } from "@/lib/contracts/events";
+import type { ActiveLockout } from "@/lib/risk/lockout";
 
 export interface CockpitSnapshot {
   connection: ConnectionState;
@@ -57,6 +61,21 @@ export interface CockpitSnapshot {
   pnlCalendar: PnlCalendarDay[];
   alerts: CockpitAlert[];
   lastHeartbeatAt: string | null;
+  /**
+   * T04: ticketIds that have echoed back through the event stream — i.e.
+   * actually broadcast (and, best-effort, persisted) by the hub, not just
+   * submitted by this tab. TicketPanel watches this to know whether to
+   * reset the form; a ticket that never appears here was silently refused
+   * or dropped (see PublishEvent / PersistenceWriter).
+   */
+  confirmedTicketIds: string[];
+  /**
+   * T02a: the ledger's current lock for this account, or null when clear.
+   * Authoritative — components must not re-derive "locked" from `risk` alone.
+   */
+  activeLockout: ActiveLockout | null;
+  /** lockoutIds this tab has seen acknowledged (kill-switch banner dismissal). */
+  acknowledgedLockoutIds: string[];
 }
 
 export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
@@ -74,6 +93,9 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   pnlCalendar: [],
   alerts: [],
   lastHeartbeatAt: null,
+  confirmedTicketIds: [],
+  activeLockout: null,
+  acknowledgedLockoutIds: [],
 };
 
 const MAX_FEED_LENGTH = 20;
@@ -164,6 +186,39 @@ export class CockpitStore {
       case "risk.state.updated": {
         const { risk } = envelope.payload as RiskStateUpdatedPayload;
         this.patch({ risk });
+        break;
+      }
+      // T04: the hub's echo of a ticket this tab (or another tab) published —
+      // the only signal that PublishEvent actually broadcast it.
+      case "journal.ticket.created": {
+        const { ticket } = envelope.payload as TicketCreatedPayload;
+        this.patch({
+          confirmedTicketIds: [ticket.ticketId, ...this.snapshot.confirmedTicketIds].slice(
+            0,
+            MAX_FEED_LENGTH,
+          ),
+        });
+        break;
+      }
+      // T02a: the ledger is authoritative — set/clear it here, never derive
+      // "locked" from `risk` alone in a component.
+      case "risk.lockout.enabled": {
+        const { lockoutId, reason, since, until } = envelope.payload as RiskLockoutEnabledPayload;
+        this.patch({ activeLockout: { lockoutId, reason, since, until } });
+        break;
+      }
+      case "risk.lockout.cleared": {
+        this.patch({ activeLockout: null });
+        break;
+      }
+      case "risk.lockout.acknowledged": {
+        const { lockoutId } = envelope.payload as RiskLockoutAcknowledgedPayload;
+        this.patch({
+          acknowledgedLockoutIds: [lockoutId, ...this.snapshot.acknowledgedLockoutIds].slice(
+            0,
+            MAX_FEED_LENGTH,
+          ),
+        });
         break;
       }
       case "agent.heartbeat": {

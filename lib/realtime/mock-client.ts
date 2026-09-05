@@ -42,11 +42,21 @@ import type {
   MarketContextUpdatedPayload,
   MarketTickPayload,
   RiskDecisionMadePayload,
+  RiskLockoutAcknowledgedPayload,
+  RiskLockoutClearedPayload,
+  RiskLockoutEnabledPayload,
   RiskStateUpdatedPayload,
   SignalCreatedPayload,
+  TicketCreatedPayload,
 } from "@/lib/contracts/events";
+import { KILL_SWITCH_REASON } from "@/lib/risk";
+import type { PreTradeTicket } from "@/lib/domain/ticket";
 import type { RealtimeClient } from "./client";
 import type { CockpitStore } from "./store";
+
+function makeId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 const TICK_INTERVAL_MS = 1_500;
 const HEARTBEAT_INTERVAL_MS = 3_000;
@@ -100,6 +110,55 @@ export class MockRealtimeClient implements RealtimeClient {
       clearTimeout(timer);
     }
     this.timers = [];
+  }
+
+  /** No real hub in mock mode: echo immediately, same as a successful publish. */
+  publishTicket(ticket: PreTradeTicket): void {
+    this.store.apply(
+      makeEnvelope<TicketCreatedPayload>("journal.ticket.created", "mock-cockpit", { ticket }, ticket.ticketId),
+    );
+  }
+
+  /** T02a demo: the mock's own scenarios never breach a real threshold (see
+   *  mockRiskContext), so the kill switch is the only lockout path exercised
+   *  in mock mode — no-ops if already locked, same edge-trigger as the real
+   *  client. */
+  triggerKillSwitch(): void {
+    const { account, activeLockout } = this.store.getSnapshot();
+    if (!account || activeLockout !== null) {
+      return;
+    }
+    this.store.apply(
+      makeEnvelope<RiskLockoutEnabledPayload>("risk.lockout.enabled", "mock-risk-engine", {
+        lockoutId: makeId("lockout"),
+        accountId: account.accountId,
+        reason: KILL_SWITCH_REASON,
+        since: new Date().toISOString(),
+        until: null,
+      }),
+    );
+  }
+
+  /** The ack IS the manual-clear action for the kill switch — it never
+   *  auto-clears via a timer or the next day (see shouldAutoClearForNewDay). */
+  acknowledgeLockout(lockoutId: string): void {
+    const account = this.store.getSnapshot().account;
+    if (!account) {
+      return;
+    }
+    this.store.apply(
+      makeEnvelope<RiskLockoutAcknowledgedPayload>("risk.lockout.acknowledged", "mock-cockpit", {
+        accountId: account.accountId,
+        lockoutId,
+        acknowledgedAt: new Date().toISOString(),
+      }),
+    );
+    this.store.apply(
+      makeEnvelope<RiskLockoutClearedPayload>("risk.lockout.cleared", "mock-risk-engine", {
+        accountId: account.accountId,
+        clearedBy: "kill-switch-ack",
+      }),
+    );
   }
 
   private goOnline(initial: boolean): void {

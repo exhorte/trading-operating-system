@@ -13,11 +13,18 @@ namespace TradingOs.Host;
 /// </summary>
 public sealed class GatewayBridgeService(
     Mt5ObserverClient observer,
+    GatewayState state,
     IHubContext<CockpitHub> hub,
     PersistenceWriter writer,
     ILogger<GatewayBridgeService> logger) : BackgroundService
 {
     private const string Source = "mt5-gateway";
+
+    /// <summary>T02a: how often to re-resolve the trading-day anchor even
+    /// without a fresh agent.hello — covers a day rolling over on a
+    /// long-lived connection. The write is idempotent (ON CONFLICT DO
+    /// NOTHING), so re-emitting the same day's anchor is harmless.</summary>
+    private static readonly TimeSpan DayAnchorRecheckInterval = TimeSpan.FromMinutes(5);
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -46,6 +53,42 @@ public sealed class GatewayBridgeService(
             logger.LogInformation("MT5 observer {State}", connected ? "connected" : "disconnected — retrying");
 
         // Drain the persistence channel alongside the observer connection.
-        await Task.WhenAll(observer.RunAsync(stoppingToken), writer.RunAsync(stoppingToken));
+        await Task.WhenAll(
+            observer.RunAsync(stoppingToken),
+            writer.RunAsync(stoppingToken),
+            DayAnchorRecheckLoopAsync(stoppingToken));
+    }
+
+    /// <summary>T02a: periodically re-resolve today's anchor from the last
+    /// known offset, so a day that rolls over mid-connection (no fresh
+    /// agent.hello) still gets its own row.</summary>
+    private async Task DayAnchorRecheckLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(DayAnchorRecheckInterval, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            var offsetMinutes = state.ServerUtcOffsetMinutes;
+            var accountId = state.Hello?.AccountId;
+            if (offsetMinutes is null || accountId is null)
+            {
+                continue; // no hello received yet this run
+            }
+
+            var startsAtUtc = TradingDayAnchor.ResolveTodayStartUtc(DateTimeOffset.UtcNow, offsetMinutes.Value);
+            var envelope = Envelope<object>.Create(
+                EventTypes.RiskDayAnchorResolved,
+                Source,
+                new DayAnchorResolvedPayload(accountId, startsAtUtc.ToString("o")));
+            _ = hub.Clients.All.SendAsync("event", envelope, ct);
+            Persist(writer, envelope);
+        }
     }
 }

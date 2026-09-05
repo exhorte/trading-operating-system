@@ -132,6 +132,14 @@ public sealed class Mt5ObserverClient(GatewayState state, string url)
                 var agent = Mt5WireTranslator.ToAgentStatus(hello);
                 state.SetHello(hello, agent);
                 EnvelopeReady?.Invoke(EventTypes.AgentConnected, new { agentId = hello.AgentId });
+                // T02a: resolve today's anchor immediately on connect too —
+                // the periodic re-check (GatewayBridgeService) covers a day
+                // rolling over without a fresh hello.
+                var startsAtUtc = TradingDayAnchor.ResolveTodayStartUtc(
+                    DateTimeOffset.UtcNow, hello.ServerUtcOffsetMinutes);
+                EnvelopeReady?.Invoke(
+                    EventTypes.RiskDayAnchorResolved,
+                    new DayAnchorResolvedPayload(hello.AccountId, startsAtUtc.ToString("o")));
                 break;
             }
             case Mt5AccountSnapshotMessage account:

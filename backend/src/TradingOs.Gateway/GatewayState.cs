@@ -22,12 +22,18 @@ public sealed class GatewayState
 
     public Mt5HelloMessage? Hello { get; private set; }
 
+    /// <summary>T02a: last offset the observer measured against the MT5
+    /// terminal — used to re-resolve the trading-day anchor periodically,
+    /// without needing a fresh agent.hello for every day rollover.</summary>
+    public int? ServerUtcOffsetMinutes { get; private set; }
+
     public void SetHello(Mt5HelloMessage hello, AgentStatus agent)
     {
         lock (_lock)
         {
             Hello = hello;
             _agent = agent;
+            ServerUtcOffsetMinutes = hello.ServerUtcOffsetMinutes;
         }
     }
 

@@ -19,6 +19,7 @@ builder.Services.AddSingleton<GatewayState>();
 builder.Services.AddSingleton(sp => new Mt5ObserverClient(sp.GetRequiredService<GatewayState>(), observerUrl));
 builder.Services.AddSingleton(new PersistenceWriter(connectionString));
 builder.Services.AddSingleton(new AuditRepository(connectionString));
+builder.Services.AddSingleton(new RiskTodayRepository(connectionString));
 builder.Services.AddHostedService<GatewayBridgeService>();
 
 var app = builder.Build();
@@ -51,6 +52,22 @@ app.MapGet("/api/audit/recent", async (
         // Log the real exception and surface its message — a bare 503 hid a
         // Dapper mapping bug (DateTimeOffset vs DateTime) on 2026-07-12.
         logger.LogError(ex, "/api/audit/recent failed");
+        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
+    }
+});
+app.MapGet("/api/risk/today", async (
+    RiskTodayRepository repository,
+    ILogger<Program> logger,
+    CancellationToken ct,
+    string accountId) =>
+{
+    try
+    {
+        return Results.Ok(await repository.GetAsync(accountId, ct));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "/api/risk/today failed");
         return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
     }
 });

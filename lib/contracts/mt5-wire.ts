@@ -76,6 +76,9 @@ export interface Mt5HelloMessage extends Mt5Message {
   /** Mode the agent booted with; the gateway/engine reconcile against config. */
   mode: Mt5ExecutionMode;
   agentVersion: string;
+  /** T02a: broker server UTC offset, resolved fresh at every hello — never
+   *  hardcoded, since it shifts with DST. Source of the trading-day anchor. */
+  serverUtcOffsetMinutes: number;
 }
 
 export interface Mt5HeartbeatMessage extends Mt5Message {

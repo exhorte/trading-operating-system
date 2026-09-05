@@ -66,4 +66,70 @@ public class PersistenceMapperTests
     {
         Assert.Null(PersistenceMapper.ToTypedRow("agent.heartbeat", """{"agentId":"a","latencyMs":10}"""));
     }
+
+    [Fact]
+    public void Maps_ticket_row_with_optional_fields_present()
+    {
+        var ticket = Assert.IsType<TicketRow>(PersistenceMapper.ToTypedRow("journal.ticket.created",
+            """{"ticket":{"ticketId":"ticket-1","accountId":"acc-1","symbol":"XAUUSD","setup":"fvg","bias":"long","entryPrice":3300,"stopLoss":3290,"invalidation":3290,"confidence":4,"takeProfit":3320,"targetVolume":0.02,"targetRiskUsd":20,"createdAt":"2026-09-05T10:00:00.000Z"}}"""));
+        Assert.Equal("ticket-1", ticket.TicketId);
+        Assert.Equal("fvg", ticket.Setup);
+        Assert.Equal(3320, ticket.TakeProfit);
+        Assert.Equal(0.02, ticket.TargetVolume);
+        Assert.Equal(4, ticket.Confidence);
+    }
+
+    [Fact]
+    public void Maps_ticket_row_with_optional_fields_absent_as_null_not_zero()
+    {
+        var ticket = Assert.IsType<TicketRow>(PersistenceMapper.ToTypedRow("journal.ticket.created",
+            """{"ticket":{"ticketId":"ticket-2","accountId":"acc-1","symbol":"XAUUSD","setup":"retest","bias":"short","entryPrice":3300,"stopLoss":3310,"invalidation":3310,"confidence":2,"takeProfit":null,"targetVolume":null,"targetRiskUsd":null,"createdAt":"2026-09-05T10:00:00.000Z"}}"""));
+        Assert.Null(ticket.TakeProfit);
+        Assert.Null(ticket.TargetVolume);
+        Assert.Null(ticket.TargetRiskUsd);
+    }
+
+    [Fact]
+    public void Maps_day_anchor_resolved_and_equity_observed_rows()
+    {
+        var anchor = Assert.IsType<DayAnchorRow>(PersistenceMapper.ToTypedRow("risk.day_anchor.resolved",
+            """{"accountId":"acc-1","startsAtUtc":"2026-09-04T21:00:00.000Z"}"""));
+        Assert.Equal("acc-1", anchor.AccountId);
+
+        var equity = Assert.IsType<DayAnchorEquityRow>(PersistenceMapper.ToTypedRow("risk.day_anchor.equity_observed",
+            """{"accountId":"acc-1","startsAtUtc":"2026-09-04T21:00:00.000Z","equity":101512.3}"""));
+        Assert.Equal(101512.3, equity.Equity);
+    }
+
+    [Fact]
+    public void Maps_position_opened_row()
+    {
+        var open = Assert.IsType<PositionOpenRow>(PersistenceMapper.ToTypedRow("journal.position.opened",
+            """{"accountId":"acc-1","brokerPositionId":"pos-9","openedAt":"2026-09-05T10:00:00.000Z"}"""));
+        Assert.Equal("pos-9", open.BrokerPositionId);
+    }
+
+    [Fact]
+    public void Maps_lockout_enabled_with_and_without_an_expiry()
+    {
+        var hard = Assert.IsType<LockoutEnabledRow>(PersistenceMapper.ToTypedRow("risk.lockout.enabled",
+            """{"lockoutId":"lock-1","accountId":"acc-1","reason":"Daily loss guard","since":"2026-09-05T10:00:00.000Z","until":null}"""));
+        Assert.Null(hard.Until);
+
+        var paused = Assert.IsType<LockoutEnabledRow>(PersistenceMapper.ToTypedRow("risk.lockout.enabled",
+            """{"lockoutId":"lock-2","accountId":"acc-1","reason":"Consecutive losses","since":"2026-09-05T10:00:00.000Z","until":"2026-09-05T10:30:00.000Z"}"""));
+        Assert.Equal(DateTimeOffset.Parse("2026-09-05T10:30:00.000Z"), paused.Until);
+    }
+
+    [Fact]
+    public void Maps_lockout_cleared_and_kill_switch_ack_rows()
+    {
+        var cleared = Assert.IsType<LockoutClearedRow>(PersistenceMapper.ToTypedRow("risk.lockout.cleared",
+            """{"accountId":"acc-1","clearedBy":"next-day-reset"}"""));
+        Assert.Equal("next-day-reset", cleared.ClearedBy);
+
+        var ack = Assert.IsType<KillSwitchAckRow>(PersistenceMapper.ToTypedRow("risk.lockout.acknowledged",
+            """{"accountId":"acc-1","lockoutId":"lock-3","acknowledgedAt":"2026-09-05T10:05:00.000Z"}"""));
+        Assert.Equal("lock-3", ack.LockoutId);
+    }
 }

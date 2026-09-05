@@ -5,8 +5,13 @@ import type {
   CommandAckPayload,
   PlaceOrderCommandPayload,
 } from "@/lib/contracts/commands";
-import type { ExecutionReportPayload, SignalCreatedPayload } from "@/lib/contracts/events";
+import type {
+  ExecutionReportPayload,
+  SignalCreatedPayload,
+  TicketCreatedPayload,
+} from "@/lib/contracts/events";
 import type { PlaceOrderCommand } from "@/lib/domain/execution";
+import type { PreTradeTicket } from "@/lib/domain/ticket";
 
 const command: PlaceOrderCommand = {
   kind: "place_order",
@@ -152,5 +157,37 @@ describe("command lifecycle in the store", () => {
     ack(store, "accepted", null);
     store.markCommandFailed("cmd-sig-201", "late timeout");
     expect(store.getSnapshot().commands["cmd-sig-201"].status).toBe("acknowledged");
+  });
+});
+
+const ticket: PreTradeTicket = {
+  ticketId: "ticket-1",
+  accountId: "acc-1",
+  symbol: "XAUUSD",
+  setup: "fvg",
+  bias: "long",
+  entryPrice: 3300,
+  stopLoss: 3290,
+  invalidation: 3290,
+  confidence: 4,
+  takeProfit: 3320,
+  targetVolume: 0.02,
+  targetRiskUsd: 20,
+  createdAt: "t",
+};
+
+describe("T04 ticket echo in the store", () => {
+  it("records the ticketId once it echoes back through the event stream", () => {
+    const store = new CockpitStore();
+    expect(store.getSnapshot().confirmedTicketIds).toEqual([]);
+    store.apply(makeEnvelope<TicketCreatedPayload>("journal.ticket.created", "test", { ticket }));
+    expect(store.getSnapshot().confirmedTicketIds).toEqual(["ticket-1"]);
+  });
+
+  it("never confirms a ticket that was never echoed (silent refusal/drop stays unconfirmed)", () => {
+    const store = new CockpitStore();
+    // Nothing applied: this is what a whitelist refusal, an oversized
+    // envelope, or a dropped persistence write all look like from the store.
+    expect(store.getSnapshot().confirmedTicketIds).not.toContain("ticket-1");
   });
 });

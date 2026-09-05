@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { computeSizingPanel } from "@/lib/risk/sizing-panel";
 import { formatMoney, formatPercent } from "@/lib/format";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTradeDraft } from "./trade-draft-context";
 
 function parseInput(value: string): number | null {
   if (value.trim() === "") {
@@ -61,28 +62,39 @@ function formatPercentOrUnknown(value: number | null): string {
 export function SizingPanel() {
   const { account, risk } = useCockpit();
   const untrusted = useIsDataUntrusted();
+  const { setDraft } = useTradeDraft();
   const [entryPrice, setEntryPrice] = useState("");
   const [stopLoss, setStopLoss] = useState("");
   const [takeProfit, setTakeProfit] = useState("");
 
+  const parsedEntry = parseInput(entryPrice);
+  const parsedStop = parseInput(stopLoss);
+  const parsedTakeProfit = parseInput(takeProfit);
+
   const result = useMemo(() => {
-    if (!account || !risk) {
-      return null;
-    }
-    const entry = parseInput(entryPrice);
-    const stop = parseInput(stopLoss);
-    if (entry === null || stop === null) {
+    if (!account || !risk || parsedEntry === null || parsedStop === null) {
       return null;
     }
     return computeSizingPanel({
-      entryPrice: entry,
-      stopLoss: stop,
-      takeProfit: parseInput(takeProfit),
+      entryPrice: parsedEntry,
+      stopLoss: parsedStop,
+      takeProfit: parsedTakeProfit,
       account,
       risk,
       now: new Date().toISOString(),
     });
-  }, [account, risk, entryPrice, stopLoss, takeProfit]);
+  }, [account, risk, parsedEntry, parsedStop, parsedTakeProfit]);
+
+  // T04 reads this to prefill its invalidation from the stop and to record
+  // this same sizing result on the ticket — never recomputed a second time.
+  useEffect(() => {
+    setDraft({
+      entryPrice: parsedEntry,
+      stopLoss: parsedStop,
+      takeProfit: parsedTakeProfit,
+      sizing: result,
+    });
+  }, [parsedEntry, parsedStop, parsedTakeProfit, result, setDraft]);
 
   if (!account || !risk) {
     return (

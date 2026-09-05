@@ -55,6 +55,24 @@ def account_id() -> str:
     return str(info.login) if info else "unknown"
 
 
+def resolve_server_utc_offset_minutes(symbol: str) -> int:
+    """MT5 tick timestamps are epoch seconds but represent the broker's
+    server/display time, not true UTC (a known MT5 quirk) — comparing one to
+    the system's real UTC clock reveals the broker's offset. Rounded to the
+    nearest 30 minutes: real broker offsets are always half-hour-aligned, and
+    the raw difference otherwise carries clock-drift/latency noise.
+
+    T02a (trading-day anchor): re-resolved every time build_hello() is called
+    (agent.hello is re-sent on every gateway reconnect) so a DST transition
+    is picked up without ever hardcoding an offset.
+    """
+    tick = mt5.symbol_info_tick(symbol)
+    if tick is None:
+        return 0
+    offset_seconds = tick.time - time.time()
+    return round(offset_seconds / 60 / 30) * 30
+
+
 def build_hello(symbol: str) -> dict[str, Any]:
     info = mt5.account_info()
     sym = mt5.symbol_info(symbol)
@@ -75,6 +93,7 @@ def build_hello(symbol: str) -> dict[str, Any]:
         "stopsLevelPoints": sym.trade_stops_level if sym else 0,
         "mode": "observe",
         "agentVersion": AGENT_VERSION,
+        "serverUtcOffsetMinutes": resolve_server_utc_offset_minutes(symbol),
     }
 
 

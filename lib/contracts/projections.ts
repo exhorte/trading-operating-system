@@ -142,6 +142,7 @@ export function toRiskStatusReadModel(state: RiskState, policy: RiskPolicy): Ris
     tradesToday: state.tradesToday,
     consecutiveLosses: state.consecutiveLosses,
     lockoutReason: state.lockoutReason,
+    lockoutUntil: state.lockoutUntil,
     gates: state.gates.map((g) => ({
       gateId: g.gateId,
       label: g.label,

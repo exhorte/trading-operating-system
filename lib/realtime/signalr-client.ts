@@ -8,7 +8,9 @@
  * slice: real candles → ICT/SMC market context, account/positions → risk
  * state (engine port to C# is deferred).
  *
- * Read-only observe path: never sends anything but the snapshot request.
+ * Not purely read-only: also submits observe-mode commands (never a real
+ * trade call — see command-builder.ts) and publishes whitelisted dashboard
+ * facts (signal/decision reviews, T04 tickets) through PublishEvent.
  */
 
 import {
@@ -18,7 +20,15 @@ import {
 } from "@microsoft/signalr";
 import { analyzeMarketContext, DEFAULT_SESSION_WINDOWS } from "@/lib/analysis";
 import { sessionEnabled, sessionForTimestamp } from "@/lib/analysis/sessions";
-import { defaultRiskPolicy, evaluateRiskState, evaluateSignalRisk } from "@/lib/risk";
+import {
+  applyActiveLockout,
+  defaultRiskPolicy,
+  detectNewLockout,
+  evaluateRiskState,
+  evaluateSignalRisk,
+  KILL_SWITCH_REASON,
+  shouldAutoClearForNewDay,
+} from "@/lib/risk";
 import { buildPlaceOrderCommand } from "@/lib/execution/command-builder";
 import { mockStrategySignal } from "@/lib/mock/signals";
 import { makeEnvelope } from "@/lib/mock/envelope";
@@ -31,11 +41,18 @@ import {
 import type { Envelope } from "@/lib/contracts/envelope";
 import type {
   AgentHeartbeatPayload,
+  DayAnchorResolvedPayload,
   MarketCandlePayload,
   MarketTickPayload,
+  PositionOpenedPayload,
   RiskDecisionMadePayload,
+  RiskLockoutAcknowledgedPayload,
+  RiskLockoutClearedPayload,
+  RiskLockoutEnabledPayload,
   SignalCreatedPayload,
+  TicketCreatedPayload,
 } from "@/lib/contracts/events";
+import type { PreTradeTicket } from "@/lib/domain/ticket";
 import type { CommandAckPayload } from "@/lib/contracts/commands";
 import type {
   AccountSummary,
@@ -46,8 +63,21 @@ import type { Candle } from "@/lib/domain/market";
 import type { MarketContextState } from "@/lib/domain/analysis";
 import type { PlaceOrderCommand } from "@/lib/domain/execution";
 import type { RiskPolicy, RiskState } from "@/lib/domain/risk";
+import type { ActiveLockout } from "@/lib/risk/lockout";
 import type { RealtimeClient } from "./client";
 import type { CockpitStore } from "./store";
+
+/** T02a: shape of GET /api/risk/today (RiskTodayRepository.RiskTodaySummary). */
+interface RiskTodaySummary {
+  dayAnchorStartsAtUtc: string | null;
+  dayStartEquity: number | null;
+  tradesToday: number;
+  activeLockout: ActiveLockout | null;
+}
+
+function makeId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 const WATCHDOG_INTERVAL_MS = 2_000;
 const HEARTBEAT_STALE_AFTER_MS = 8_000;
@@ -80,6 +110,20 @@ export class SignalRRealtimeClient implements RealtimeClient {
   private baselineBalance: number | null = null;
 
   private baselineEquity: number | null = null;
+
+  /** T02a: the current trading day's anchor (server midnight, resolved by the
+   *  Gateway) — null until the first risk.day_anchor.resolved arrives. */
+  private dayAnchorStartsAtUtc: string | null = null;
+
+  /** T02a: brokerPositionIds already published this session — a reload
+   *  re-detects and re-publishes them too, which the server dedupes
+   *  (ON CONFLICT DO NOTHING), so this only needs to avoid same-session spam. */
+  private knownPositionIds = new Set<string>();
+
+  /** T02a: real open-count since the day anchor, hydrated from /api/risk/today
+   *  and kept current as this.publishNewPositions detects more. Null (not 0)
+   *  until hydration succeeds — never a guessed zero. */
+  private tradesToday: number | null = null;
 
   private symbol = "XAUUSDm";
 
@@ -211,7 +255,59 @@ export class SignalRRealtimeClient implements RealtimeClient {
       agents: snapshot.agents,
     });
     this.scheduleContextRecompute();
+    if (snapshot.account) {
+      await this.hydrateRiskToday(snapshot.account.accountId);
+      this.publishNewPositions(snapshot.account.accountId);
+    }
     this.recomputeRisk();
+  }
+
+  /**
+   * T02a: read the persisted truth for this account — the day anchor, the
+   * real trade count since it, and any active lockout — so a fresh
+   * connection shows the right numbers immediately instead of a guessed
+   * baseline (see the state-persistence gap this replaces).
+   */
+  private async hydrateRiskToday(accountId: string): Promise<void> {
+    const base = this.hubUrl.replace(/\/hub\/cockpit\/?$/, "");
+    try {
+      const res = await fetch(`${base}/api/risk/today?accountId=${encodeURIComponent(accountId)}`);
+      if (!res.ok) {
+        return;
+      }
+      const data = (await res.json()) as RiskTodaySummary;
+      this.dayAnchorStartsAtUtc = data.dayAnchorStartsAtUtc;
+      this.tradesToday = data.tradesToday;
+      if (data.dayStartEquity !== null) {
+        this.baselineEquity = data.dayStartEquity;
+      }
+      this.store.hydrate({ activeLockout: data.activeLockout });
+    } catch {
+      // Best-effort: live events and the per-tab baseline fallback still work.
+    }
+  }
+
+  /**
+   * T02a: a brokerPositionId seen for the first time this session is
+   * published as an open — no P&L needed, just a count for the max-trades
+   * gate. Runs on every snapshot, not only the first, so a trade opened
+   * after connect is caught too.
+   */
+  private publishNewPositions(accountId: string): void {
+    for (const position of this.store.getSnapshot().positions) {
+      if (this.knownPositionIds.has(position.positionId)) {
+        continue;
+      }
+      this.knownPositionIds.add(position.positionId);
+      this.tradesToday = (this.tradesToday ?? 0) + 1;
+      this.publish(
+        makeEnvelope<PositionOpenedPayload>("journal.position.opened", "cockpit-risk-engine", {
+          accountId,
+          brokerPositionId: position.positionId,
+          openedAt: position.openedAt,
+        }),
+      );
+    }
   }
 
   private onEvent(envelope: Envelope): void {
@@ -247,7 +343,21 @@ export class SignalRRealtimeClient implements RealtimeClient {
       }
       case "agent.snapshot.positions": {
         this.store.apply(envelope);
+        const account = this.store.getSnapshot().account;
+        if (account) {
+          this.publishNewPositions(account.accountId);
+        }
         this.recomputeRisk();
+        break;
+      }
+      // T02a: Gateway-resolved — a genuinely new anchor means a new trading
+      // day (or the very first resolution): re-hydrate the persisted truth
+      // rather than trying to patch scattered local counters.
+      case "risk.day_anchor.resolved": {
+        const { accountId, startsAtUtc } = envelope.payload as DayAnchorResolvedPayload;
+        if (startsAtUtc !== this.dayAnchorStartsAtUtc) {
+          void this.hydrateRiskToday(accountId);
+        }
         break;
       }
       case "agent.heartbeat": {
@@ -302,10 +412,11 @@ export class SignalRRealtimeClient implements RealtimeClient {
     this.store.hydrate({ marketContext: toMarketContextReadModel(state) });
   }
 
-  /** Same observe-mode risk computation as the live client: session baseline,
-   *  real spread, honest null trade counts. */
+  /** Real spread, real trade count since the day anchor (T02a), honest null
+   *  consecutive-loss count until T02b. The lockout ledger — not this
+   *  computation — decides "locked right now" (see applyActiveLockout). */
   private recomputeRisk(): void {
-    const { account, positions } = this.store.getSnapshot();
+    const { account, positions, activeLockout } = this.store.getSnapshot();
     if (!account || this.baselineBalance === null || this.baselineEquity === null) {
       return;
     }
@@ -316,7 +427,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
         : null;
     const nowIso = new Date().toISOString();
     const session = sessionForTimestamp(nowIso, DEFAULT_SESSION_WINDOWS);
-    const state = evaluateRiskState({
+    const computed = evaluateRiskState({
       policy,
       initialBalance: this.baselineBalance,
       dayStartEquity: this.baselineEquity,
@@ -328,15 +439,85 @@ export class SignalRRealtimeClient implements RealtimeClient {
         stopLoss: p.stopLoss,
         volume: p.volume,
       })),
-      tradesToday: null,
-      consecutiveLosses: null,
+      tradesToday: this.tradesToday,
+      consecutiveLosses: null, // T02b
       spreadPoints,
       session,
       sessionTradingEnabled: sessionEnabled(session, DEFAULT_SESSION_WINDOWS),
       now: nowIso,
     });
+
+    const newLockout = detectNewLockout(computed, activeLockout);
+    if (newLockout) {
+      this.publishLockoutEnabled(makeId("lockout"), account.accountId, newLockout.reason);
+    }
+    if (
+      activeLockout &&
+      this.dayAnchorStartsAtUtc &&
+      shouldAutoClearForNewDay(activeLockout, this.dayAnchorStartsAtUtc)
+    ) {
+      this.publishLockoutCleared(account.accountId, "next-day-reset");
+    }
+    const state = applyActiveLockout(computed, activeLockout);
+
     this.lastRisk = { state, policy };
     this.store.hydrate({ risk: toRiskStatusReadModel(state, policy) });
+  }
+
+  private publishLockoutEnabled(lockoutId: string, accountId: string, reason: string): void {
+    this.publish(
+      makeEnvelope<RiskLockoutEnabledPayload>("risk.lockout.enabled", "cockpit-risk-engine", {
+        lockoutId,
+        accountId,
+        reason,
+        since: new Date().toISOString(),
+        until: null,
+      }),
+    );
+  }
+
+  private publishLockoutCleared(accountId: string, clearedBy: string): void {
+    this.publish(
+      makeEnvelope<RiskLockoutClearedPayload>("risk.lockout.cleared", "cockpit-risk-engine", {
+        accountId,
+        clearedBy,
+      }),
+    );
+  }
+
+  /**
+   * T02a: manual kill switch. Locks the account for real (persisted ledger);
+   * never a close_all command — the observer/wire has no such command, and a
+   * SIMULATED reply that closes nothing real would be actively misleading.
+   * No-ops if already locked (edge-triggered, like the automatic path).
+   */
+  triggerKillSwitch(): void {
+    const { account, activeLockout } = this.store.getSnapshot();
+    if (!account || activeLockout !== null) {
+      return;
+    }
+    this.publishLockoutEnabled(makeId("lockout"), account.accountId, KILL_SWITCH_REASON);
+  }
+
+  /**
+   * T02a: the trader's own record of having closed positions manually — and,
+   * since the kill switch never auto-clears (no timer, no next-day reset:
+   * see shouldAutoClearForNewDay), the only way this specific lock is ever
+   * released. The ack IS the manual-clear action for this lock type.
+   */
+  acknowledgeLockout(lockoutId: string): void {
+    const account = this.store.getSnapshot().account;
+    if (!account) {
+      return;
+    }
+    this.publish(
+      makeEnvelope<RiskLockoutAcknowledgedPayload>("risk.lockout.acknowledged", "cockpit-journal", {
+        accountId: account.accountId,
+        lockoutId,
+        acknowledgedAt: new Date().toISOString(),
+      }),
+    );
+    this.publishLockoutCleared(account.accountId, "kill-switch-ack");
   }
 
   // --- Phase 09: Signal → RiskDecision → ExecutionCommand (observe loop) ---
@@ -404,6 +585,28 @@ export class SignalRRealtimeClient implements RealtimeClient {
     if (command) {
       this.submitCommand(command, false);
     }
+  }
+
+  /**
+   * T04: publish a pre-trade ticket. Deliberately does NOT apply locally on
+   * failure (unlike the internal `publish` below) — a ticket the caller
+   * believes is saved but that never reached the hub must stay visibly
+   * unconfirmed, not silently appear to succeed. The caller (TicketPanel)
+   * is the one watching for the echo.
+   */
+  publishTicket(ticket: PreTradeTicket): void {
+    if (!this.connection) {
+      return;
+    }
+    void this.connection
+      .invoke(
+        "PublishEvent",
+        makeEnvelope<TicketCreatedPayload>("journal.ticket.created", "cockpit-journal", { ticket }, ticket.ticketId),
+      )
+      .catch(() => {
+        // Invoke itself failed (e.g. reconnecting) — no local fallback apply:
+        // the caller's confirm-by-echo timeout is what surfaces this.
+      });
   }
 
   /** Publish a whitelisted envelope through the hub (persist + rebroadcast).

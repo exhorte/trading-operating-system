@@ -4,17 +4,28 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type { ConnectionState } from "@/lib/contracts/enums";
+import type { PreTradeTicket } from "@/lib/domain/ticket";
 import { MockRealtimeClient } from "./mock-client";
 import { SignalRRealtimeClient } from "./signalr-client";
 import type { RealtimeClient } from "./client";
 import { CockpitStore, EMPTY_COCKPIT_SNAPSHOT, type CockpitSnapshot } from "./store";
 
 const CockpitStoreContext = createContext<CockpitStore | null>(null);
+
+interface RealtimeActions {
+  publishTicket: (ticket: PreTradeTicket) => void;
+  triggerKillSwitch: () => void;
+  acknowledgeLockout: (lockoutId: string) => void;
+}
+
+const RealtimeActionsContext = createContext<RealtimeActions | null>(null);
 
 // Mock is the default everywhere. NEXT_PUBLIC_REALTIME_SOURCE="backend" opts
 // into the production path: SignalR to the ASP.NET Core gateway (ADR 0009).
@@ -31,16 +42,57 @@ function createClient(store: CockpitStore): RealtimeClient {
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [store] = useState(() => new CockpitStore());
+  const clientRef = useRef<RealtimeClient | null>(null);
 
   useEffect(() => {
     const client = createClient(store);
+    clientRef.current = client;
     client.start();
-    return () => client.stop();
+    return () => {
+      client.stop();
+      clientRef.current = null;
+    };
   }, [store]);
 
-  return (
-    <CockpitStoreContext.Provider value={store}>{children}</CockpitStoreContext.Provider>
+  // Stable identity: the ref is what may change (reconnects, transport
+  // swaps), the action function passed down never needs to.
+  const actions = useMemo<RealtimeActions>(
+    () => ({
+      publishTicket: (ticket) => clientRef.current?.publishTicket(ticket),
+      triggerKillSwitch: () => clientRef.current?.triggerKillSwitch(),
+      acknowledgeLockout: (lockoutId) => clientRef.current?.acknowledgeLockout(lockoutId),
+    }),
+    [],
   );
+
+  return (
+    <CockpitStoreContext.Provider value={store}>
+      <RealtimeActionsContext.Provider value={actions}>{children}</RealtimeActionsContext.Provider>
+    </CockpitStoreContext.Provider>
+  );
+}
+
+function useRealtimeActions(): RealtimeActions {
+  const actions = useContext(RealtimeActionsContext);
+  if (!actions) {
+    throw new Error("realtime action hooks must be used inside <RealtimeProvider>");
+  }
+  return actions;
+}
+
+/** T04: publish a pre-trade ticket through whichever transport is active. */
+export function usePublishTicket(): (ticket: PreTradeTicket) => void {
+  return useRealtimeActions().publishTicket;
+}
+
+/** T02a: manual kill switch — locks the account, no close_all command. */
+export function useTriggerKillSwitch(): () => void {
+  return useRealtimeActions().triggerKillSwitch;
+}
+
+/** T02a: acknowledge having closed positions manually. */
+export function useAcknowledgeLockout(): (lockoutId: string) => void {
+  return useRealtimeActions().acknowledgeLockout;
 }
 
 function useCockpitStore(): CockpitStore {

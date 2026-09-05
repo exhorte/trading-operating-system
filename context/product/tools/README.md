@@ -9,9 +9,9 @@ La fiche est écrite **avant** de coder, complétée **pendant**, close **après
 | Fiche | Outil | Vague | Statut |
 |---|---|---|---|
 | T01 | Calculateur de taille one-click | 1 | livré |
-| T02 | Lockout comportemental | 1 | à faire |
+| T02 | Lockout comportemental | 1 | en cours (T02a livré, T02b à faire) |
 | T03 | Gate calendrier économique | 1 | à faire |
-| T04 | Ticket pré-trade | 1 | à faire |
+| T04 | Ticket pré-trade | 1 | livré |
 | T05 | Captures automatiques entrée/sortie | 1 | à faire |
 
 Les outils T06 à T19 sont décrits dans `../backlog.md`. Leur fiche est créée au moment de les démarrer, pas avant — une fiche écrite trois mois trop tôt décrit un problème qui a changé.

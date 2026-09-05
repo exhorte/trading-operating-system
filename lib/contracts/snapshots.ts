@@ -62,6 +62,9 @@ export interface RiskStatus {
   /** Null when the data source has no trade history (e.g. observe prototype). */
   consecutiveLosses: number | null;
   lockoutReason: string | null;
+  /** T02a: null unless mode is "locked" AND the lockout auto-expires (T02b's
+   *  pause) — null for a manual/next-day-clearance lock too. */
+  lockoutUntil: string | null;
   gates: RiskGate[];
 }
 

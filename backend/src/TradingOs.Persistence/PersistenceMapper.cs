@@ -20,6 +20,13 @@ public sealed record DecisionRow(string ApprovalId, string SignalId, string Acco
 public sealed record CommandRow(string CommandId, string? SignalId, string AccountId, string AgentId, string RiskApprovalId, string Symbol, string Side, string OrderType, double Volume, double StopLoss, double TakeProfit, DateTimeOffset IssuedAt, DateTimeOffset ExpiresAt);
 public sealed record AckRow(string CommandId, string AgentId, string Status, string? Reason, DateTimeOffset ReceivedAt);
 public sealed record ReportRow(string ReportId, string CommandId, string AccountId, string AgentId, string Symbol, string Side, string Status, string Detail, DateTimeOffset ReportedAt);
+public sealed record TicketRow(string TicketId, string AccountId, string Symbol, string Setup, string Bias, double EntryPrice, double StopLoss, double Invalidation, int Confidence, double? TakeProfit, double? TargetVolume, double? TargetRiskUsd, DateTimeOffset CreatedAt);
+public sealed record DayAnchorRow(string AccountId, DateTimeOffset StartsAtUtc);
+public sealed record DayAnchorEquityRow(string AccountId, DateTimeOffset StartsAtUtc, double Equity);
+public sealed record PositionOpenRow(string AccountId, string BrokerPositionId, DateTimeOffset OpenedAt);
+public sealed record LockoutEnabledRow(string LockoutId, string AccountId, string Reason, DateTimeOffset Since, DateTimeOffset? Until);
+public sealed record LockoutClearedRow(string AccountId, string ClearedBy);
+public sealed record KillSwitchAckRow(string AccountId, string LockoutId, DateTimeOffset AcknowledgedAt);
 
 /// <summary>
 /// Pure extraction: envelope payload JSON → typed row (null when the event
@@ -41,6 +48,13 @@ public static class PersistenceMapper
             "execution.command.place_order" => MapCommand(root.GetProperty("command")),
             "execution.command.acknowledged" or "execution.command.rejected" => MapAck(root.GetProperty("ack")),
             "execution.order.simulated" => MapReport(root.GetProperty("report")),
+            "journal.ticket.created" => MapTicket(root.GetProperty("ticket")),
+            "risk.day_anchor.resolved" => MapDayAnchor(root),
+            "risk.day_anchor.equity_observed" => MapDayAnchorEquity(root),
+            "journal.position.opened" => MapPositionOpen(root),
+            "risk.lockout.enabled" => MapLockoutEnabled(root),
+            "risk.lockout.cleared" => MapLockoutCleared(root),
+            "risk.lockout.acknowledged" => MapKillSwitchAck(root),
             _ => null,
         };
     }
@@ -52,8 +66,16 @@ public static class PersistenceMapper
 
     private static double Num(JsonElement e, string name) => e.GetProperty(name).GetDouble();
 
+    private static double? NumOrNull(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number ? p.GetDouble() : null;
+
     private static DateTimeOffset Time(JsonElement e, string name) =>
         DateTimeOffset.Parse(Str(e, name));
+
+    private static DateTimeOffset? TimeOrNull(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String
+            ? DateTimeOffset.Parse(p.GetString()!)
+            : null;
 
     private static CandleRow MapCandle(JsonElement c) => new(
         Str(c, "symbol"), Str(c, "timeframe"), Time(c, "openTime"),
@@ -91,4 +113,28 @@ public static class PersistenceMapper
         Str(r, "reportId"), Str(r, "commandId"), Str(r, "accountId"), Str(r, "agentId"),
         Str(r, "symbol"), Str(r, "side"), Str(r, "status"), Str(r, "detail"),
         Time(r, "reportedAt"));
+
+    private static TicketRow MapTicket(JsonElement t) => new(
+        Str(t, "ticketId"), Str(t, "accountId"), Str(t, "symbol"), Str(t, "setup"), Str(t, "bias"),
+        Num(t, "entryPrice"), Num(t, "stopLoss"), Num(t, "invalidation"), t.GetProperty("confidence").GetInt32(),
+        NumOrNull(t, "takeProfit"), NumOrNull(t, "targetVolume"), NumOrNull(t, "targetRiskUsd"),
+        Time(t, "createdAt"));
+
+    private static DayAnchorRow MapDayAnchor(JsonElement d) => new(
+        Str(d, "accountId"), Time(d, "startsAtUtc"));
+
+    private static DayAnchorEquityRow MapDayAnchorEquity(JsonElement d) => new(
+        Str(d, "accountId"), Time(d, "startsAtUtc"), Num(d, "equity"));
+
+    private static PositionOpenRow MapPositionOpen(JsonElement p) => new(
+        Str(p, "accountId"), Str(p, "brokerPositionId"), Time(p, "openedAt"));
+
+    private static LockoutEnabledRow MapLockoutEnabled(JsonElement l) => new(
+        Str(l, "lockoutId"), Str(l, "accountId"), Str(l, "reason"), Time(l, "since"), TimeOrNull(l, "until"));
+
+    private static LockoutClearedRow MapLockoutCleared(JsonElement l) => new(
+        Str(l, "accountId"), Str(l, "clearedBy"));
+
+    private static KillSwitchAckRow MapKillSwitchAck(JsonElement a) => new(
+        Str(a, "accountId"), Str(a, "lockoutId"), Time(a, "acknowledgedAt"));
 }

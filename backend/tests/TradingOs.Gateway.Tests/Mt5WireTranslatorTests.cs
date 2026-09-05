@@ -25,7 +25,8 @@ public class Mt5WireTranslatorTests
         FillingMode: "IOC",
         StopsLevelPoints: 0,
         Mode: "observe",
-        AgentVersion: "0.1.0-observer");
+        AgentVersion: "0.1.0-observer",
+        ServerUtcOffsetMinutes: 180);
 
     [Fact]
     public void ToAccountSummary_maps_real_fields_and_floating_daily_pnl()
