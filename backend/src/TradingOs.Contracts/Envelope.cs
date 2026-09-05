@@ -49,6 +49,9 @@ public static class EventTypes
     /// <summary>T02a: Gateway-originated (needs the MT5 terminal's server-time
     /// offset), never client-published — no PublishEvent whitelist entry.</summary>
     public const string RiskDayAnchorResolved = "risk.day_anchor.resolved";
+    /// <summary>T05: Gateway-originated (server-side positions.snapshot diff)
+    /// — moved off the PublishEvent whitelist; was client-detected in T02a.</summary>
+    public const string JournalPositionOpened = "journal.position.opened";
     /// <summary>T02b: Gateway-originated — only the observer's deal history
     /// knows a real close happened, same category as RiskDayAnchorResolved
     /// (no PublishEvent whitelist entry).</summary>

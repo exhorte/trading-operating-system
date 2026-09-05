@@ -17,15 +17,16 @@ public sealed class CockpitHub(GatewayState state, Mt5ObserverClient observer, P
 
     /// <summary>Strict whitelist for client-published events (Phase 10, extended
     /// by T04/T02a). Anything else is refused — dashboards may publish exactly
-    /// these facts. Note: risk.day_anchor.resolved is NOT here — it needs the
-    /// MT5 terminal's offset, so only the Gateway ever produces it.</summary>
+    /// these facts. Note: risk.day_anchor.resolved and journal.position.opened
+    /// (T05: moved off this list — was client-detected in T02a, now a
+    /// server-side positions.snapshot diff) are NOT here; only the Gateway
+    /// ever produces them.</summary>
     private static readonly HashSet<string> PublishableTypes =
         [
             "strategy.signal.created",
             "risk.decision.made",
             "journal.ticket.created",
             "risk.day_anchor.equity_observed",
-            "journal.position.opened",
             "risk.lockout.enabled",
             "risk.lockout.cleared",
             "risk.lockout.acknowledged",

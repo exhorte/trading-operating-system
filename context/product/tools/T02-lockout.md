@@ -165,18 +165,26 @@ Le nombre de trades pris hors fenêtre autorisée tombe à zéro sans effort de 
      qui bascule sans reconnexion — sans ce deuxième mécanisme, une connexion
      ininterrompue de plus de 24 h aurait gardé l'ancre de la veille.
   3. **`tradesToday` ne nécessite aucun P&L** — un `brokerPositionId` vu pour
-     la première fois est un trade ouvert, point. Détecté côté client (le
-     moteur de risque tourne dans le navigateur, pas encore porté au
+     la première fois est un trade ouvert, point. ~~Détecté côté client~~
+     **mise à jour T05 (2026-09-05) : détection migrée côté Gateway** — voir
+     `T05-captures-auto.md`. Le paragraphe qui suit décrit la conception T02a
+     d'origine (détection client) ; elle a été remplacée, pas seulement
+     complétée, parce qu'un trade manuel pris sans onglet cockpit ouvert ne
+     déclenchait rien — ni le comptage ici, ni la capture d'entrée dont T05
+     avait besoin. Compté depuis l'ancre (table `position_opens`, idempotente
+     sur `(account_id, broker_position_id)`), inchangé.
+     **Limite connue, toujours vraie après la migration T05** : le fil MT5 ne
+     transporte pas l'heure réelle d'ouverture d'une position — `openedAt` est
+     l'heure de détection (désormais côté Gateway), pas celle de MT5. Une
+     position déjà ouverte avant l'ancre mais découverte pour la première fois
+     aujourd'hui (ex. après une coupure prolongée) serait comptée à tort comme
+     un trade du jour. Correction future : ajouter l'heure d'ouverture réelle
+     au wire côté observer.
+
+     *Conception T02a d'origine (historique)* : détecté côté client (le
+     moteur de risque tournait dans le navigateur, pas encore porté au
      backend) en diffant les snapshots de positions, publié comme
-     `journal.position.opened`, compté depuis l'ancre (table `position_opens`,
-     idempotente sur `(account_id, broker_position_id)`).
-     **Limite connue** : le fil MT5 ne transporte pas l'heure réelle
-     d'ouverture d'une position (`Mt5WireTranslator.ToPositions` utilise
-     l'heure du snapshot, pas celle de MT5) — une position déjà ouverte avant
-     l'ancre mais découverte pour la première fois aujourd'hui (ex. après une
-     coupure prolongée) serait comptée à tort comme un trade du jour. Correction
-     future : ajouter l'heure d'ouverture réelle à `build_positions()` côté
-     observer.
+     `journal.position.opened` via `PublishEvent`.
   4. **L'état verrouillé est stocké, jamais dérivé** — table `risk_lockouts`
      (motif, depuis, jusqu'à, effacé le/par). `detectNewLockout` publie une
      ligne au passage exact à `locked` (edge-triggered, pas à chaque

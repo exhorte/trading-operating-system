@@ -60,10 +60,14 @@ export type EventType =
   // journal (T04: dashboard-originated, published through the same
   // whitelisted PublishEvent path as strategy.signal.created)
   | "journal.ticket.created"
-  // T02a: journal.position.opened and risk.day_anchor.equity_observed are
-  // dashboard-observed facts (published like the ticket above);
-  // risk.day_anchor.resolved is Gateway-only (needs the MT5 terminal's
-  // server-UTC offset) — never published by a dashboard.
+  // T02a: risk.day_anchor.equity_observed is a dashboard-observed fact
+  // (published like the ticket above); risk.day_anchor.resolved is
+  // Gateway-only (needs the MT5 terminal's server-UTC offset) — never
+  // published by a dashboard.
+  //
+  // journal.position.opened moved to Gateway-only in T05 (server-side diff,
+  // mt5_observer.py::poll_positions) — no longer client-detected/published;
+  // same category as risk.day_anchor.resolved below.
   | "journal.position.opened"
   | "risk.day_anchor.resolved"
   | "risk.day_anchor.equity_observed"

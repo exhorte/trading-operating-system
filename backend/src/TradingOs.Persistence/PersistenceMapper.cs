@@ -24,7 +24,7 @@ public sealed record TicketRow(string TicketId, string AccountId, string Symbol,
 public sealed record DayAnchorRow(string AccountId, DateTimeOffset StartsAtUtc);
 public sealed record DayAnchorEquityRow(string AccountId, DateTimeOffset StartsAtUtc, double Equity);
 public sealed record PositionOpenRow(string AccountId, string BrokerPositionId, DateTimeOffset OpenedAt);
-public sealed record ClosedTradeRow(string AccountId, string BrokerPositionId, string Symbol, string Side, double Volume, double RealizedPnl, DateTimeOffset ClosedAt);
+public sealed record ClosedTradeRow(string AccountId, string BrokerPositionId, string Symbol, string Side, double Volume, double RealizedPnl, double ExitPrice, DateTimeOffset ClosedAt);
 public sealed record LockoutEnabledRow(string LockoutId, string AccountId, string Reason, DateTimeOffset Since, DateTimeOffset? Until);
 public sealed record LockoutClearedRow(string AccountId, string ClearedBy);
 public sealed record KillSwitchAckRow(string AccountId, string LockoutId, DateTimeOffset AcknowledgedAt);
@@ -133,7 +133,7 @@ public static class PersistenceMapper
 
     private static ClosedTradeRow MapClosedTrade(JsonElement c) => new(
         Str(c, "accountId"), Str(c, "brokerPositionId"), Str(c, "symbol"), Str(c, "side"),
-        Num(c, "volume"), Num(c, "realizedPnl"), Time(c, "closedAt"));
+        Num(c, "volume"), Num(c, "realizedPnl"), Num(c, "exitPrice"), Time(c, "closedAt"));
 
     private static LockoutEnabledRow MapLockoutEnabled(JsonElement l) => new(
         Str(l, "lockoutId"), Str(l, "accountId"), Str(l, "reason"), Time(l, "since"), TimeOrNull(l, "until"));

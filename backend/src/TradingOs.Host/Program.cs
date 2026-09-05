@@ -22,6 +22,8 @@ builder.Services.AddSingleton(new PersistenceWriter(connectionString));
 builder.Services.AddSingleton(new AuditRepository(connectionString));
 builder.Services.AddSingleton(new RiskTodayRepository(connectionString));
 builder.Services.AddSingleton(new NewsCalendarRepository(connectionString));
+builder.Services.AddSingleton(new TradeCaptureRepository(connectionString));
+builder.Services.AddSingleton(new CandleRepository(connectionString));
 builder.Services.AddHttpClient("fred");
 builder.Services.AddHostedService<GatewayBridgeService>();
 builder.Services.AddHostedService<NewsCalendarService>();
@@ -89,6 +91,43 @@ app.MapGet("/api/calendar/upcoming", async (
     catch (Exception ex)
     {
         logger.LogError(ex, "/api/calendar/upcoming failed");
+        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
+    }
+});
+app.MapGet("/api/captures/{brokerPositionId}", async (
+    string brokerPositionId,
+    TradeCaptureRepository repository,
+    ILogger<Program> logger,
+    CancellationToken ct,
+    string accountId) =>
+{
+    try
+    {
+        var (entry, exit) = await repository.GetAsync(accountId, brokerPositionId, ct);
+        return Results.Ok(new { entry, exit });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "/api/captures/{BrokerPositionId} failed", brokerPositionId);
+        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
+    }
+});
+app.MapGet("/api/candles", async (
+    CandleRepository repository,
+    ILogger<Program> logger,
+    CancellationToken ct,
+    string symbol,
+    string timeframe,
+    DateTime from,
+    DateTime to) =>
+{
+    try
+    {
+        return Results.Ok(await repository.GetRangeAsync(symbol, timeframe, from, to, ct));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "/api/candles failed");
         return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
     }
 });

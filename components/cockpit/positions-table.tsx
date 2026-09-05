@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { formatPrice, formatSignedMoney } from "@/lib/format";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const HEADERS = ["Symbol", "Side", "Volume", "Entry", "Current", "SL", "TP", "uP&L", "R", "Strategy"];
+const HEADERS = ["Symbol", "Side", "Volume", "Entry", "Current", "SL", "TP", "uP&L", "R", "Strategy", ""];
 
 export function PositionsTable() {
   const { positions, connection } = useCockpit();
@@ -67,7 +68,15 @@ export function PositionsTable() {
                   >
                     {position.rMultiple.toFixed(2)}
                   </td>
-                  <td className="py-1.5 text-muted">{position.strategyId}</td>
+                  <td className="py-1.5 pr-3 text-muted">{position.strategyId}</td>
+                  <td className="py-1.5">
+                    {/* T05: entry capture is server-recorded the moment the
+                        position was observed opening — link, not a button,
+                        since there's nothing to trigger here. */}
+                    <Link href={`/journal/${position.positionId}`} className="text-info hover:underline">
+                      Capture
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

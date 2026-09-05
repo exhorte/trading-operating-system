@@ -63,9 +63,25 @@ public static class Mt5WireTranslator
             OpenedAt: openedAtIso);
     }
 
+    /// <summary>T05: lean position.opened → dashboard/persistence payload
+    /// (server-side diff, replaces the old client-detected T02a event).</summary>
+    public static PositionOpenedPayload ToPositionOpened(Mt5PositionOpenedMessage msg)
+    {
+        return new PositionOpenedPayload(
+            AccountId: msg.AccountId,
+            BrokerPositionId: msg.BrokerPositionId,
+            Symbol: msg.Symbol,
+            Side: LowercaseSide(msg.Side),
+            Volume: msg.Volume,
+            EntryPrice: msg.EntryPrice,
+            StopLoss: msg.StopLoss,
+            TakeProfit: msg.TakeProfit,
+            OpenedAt: Iso(msg.OpenedAt));
+    }
+
     /// <summary>T02b: lean position.closed → dashboard/persistence payload.
     /// ClosedAt converts the observer's epoch-ms to ISO, like every other
-    /// wire timestamp (Iso helper).</summary>
+    /// wire timestamp (Iso helper). ExitPrice (T05) passes through as-is.</summary>
     public static JournalTradeClosedPayload ToTradeClosed(Mt5PositionClosedMessage msg)
     {
         return new JournalTradeClosedPayload(
@@ -75,6 +91,7 @@ public static class Mt5WireTranslator
             Side: LowercaseSide(msg.Side),
             Volume: msg.Volume,
             RealizedPnl: msg.RealizedPnl,
+            ExitPrice: msg.ExitPrice,
             ClosedAt: Iso(msg.ClosedAt));
     }
 

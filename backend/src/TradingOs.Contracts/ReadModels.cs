@@ -69,9 +69,27 @@ public sealed record PositionsSnapshotPayload(Position[] Positions);
 /// server-UTC offset — never a client-computed guess.</summary>
 public sealed record DayAnchorResolvedPayload(string AccountId, string StartsAtUtc);
 
+/// <summary>
+/// T05: one real position opened (Gateway-detected server-side diff, replaces
+/// T02a's client-side detection). Self-contained (entry/stop/take-profit
+/// included) so a historical envelope from the audit trail can be replayed
+/// without a live GatewayState lookup.
+/// </summary>
+public sealed record PositionOpenedPayload(
+    string AccountId,
+    string BrokerPositionId,
+    string Symbol,
+    string Side,
+    double Volume,
+    double EntryPrice,
+    double StopLoss,
+    double TakeProfit,
+    string OpenedAt);
+
 /// <summary>T02b: one position fully closed, as observed on the MT5 terminal —
 /// RealizedPnl already sums every deal on the position (T02-lockout.md pitfall:
-/// a single partial-close deal must never stand in for the net outcome).</summary>
+/// a single partial-close deal must never stand in for the net outcome).
+/// ExitPrice (T05) is the volume-weighted average across every exit deal.</summary>
 public sealed record JournalTradeClosedPayload(
     string AccountId,
     string BrokerPositionId,
@@ -79,6 +97,7 @@ public sealed record JournalTradeClosedPayload(
     string Side,
     double Volume,
     double RealizedPnl,
+    double ExitPrice,
     string ClosedAt);
 
 /// <summary>T03: one scheduled FRED release — mirrors lib/domain/risk.ts::UpcomingRelease.</summary>

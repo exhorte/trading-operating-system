@@ -212,11 +212,23 @@ export interface DayAnchorEquityObservedPayload {
   equity: number;
 }
 
-/** One real position opened (brokerPositionId first seen) — no P&L needed
- *  for the max-trades gate, just a count since the day anchor. */
+/**
+ * One real position opened (brokerPositionId first seen). Gateway-originated
+ * only since T05 (server-side diff, mt5_observer.py::poll_positions) — never
+ * client-published anymore (was client-detected in T02a). Carries the full
+ * fact so it's self-contained for audit/replay: T02a only needed the count,
+ * but T05's capture-fact write needs entryPrice/stopLoss/takeProfit and
+ * can't rely on a live GatewayState lookup for a historical envelope.
+ */
 export interface PositionOpenedPayload {
   accountId: AccountId;
   brokerPositionId: string;
+  symbol: SymbolCode;
+  side: "buy" | "sell";
+  volume: number;
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
   openedAt: UtcTimestamp;
 }
 

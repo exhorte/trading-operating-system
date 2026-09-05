@@ -7,7 +7,9 @@ journal de chaque fiche d'outil.
 ## En une phrase
 
 Poste de travail personnel pour trader intraday, sorti de la recherche
-d'edge (ADR 0002) ; la Vague 1 est en cours (statuts : `context/product/tools/README.md`). T01, T02, T03 et T04 sont livrés — reste T05.
+d'edge (ADR 0002) ; **la Vague 1 est entièrement livrée** (T01–T05, statuts :
+`context/product/tools/README.md`) — reste la clôture de vague elle-même
+(voir `02_Plan_Projet/prompt-claude-code-vague-1.md`, section « Clôture »).
 
 ## Ce qui existe et fonctionne
 
@@ -21,7 +23,8 @@ Tout ce qui suit a été **validé en live** contre le compte de démonstration 
 | Risk Engine | `lib/risk/` | Gates FTMO, sizing, lockout (ledger stocké, pause de 30 min sur pertes consécutives depuis T02b), gate calendrier FRED fail-closed depuis T03. Pur, testé. |
 | Chemin d'exécution | `lib/execution/`, `CockpitHub` | `RiskDecision → Command → ACK → Report`, mode `observe`/SIMULATED, idempotence validée en live. **Aucun appel de trade n'existe nulle part.** |
 | Persistance | `backend/src/TradingOs.Persistence/`, `docker-compose.yml` | TimescaleDB port 5433, écriture non bloquante, audit JSONB. |
-| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; panneaux permanents T01/T04, bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03. |
+| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; panneaux permanents T01/T04, bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03, viewer de capture T05 (`/journal/[brokerPositionId]`, pas le journal complet — T06). |
+| Captures de trade | `lib/journal/`, `components/journal/`, `trade_captures` | T05 : faits immuables écrits par le Gateway (fenêtre, prix), rendu à la demande côté cockpit via `analyzeMarketContext` — jamais une image pré-rendue. |
 
 ## Ce qui a été supprimé le 2026-09-04
 
@@ -35,14 +38,17 @@ retenue si ça revient : conteneuriser via `gmag11/MetaTrader5-Docker`.
 
 ## Prochaine action
 
-T01, T02 (T02a+T02b) et T03 sont livrés. Dernier outil de la Vague 1 :
-**T05 — captures automatiques entrée/sortie** (`context/product/tools/T05-captures-auto.md`),
-non démarré. Décision d'architecture à trancher avant tout code : rendu
-maison (candles + niveaux, position par défaut) vs capture de la fenêtre MT5
-— voir `02_Plan_Projet/prompt-claude-code-vague-1.md`, section T05.
+Les cinq outils de la Vague 1 sont livrés. Prochaine étape : la **clôture de
+vague** (`02_Plan_Projet/prompt-claude-code-vague-1.md`, section « Clôture de
+la Vague 1 ») — relire les cinq fiches, écrire en ADR les décisions
+d'architecture prises pendant la vague (au moins un candidat identifié :
+« le serveur capture des faits immuables, le cockpit rend », voir
+`T05-captures-auto.md`), puis la séance réelle de bout en bout qui est le
+vrai critère de sortie de vague. Ensuite : T06 — journal auto-alimenté
+(sauf second compte prop firm ouvert entre-temps, auquel cas T11/T12
+remontent en tête, per `roadmap.md`).
 
 ## Questions ouvertes
 
 - Quel déclencheur pour le multi-compte ? (Réponse par défaut : le jour où un deuxième compte prop firm est ouvert.)
-- Rendu maison ou capture MT5 pour les screenshots ? Position par défaut : rendu maison, à trancher avec l'utilisateur au démarrage de T05.
 - Authentification : hors sujet tant que l'usage est personnel et local.

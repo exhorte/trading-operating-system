@@ -34,6 +34,7 @@ export type Mt5MessageType =
   | "market.candle"
   | "account.snapshot"
   | "positions.snapshot"
+  | "position.opened"
   | "position.closed"
   | "execution.ack"
   | "execution.report"
@@ -146,6 +147,26 @@ export interface Mt5PositionsSnapshotMessage extends Mt5Message {
 }
 
 /**
+ * T05: a genuinely new ticket, observer-detected (server-side diff — see
+ * mt5_observer.py::poll_positions/diff_position_ids). Replaces the old
+ * client-side detection (T02a) so entry capture and trade counting no longer
+ * depend on a browser tab being open. `openedAt` is detection time, not
+ * MT5's true fill time — the wire has never carried that field.
+ */
+export interface Mt5PositionOpenedMessage extends Mt5Message {
+  type: "position.opened";
+  brokerPositionId: string;
+  symbol: SymbolCode;
+  side: Mt5Side;
+  volume: number;
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  /** Epoch ms UTC, detection time. */
+  openedAt: number;
+}
+
+/**
  * T02b: a position that fully closed since the last poll (observer-detected,
  * never client-derived — only the terminal's deal history has the true net
  * P&L across every partial close). `realizedPnl` is already the sum of
@@ -158,6 +179,9 @@ export interface Mt5PositionClosedMessage extends Mt5Message {
   side: Mt5Side;
   volume: number;
   realizedPnl: number;
+  /** T05: volume-weighted average across every exit deal — marks the exit
+   *  fill on a rendered capture. */
+  exitPrice: number;
   /** Epoch ms UTC of the last exit deal. */
   closedAt: number;
 }
@@ -265,6 +289,7 @@ export type Mt5InboundMessage =
   | Mt5CandleMessage
   | Mt5AccountSnapshotMessage
   | Mt5PositionsSnapshotMessage
+  | Mt5PositionOpenedMessage
   | Mt5PositionClosedMessage
   | Mt5AckMessage
   | Mt5ReportMessage;

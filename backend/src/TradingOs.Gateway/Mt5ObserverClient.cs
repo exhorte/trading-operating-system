@@ -156,6 +156,15 @@ public sealed class Mt5ObserverClient(GatewayState state, string url)
                 EnvelopeReady?.Invoke(EventTypes.AgentSnapshotPositions, new PositionsSnapshotPayload(mapped));
                 break;
             }
+            // T05: server-side diff (mt5_observer.py::poll_positions) — direct
+            // like agent.snapshot.account, never through the dashboard
+            // PublishEvent whitelist. Replaces T02a's client-side detection.
+            case Mt5PositionOpenedMessage opened:
+            {
+                var mapped = Mt5WireTranslator.ToPositionOpened(opened);
+                EnvelopeReady?.Invoke(EventTypes.JournalPositionOpened, mapped);
+                break;
+            }
             // T02b: only the observer's deal history knows a position truly
             // closed — published direct like agent.snapshot.account, never
             // through the dashboard PublishEvent whitelist.

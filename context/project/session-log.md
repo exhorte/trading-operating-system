@@ -6,6 +6,80 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-05 (revue T05)
+
+Deux défauts trouvés en revue sur `tools/mt5-observer/mt5_observer.py`
+(T05, livré dans la session précédente), corrigés avant tout usage réel —
+détail complet dans `context/product/tools/T05-captures-auto.md` :
+
+1. **Mauvais identifiant comme clé** — le diff et
+   `history_deals_get(position=...)` utilisaient `p.ticket` au lieu de
+   `p.identifier` (`POSITION_IDENTIFIER`, égal à `DEAL_POSITION_ID`). Les deux
+   coïncident dans le cas courant (d'où le bug invisible) mais divergent sur
+   des opérations de service côté broker — le jour où ça arrive sur une
+   position vivante : fausse clôture, fausse ouverture, `tradesToday` faussé,
+   capture d'entrée sur le mauvais trade, entrée parasite dans la série de
+   pertes consécutives.
+2. **Trade ouvert-et-fermé entre deux sondages invisible** — le sondage à
+   2 s ne peut voir un aller-retour plus court : le ticket/identifiant
+   n'entre jamais dans `_known_position_ids`, donc ne peut jamais en sortir
+   côté diff. Exactement les scalps courts et les stops touchés
+   immédiatement — les trades qui pèsent le plus sur les métriques de
+   discipline.
+
+Corrections : `identifier` partout où une position est clé ; nouvelle
+fonction `scan_missed_round_trips` (balayage des deals de sortie récents à
+chaque poll, reconstruit `opened`+`closed` pour tout `position_id` fermé
+jamais vu ouvert — `stopLoss`/`takeProfit` à `0.0`, la convention MT5
+elle-même pour « pas de stop », pas une valeur inventée, puisque les deals ne
+portent pas ces champs). 7 tests ajoutés (17 au total côté observer),
+`unittest.mock` stdlib, aucune nouvelle dépendance. `python -m py_compile`
+et `python -m unittest` verts ; aucun changement côté TS/C#.
+
+---
+
+## 2026-09-05 (suite 3)
+
+Outil : T05 (livré) — captures automatiques entrée/sortie. **La Vague 1 est
+entièrement livrée** (T01–T05) ; reste la clôture de vague elle-même.
+
+Décision d'architecture rediscutée en session et inversée par rapport à la
+fiche initiale : la fiche proposait un rendu côté serveur .NET (SVG ou PNG).
+L'utilisateur a signalé le défaut de raisonnement — porter `lib/analysis/` en
+C# pour dessiner créerait une seconde source de vérité (contraire à l'ADR
+0004), et le cockpit devra de toute façon savoir rendre un graphique pour
+T06. Conception retenue : **le serveur capture des faits immuables et bornés
+(fenêtre, prix), le cockpit rend l'image à la demande** avec
+`analyzeMarketContext` — jamais une image pré-calculée. Candidat ADR identifié
+pour la clôture de vague (le principe dépasse ce seul outil).
+
+Deux trouvailles ont élargi le périmètre au-delà de la fiche :
+- Le vrai événement de fill est `journal.position.opened`/`journal.trade_closed`
+  (T02a/T02b), pas les rapports SIMULATED de la boucle de décision transitoire.
+- `journal.position.opened` était détecté côté navigateur (T02a) — un trade
+  manuel pris sans onglet cockpit ouvert ne déclenchait ni le comptage
+  `tradesToday` ni, pour T05, la capture d'entrée. Migré côté Gateway (même
+  schéma que la fermeture T02b : un seul diff `positions.snapshot` calcule
+  ouvertures et fermetures, `seed_known_positions` évite tout événement
+  fantôme au démarrage). Corrige un vrai bug T02a en le faisant.
+
+Ajouts : `exitPrice` sur `journal.trade_closed`/`closed_trades` (moyenne
+pondérée par volume, même risque de piège que T02b si on prenait un seul
+deal) ; table `trade_captures` (écrite par une réplique dédiée hors pipeline
+`PersistenceWriter` — l'écriture de la ligne 'exit' doit relire la ligne
+'entry' d'abord, un envelope ne mappe pas vers deux tables) ; premier
+endpoint de lecture par plage sur `candles` ; `lib/journal/chart-scale.ts`
+(pur, testé) + `components/journal/trade-chart.tsx` (SVG) + viewer minimal
+`/journal/[brokerPositionId]` (pas le journal complet — T06 reste le stub).
+
+Gates tous verts : `npm run lint`, `npx tsc --noEmit`, `npm test` (107,
++6), `npm run build`, `dotnet build`, `dotnet test` (38, inchangé — glue DB
+non testée en unitaire, même convention qu'ailleurs), `python -m unittest`
+(10, +6). Non vérifié : la chaîne complète contre un terminal MT5 réel (pas
+d'extension Chrome connectée, même limite qu'en T02/T03).
+
+---
+
 ## 2026-09-05 (suite 2)
 
 Outil : T03 (livré) — gate calendrier économique FRED. Vague 1 : reste T05.

@@ -182,11 +182,42 @@ CREATE TABLE IF NOT EXISTS closed_trades (
     side               text NOT NULL,
     volume             double precision NOT NULL,
     realized_pnl       double precision NOT NULL,
+    -- T05: volume-weighted average across every exit deal — marks the exit
+    -- fill on a rendered capture (mt5_observer.py::weighted_exit_price).
+    exit_price         double precision NOT NULL,
     closed_at          timestamptz NOT NULL,
     PRIMARY KEY (account_id, broker_position_id)
 );
 CREATE INDEX IF NOT EXISTS idx_closed_trades_account_time
     ON closed_trades (account_id, closed_at DESC);
+
+-- T05 — immutable capture facts, written once per (position, kind) at the
+-- moment of the real event (journal.position.opened / journal.trade_closed),
+-- never updated afterward. Deliberately NOT an image: the cockpit renders
+-- the chart on demand from these frozen numbers using analyzeMarketContext
+-- (TypeScript, the canonical analysis engine per ADR 0004) plus candles
+-- queried within [window_start_utc, window_end_utc] — a boundary that is
+-- stored and can never be widened, which is a stronger non-anticipation
+-- guarantee than trusting a static image was rendered correctly once.
+-- entry_price/stop_loss/take_profit are duplicated onto the 'exit' row (read
+-- from the matching 'entry' row at write time) so a viewer needs only one
+-- row per kind, never a join.
+CREATE TABLE IF NOT EXISTS trade_captures (
+    account_id          text NOT NULL,
+    broker_position_id  text NOT NULL,
+    kind                text NOT NULL CHECK (kind IN ('entry', 'exit')),
+    symbol              text NOT NULL,
+    timeframe           text NOT NULL,
+    window_start_utc    timestamptz NOT NULL,
+    window_end_utc      timestamptz NOT NULL,
+    entry_price         double precision NOT NULL,
+    stop_loss           double precision NOT NULL,
+    take_profit         double precision NOT NULL,
+    -- Null on the 'entry' row (no exit yet); set on the 'exit' row.
+    exit_price          double precision,
+    captured_at         timestamptz NOT NULL,
+    PRIMARY KEY (account_id, broker_position_id, kind)
+);
 
 -- T03: FRED release calendar cache. A reference-data cache, not a business
 -- event — written directly by NewsCalendarRepository (NewsCalendarService),

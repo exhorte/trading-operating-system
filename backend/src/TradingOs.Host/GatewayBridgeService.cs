@@ -16,6 +16,7 @@ public sealed class GatewayBridgeService(
     GatewayState state,
     IHubContext<CockpitHub> hub,
     PersistenceWriter writer,
+    TradeCaptureRepository captures,
     ILogger<GatewayBridgeService> logger) : BackgroundService
 {
     private const string Source = "mt5-gateway";
@@ -48,6 +49,7 @@ public sealed class GatewayBridgeService(
             // Fire-and-forget: a broadcast failure must never stall the gateway.
             _ = hub.Clients.All.SendAsync("event", envelope, stoppingToken);
             Persist(writer, envelope);
+            RecordCaptureFactIfApplicable(type, payload, stoppingToken);
         };
         observer.ConnectionChanged += (connected) =>
             logger.LogInformation("MT5 observer {State}", connected ? "connected" : "disconnected — retrying");
@@ -89,6 +91,47 @@ public sealed class GatewayBridgeService(
                 new DayAnchorResolvedPayload(accountId, startsAtUtc.ToString("o")));
             _ = hub.Clients.All.SendAsync("event", envelope, ct);
             Persist(writer, envelope);
+        }
+    }
+
+    /// <summary>
+    /// T05: on the two real trade-lifecycle facts, write an immutable
+    /// capture-fact row — see TradeCaptureRepository and schema.sql. Fire-
+    /// and-forget from this synchronous event handler, like the hub
+    /// broadcast above; a DB hiccup here must never stall the gateway.
+    /// </summary>
+    private void RecordCaptureFactIfApplicable(string type, object payload, CancellationToken ct)
+    {
+        if (type == EventTypes.JournalPositionOpened && payload is PositionOpenedPayload opened)
+        {
+            _ = RunCaptureWriteAsync(() => captures.RecordEntryAsync(
+                opened.AccountId, opened.BrokerPositionId, opened.Symbol, CurrentTimeframe(),
+                DateTimeOffset.Parse(opened.OpenedAt).UtcDateTime,
+                opened.EntryPrice, opened.StopLoss, opened.TakeProfit, ct));
+        }
+        else if (type == EventTypes.JournalTradeClosed && payload is JournalTradeClosedPayload closed)
+        {
+            _ = RunCaptureWriteAsync(() => captures.RecordExitAsync(
+                closed.AccountId, closed.BrokerPositionId, closed.ExitPrice,
+                DateTimeOffset.Parse(closed.ClosedAt).UtcDateTime, ct));
+        }
+    }
+
+    private string CurrentTimeframe() => state.Snapshot().Candles.FirstOrDefault()?.Timeframe ?? "M15";
+
+    private async Task RunCaptureWriteAsync(Func<Task> write)
+    {
+        try
+        {
+            await write();
+        }
+        catch (OperationCanceledException)
+        {
+            // shutting down
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to write a T05 trade-capture fact");
         }
     }
 }

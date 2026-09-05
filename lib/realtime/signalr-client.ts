@@ -121,14 +121,10 @@ export class SignalRRealtimeClient implements RealtimeClient {
    *  Gateway) — null until the first risk.day_anchor.resolved arrives. */
   private dayAnchorStartsAtUtc: string | null = null;
 
-  /** T02a: brokerPositionIds already published this session — a reload
-   *  re-detects and re-publishes them too, which the server dedupes
-   *  (ON CONFLICT DO NOTHING), so this only needs to avoid same-session spam. */
-  private knownPositionIds = new Set<string>();
-
   /** T02a: real open-count since the day anchor, hydrated from /api/risk/today
-   *  and kept current as this.publishNewPositions detects more. Null (not 0)
-   *  until hydration succeeds — never a guessed zero. */
+   *  and kept current by re-hydrating on every journal.position.opened (T05:
+   *  Gateway-detected, no longer a client-side counter). Null (not 0) until
+   *  hydration succeeds — never a guessed zero. */
   private tradesToday: number | null = null;
 
   /** T02b: real trailing loss streak, hydrated from /api/risk/today and kept
@@ -272,7 +268,6 @@ export class SignalRRealtimeClient implements RealtimeClient {
     this.scheduleContextRecompute();
     if (snapshot.account) {
       await this.hydrateRiskToday(snapshot.account.accountId);
-      this.publishNewPositions(snapshot.account.accountId);
     }
     // T03: not account-scoped (the FRED calendar is global) — always attempted.
     await this.hydrateCalendar();
@@ -326,29 +321,6 @@ export class SignalRRealtimeClient implements RealtimeClient {
     }
   }
 
-  /**
-   * T02a: a brokerPositionId seen for the first time this session is
-   * published as an open — no P&L needed, just a count for the max-trades
-   * gate. Runs on every snapshot, not only the first, so a trade opened
-   * after connect is caught too.
-   */
-  private publishNewPositions(accountId: string): void {
-    for (const position of this.store.getSnapshot().positions) {
-      if (this.knownPositionIds.has(position.positionId)) {
-        continue;
-      }
-      this.knownPositionIds.add(position.positionId);
-      this.tradesToday = (this.tradesToday ?? 0) + 1;
-      this.publish(
-        makeEnvelope<PositionOpenedPayload>("journal.position.opened", "cockpit-risk-engine", {
-          accountId,
-          brokerPositionId: position.positionId,
-          openedAt: position.openedAt,
-        }),
-      );
-    }
-  }
-
   private onEvent(envelope: Envelope): void {
     switch (envelope.type) {
       case "market.tick": {
@@ -382,11 +354,16 @@ export class SignalRRealtimeClient implements RealtimeClient {
       }
       case "agent.snapshot.positions": {
         this.store.apply(envelope);
-        const account = this.store.getSnapshot().account;
-        if (account) {
-          this.publishNewPositions(account.accountId);
-        }
         this.recomputeRisk();
+        break;
+      }
+      // T05: Gateway-detected (server-side positions.snapshot diff) — like
+      // journal.trade_closed, re-hydrate the persisted truth rather than
+      // trying to patch a local counter (that counter was the T02a bug this
+      // migration fixes: silently missed opens with no cockpit tab open).
+      case "journal.position.opened": {
+        const { accountId } = envelope.payload as PositionOpenedPayload;
+        void this.hydrateRiskToday(accountId);
         break;
       }
       // T02a: Gateway-resolved — a genuinely new anchor means a new trading

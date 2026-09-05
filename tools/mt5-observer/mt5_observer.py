@@ -29,6 +29,7 @@ import argparse
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 import MetaTrader5 as mt5
@@ -45,9 +46,22 @@ EXECUTION_MODE = "observe"
 # Idempotency: command ids already processed (survives client reconnects).
 _seen_command_ids: set[str] = set()
 
-# T02b: brokerPositionId tickets seen on the last positions_get() poll — a
-# ticket that disappears between polls is a closed position.
+# T02b/T05: brokerPositionId is POSITION_IDENTIFIER (TradePosition.identifier
+# / TradeDeal.position_id) — NOT TradePosition.ticket. The identifier "does
+# not change during the life of a position" (MT5 docs); ticket is the
+# opening order's ticket and can be rewritten by broker-side service
+# operations. They coincide almost always, which is exactly what made the
+# bug invisible: the day they diverge on a still-open position, a ticket-keyed
+# diff sees one id vanish and another appear — a false close, a false open,
+# tradesToday incremented for a trade that never happened, a phantom entry
+# in the consecutive-loss streak, and an entry capture for a trade that
+# hasn't started. Use `.identifier` everywhere a position is keyed, and
+# `position=` in history_deals_get must be that same identifier.
 _known_position_ids: set[int] = set()
+
+# T05: epoch ms of the last missed-round-trip deal scan (see
+# scan_missed_round_trips) — 0 means "never scanned yet".
+_last_deal_scan_ms: int = 0
 
 
 def now_ms() -> int:
@@ -120,7 +134,7 @@ def build_account() -> dict[str, Any] | None:
 
 def _map_position(p: Any) -> dict[str, Any]:
     return {
-        "brokerPositionId": str(p.ticket),
+        "brokerPositionId": str(p.identifier),
         "symbol": p.symbol,
         # POSITION_TYPE_BUY == 0, POSITION_TYPE_SELL == 1
         "side": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
@@ -142,6 +156,63 @@ def build_positions_snapshot(positions: Any) -> dict[str, Any]:
     }
 
 
+def build_position_opened(p: Any) -> dict[str, Any]:
+    """T05: a genuinely new position (keyed by identifier, see module docstring
+    on _known_position_ids). openedAt is detection time, not MT5's true fill
+    time — the wire has never carried that (T02a limitation, unchanged by
+    this move to server-side detection: positions.snapshot still has no real
+    open timestamp field)."""
+    return {
+        "version": WIRE_VERSION,
+        "type": "position.opened",
+        "accountId": account_id(),
+        "time": now_ms(),
+        "brokerPositionId": str(p.identifier),
+        "symbol": p.symbol,
+        "side": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
+        "volume": p.volume,
+        "entryPrice": p.price_open,
+        "stopLoss": p.sl,
+        "takeProfit": p.tp,
+        "openedAt": now_ms(),
+    }
+
+
+def build_position_opened_from_deal(position_id: int, entry_deal: Any) -> dict[str, Any]:
+    """T05: reconstructs the opened side of a position that opened AND closed
+    between two polls (see scan_missed_round_trips) — never seen live via
+    positions_get(), so this is built from its entry deal alone. stopLoss/
+    takeProfit are 0.0: MT5 deal records carry no SL/TP fields at all, and
+    0.0 is MT5's own "no stop set" convention for a position — not a
+    fabricated guess, and any rendered capture makes it obvious (a stop at
+    price 0 on an XAUUSD chart cannot be mistaken for a real level).
+    Unlike the live-detection path, openedAt here IS the real MT5 fill time
+    (the entry deal's own timestamp), not a detection-time approximation.
+    """
+    return {
+        "version": WIRE_VERSION,
+        "type": "position.opened",
+        "accountId": account_id(),
+        "time": now_ms(),
+        "brokerPositionId": str(position_id),
+        "symbol": entry_deal.symbol,
+        "side": "BUY" if entry_deal.type == mt5.DEAL_TYPE_BUY else "SELL",
+        "volume": entry_deal.volume,
+        "entryPrice": entry_deal.price,
+        "stopLoss": 0.0,
+        "takeProfit": 0.0,
+        "openedAt": entry_deal.time * 1000,
+    }
+
+
+def diff_position_ids(known_ids: set[int], current_ids: set[int]) -> tuple[set[int], set[int]]:
+    """Pure: (opened_ids, closed_ids) from one before/after comparison.
+    Deliberately does not special-case an empty `known_ids` — callers decide
+    whether a given poll is a real diff or a baseline-seeding read (see
+    seed_known_positions vs poll_positions)."""
+    return current_ids - known_ids, known_ids - current_ids
+
+
 def sum_realized_pnl(deals: Any) -> float:
     """Net P&L of a closed position across ALL its deals (entry + every exit).
 
@@ -155,9 +226,22 @@ def sum_realized_pnl(deals: Any) -> float:
     return round(sum(d.profit + d.commission + d.swap for d in deals), 2)
 
 
-def build_position_closed(ticket: int, deals: Any) -> dict[str, Any] | None:
-    """None when the deal history for this ticket isn't available yet (a
-    disconnect racing the close) — callers must not emit a half-known fact."""
+def weighted_exit_price(exit_deals: Any) -> float:
+    """Volume-weighted average fill price across every exit deal (T05: a
+    partial close in several fills has no single 'the' exit price)."""
+    total_volume = sum(d.volume for d in exit_deals)
+    if total_volume <= 0:
+        return exit_deals[0].price if len(exit_deals) > 0 else 0.0
+    return round(sum(d.price * d.volume for d in exit_deals) / total_volume, 5)
+
+
+def build_position_closed(position_id: int, deals: Any) -> dict[str, Any] | None:
+    """None when the deal history for this position isn't available yet (a
+    disconnect racing the close) — callers must not emit a half-known fact.
+    `position_id` is POSITION_IDENTIFIER == TradeDeal.position_id (see module
+    docstring on _known_position_ids) — every deal in `deals` is expected to
+    carry that same position_id, which is exactly what
+    history_deals_get(position=position_id) guarantees."""
     entry_deals = [d for d in deals if d.entry == mt5.DEAL_ENTRY_IN]
     exit_deals = [d for d in deals if d.entry == mt5.DEAL_ENTRY_OUT]
     if not entry_deals or not exit_deals:
@@ -168,32 +252,107 @@ def build_position_closed(ticket: int, deals: Any) -> dict[str, Any] | None:
         "type": "position.closed",
         "accountId": account_id(),
         "time": now_ms(),
-        "brokerPositionId": str(ticket),
+        "brokerPositionId": str(position_id),
         "symbol": entry.symbol,
         "side": "BUY" if entry.type == mt5.DEAL_TYPE_BUY else "SELL",
         "volume": round(sum(d.volume for d in entry_deals), 2),
         "realizedPnl": sum_realized_pnl(deals),
+        # T05: needed to mark the exit fill on a rendered capture.
+        "exitPrice": weighted_exit_price(exit_deals),
         "closedAt": max(d.time for d in exit_deals) * 1000,
     }
 
 
-def poll_positions(symbol: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """One positions_get() call: the live snapshot, plus a position.closed
-    message for every ticket that vanished since the previous poll (T02b).
+def seed_known_positions(symbol: str) -> dict[str, Any]:
+    """First-ever read for this run: establishes the opened/closed baseline
+    without emitting any lifecycle event for positions already open before
+    this observer started (T02b's original comment on this, now shared with
+    T05's opened side: neither must fire on boot). Also starts the clock for
+    scan_missed_round_trips so the very first poll doesn't scan the account's
+    entire deal history."""
+    global _known_position_ids, _last_deal_scan_ms
+    current = mt5.positions_get(symbol=symbol) or ()
+    _known_position_ids = {p.identifier for p in current}
+    _last_deal_scan_ms = now_ms()
+    return build_positions_snapshot(current)
+
+
+def scan_missed_round_trips(
+    known_before_this_poll: set[int], current_ids: set[int]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """T05 — closes a real hole in poll_positions's snapshot diff: a position
+    that opens AND fully closes between two 2s polls (a stop hit instantly in
+    a fast market, a short scalp) never appears in `_known_position_ids` at
+    all, so diff_position_ids can never report it as closed either — no
+    opened event, no closed event, no capture, no entry in tradesToday or the
+    consecutive-loss streak. These are exactly the trades that matter most
+    for discipline metrics.
+
+    Fix: independently scan exit deals since the last poll. A position_id
+    with a recent exit deal that was never in `known_before_this_poll` and
+    isn't in `current_ids` (i.e. genuinely fully closed, not a partial close
+    on a still-open position) is a missed round trip — reconstruct both its
+    opened and closed messages from deal history alone.
+    """
+    global _last_deal_scan_ms
+    since_ms = _last_deal_scan_ms
+    until_ms = now_ms()
+    _last_deal_scan_ms = until_ms
+    if since_ms >= until_ms:
+        return [], []
+
+    recent = mt5.history_deals_get(
+        datetime.fromtimestamp(since_ms / 1000, tz=timezone.utc),
+        datetime.fromtimestamp(until_ms / 1000, tz=timezone.utc),
+    ) or ()
+    recently_exited_ids = {d.position_id for d in recent if d.entry == mt5.DEAL_ENTRY_OUT}
+    missed_ids = recently_exited_ids - known_before_this_poll - current_ids
+
+    opened_messages = []
+    closed_messages = []
+    for position_id in missed_ids:
+        deals = mt5.history_deals_get(position=position_id) or ()
+        entry_deals = [d for d in deals if d.entry == mt5.DEAL_ENTRY_IN]
+        if not entry_deals:
+            continue  # entry deal not synced yet — never emit a half-known fact
+        closed_msg = build_position_closed(position_id, deals)
+        if closed_msg is None:
+            continue
+        opened_messages.append(build_position_opened_from_deal(position_id, entry_deals[0]))
+        closed_messages.append(closed_msg)
+    return opened_messages, closed_messages
+
+
+def poll_positions(symbol: str) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """One positions_get() call per tick: the live snapshot, every
+    position.opened (T05) and position.closed (T02b) since the previous
+    poll — both sides of the same diff_position_ids comparison, PLUS any
+    round trip missed entirely by that diff (scan_missed_round_trips). Never
+    call this for the very first read of a run; use seed_known_positions
+    instead.
     """
     global _known_position_ids
+    known_before_this_poll = _known_position_ids
     current = mt5.positions_get(symbol=symbol) or ()
-    current_ids = {p.ticket for p in current}
-    closed_ids = _known_position_ids - current_ids
+    current_ids = {p.identifier for p in current}
+    opened_ids, closed_ids = diff_position_ids(known_before_this_poll, current_ids)
     _known_position_ids = current_ids
 
+    by_identifier = {p.identifier: p for p in current}
+    opened_messages = [build_position_opened(by_identifier[i]) for i in opened_ids]
+
     closed_messages = []
-    for ticket in closed_ids:
-        deals = mt5.history_deals_get(position=ticket) or ()
-        msg = build_position_closed(ticket, deals)
+    for position_id in closed_ids:
+        deals = mt5.history_deals_get(position=position_id) or ()
+        msg = build_position_closed(position_id, deals)
         if msg is not None:
             closed_messages.append(msg)
-    return build_positions_snapshot(current), closed_messages
+
+    missed_opened, missed_closed = scan_missed_round_trips(known_before_this_poll, current_ids)
+    opened_messages.extend(missed_opened)
+    closed_messages.extend(missed_closed)
+
+    return build_positions_snapshot(current), opened_messages, closed_messages
 
 
 def build_tick(symbol: str) -> dict[str, Any] | None:
@@ -364,8 +523,7 @@ async def handler(websocket, symbol: str, candle_count: int) -> None:
         # Backfill: identity + snapshots + recent candles.
         await send(build_hello(symbol))
         await send(build_account())
-        snapshot, _ = poll_positions(symbol)  # baseline: never fires closes on boot
-        await send(snapshot)
+        await send(seed_known_positions(symbol))  # baseline: never fires opened/closed on boot
         for candle in build_candles(symbol, candle_count):
             await send(candle)
 
@@ -378,8 +536,12 @@ async def handler(websocket, symbol: str, candle_count: int) -> None:
             now = time.time()
             if now - last_account >= 2:
                 await send(build_account())
-                snapshot, closed = poll_positions(symbol)
+                snapshot, opened, closed = poll_positions(symbol)
                 await send(snapshot)
+                for msg in opened:
+                    print(f"[observer] position {msg['brokerPositionId']} opened, "
+                          f"entryPrice={msg['entryPrice']}")
+                    await send(msg)
                 for msg in closed:
                     print(f"[observer] position {msg['brokerPositionId']} closed, "
                           f"realizedPnl={msg['realizedPnl']}")
