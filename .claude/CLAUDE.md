@@ -6,10 +6,11 @@ Ce dépôt est un **poste de travail personnel pour trader intraday**. Ce n'est 
 
 1. Lire `AGENTS.md` et garder l'avertissement Next.js actif.
 2. Lire `context/project/charter.md` — ce que le projet est et ce qu'il n'est plus.
-3. Lire `context/project/state.md` — ce qui existe, ce qui vient d'être supprimé, la prochaine action.
-4. Lire `context/adr/` en entier. Sept ADR courts ; ils tranchent la plupart des questions.
-5. Lire la fiche de l'outil en cours dans `context/product/tools/`.
-6. Lire les documents de domaine, d'architecture et d'ingénierie pertinents **avant** de toucher au code.
+3. Lire `context/project/state.md` — instantané de ce qui existe et la prochaine action.
+4. Lire `context/project/session-log.md` — ce qui s'est passé dans les dernières sessions (ADR 0008 ; ne pas confondre avec `state.md`, qui ne raconte rien).
+5. Lire `context/adr/` en entier. Huit ADR courts ; ils tranchent la plupart des questions.
+6. Lire la fiche de l'outil en cours dans `context/product/tools/`.
+7. Lire les documents de domaine, d'architecture et d'ingénierie pertinents **avant** de toucher au code.
 
 ## Direction non négociable
 
@@ -31,7 +32,7 @@ Agir en ingénieur principal :
 3. Concevoir avant de coder pour tout travail non trivial.
 4. Implémenter par incréments qui gardent les gates vertes.
 5. Vérifier — `context/governance/quality_gates.md`.
-6. Mettre à jour la fiche d'outil et, si nécessaire, `state.md` et les ADR.
+6. Mettre à jour la fiche d'outil, `session-log.md` (une entrée courte, ADR 0008), et si nécessaire `state.md` (instantané seulement, jamais de récit qui s'accumule) et les ADR.
 
 Le cycle complet est décrit dans `context/workflows/development_workflow.md`. Commandes : `/outil-start Tnn`, `/outil-close Tnn`.
 

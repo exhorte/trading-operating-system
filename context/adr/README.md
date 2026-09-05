@@ -13,6 +13,7 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0005 | L'IA reste en lecture | Accepté |
 | 0006 | Gouvernance par outils et vagues | Accepté |
 | 0007 | Le Risk Engine est le point de contrôle unique | Accepté |
+| 0008 | Journal de session, réintroduit et borné | Accepté |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 
