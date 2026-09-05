@@ -1,10 +1,34 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { formatPercent } from "@/lib/format";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
+
+/** T02b: mm:ss remaining on a timed pause; "00:00" once it has run out (the
+ *  ledger clearance — not this display — is what actually lifts the lock). */
+function formatCountdown(untilIso: string, nowMs: number): string {
+  const remainingMs = Math.max(0, Date.parse(untilIso) - nowMs);
+  const totalSeconds = Math.floor(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+/** T02b: the only genuinely new UI piece — everything else (banner, ledger)
+ *  already exists since T02a. */
+function LockoutCountdown({ until }: { until: string }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <span className="tnum">Reprise dans {formatCountdown(until, nowMs)}</span>;
+}
 
 function LimitBar({
   label,
@@ -78,8 +102,9 @@ export function RiskStatusPanel() {
           </span>
         </div>
         {risk.lockoutReason && (
-          <p className="rounded border border-loss/40 bg-loss/10 px-2 py-1 text-xs text-loss">
-            Lockout: {risk.lockoutReason}
+          <p className="flex items-center justify-between gap-2 rounded border border-loss/40 bg-loss/10 px-2 py-1 text-xs text-loss">
+            <span>Lockout: {risk.lockoutReason}</span>
+            {risk.lockoutUntil && <LockoutCountdown until={risk.lockoutUntil} />}
           </p>
         )}
         <ul className="flex flex-col gap-1">

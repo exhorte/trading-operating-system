@@ -47,6 +47,7 @@ import type {
   SymbolCode,
   SymbolMetadata,
   Timeframe,
+  UpcomingRelease,
   UtcTimestamp,
 } from "@/lib/domain";
 
@@ -220,6 +221,35 @@ export interface PositionOpenedPayload {
 }
 
 /**
+ * T02b: Gateway-originated only (like DayAnchorResolvedPayload) — a position
+ * fully closed, as observed on the MT5 terminal. `realizedPnl` already sums
+ * profit + commission + swap over every deal on the position; see
+ * T02-lockout.md for the partial-close pitfall this guards against.
+ */
+export interface TradeClosedPayload {
+  accountId: AccountId;
+  brokerPositionId: string;
+  symbol: SymbolCode;
+  side: "buy" | "sell";
+  volume: number;
+  realizedPnl: number;
+  closedAt: UtcTimestamp;
+}
+
+/**
+ * T03: Gateway-originated only — the backend owns the FRED poll + cache
+ * (context/product/tools/T03-gate-news.md). Broadcast on every refresh cycle
+ * whether or not the list actually changed (same idempotent-recheck pattern
+ * as risk.day_anchor.resolved), always the FULL current upcoming list, never
+ * a delta — the client's local state is always a clean replace.
+ */
+export interface CalendarUpdatedPayload {
+  /** Null when the backend's FRED cache has never been populated — distinct
+   *  from a successful sync currently finding nothing upcoming ([]). */
+  releases: UpcomingRelease[] | null;
+}
+
+/**
  * Exhaustive EventType → payload registry. The future SignalR client and the
  * mock client both conform to this map; adding an EventType without a payload
  * here is a compile error.
@@ -274,6 +304,8 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "risk.day_anchor.resolved": DayAnchorResolvedPayload;
   "risk.day_anchor.equity_observed": DayAnchorEquityObservedPayload;
   "risk.lockout.acknowledged": RiskLockoutAcknowledgedPayload;
+  "journal.trade_closed": TradeClosedPayload;
+  "market.calendar.updated": CalendarUpdatedPayload;
 }
 
 /** An envelope whose payload type is derived from its event type. */

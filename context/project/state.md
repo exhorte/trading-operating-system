@@ -7,7 +7,7 @@ journal de chaque fiche d'outil.
 ## En une phrase
 
 Poste de travail personnel pour trader intraday, sorti de la recherche
-d'edge (ADR 0002) ; la Vague 1 est en cours (statuts : `context/product/tools/README.md`).
+d'edge (ADR 0002) ; la Vague 1 est en cours (statuts : `context/product/tools/README.md`). T01, T02, T03 et T04 sont livrés — reste T05.
 
 ## Ce qui existe et fonctionne
 
@@ -18,10 +18,10 @@ Tout ce qui suit a été **validé en live** contre le compte de démonstration 
 | Chaîne temps réel MT5 → cockpit | `tools/mt5-observer/`, `backend/src/TradingOs.Gateway/`, `backend/src/TradingOs.Host/` | Validée live. Observer Python lecture seule → gateway .NET → SignalR → cockpit. |
 | Contrats de domaine | `lib/domain/`, `lib/contracts/` | TypeScript portable, miroirs C# dans `TradingOs.Contracts`. |
 | Moteur d'analyse | `lib/analysis/` | Swings, structure, liquidité, PD arrays, sessions, ATR, biais. Pur, testé. Sert de source de niveaux — **pas de source de signal**. |
-| Risk Engine | `lib/risk/` | Gates FTMO, sizing, lockout (ledger stocké depuis T02a). Pur, testé. |
+| Risk Engine | `lib/risk/` | Gates FTMO, sizing, lockout (ledger stocké, pause de 30 min sur pertes consécutives depuis T02b), gate calendrier FRED fail-closed depuis T03. Pur, testé. |
 | Chemin d'exécution | `lib/execution/`, `CockpitHub` | `RiskDecision → Command → ACK → Report`, mode `observe`/SIMULATED, idempotence validée en live. **Aucun appel de trade n'existe nulle part.** |
 | Persistance | `backend/src/TradingOs.Persistence/`, `docker-compose.yml` | TimescaleDB port 5433, écriture non bloquante, audit JSONB. |
-| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; panneaux permanents T01/T04 + bandeau kill switch T02a. |
+| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; panneaux permanents T01/T04, bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03. |
 
 ## Ce qui a été supprimé le 2026-09-04
 
@@ -35,12 +35,14 @@ retenue si ça revient : conteneuriser via `gmag11/MetaTrader5-Docker`.
 
 ## Prochaine action
 
-**T02b — historique des deals MT5 et verrou de pertes consécutives.**
-Plan détaillé dans `context/product/tools/T02-lockout.md`.
+T01, T02 (T02a+T02b) et T03 sont livrés. Dernier outil de la Vague 1 :
+**T05 — captures automatiques entrée/sortie** (`context/product/tools/T05-captures-auto.md`),
+non démarré. Décision d'architecture à trancher avant tout code : rendu
+maison (candles + niveaux, position par défaut) vs capture de la fenêtre MT5
+— voir `02_Plan_Projet/prompt-claude-code-vague-1.md`, section T05.
 
 ## Questions ouvertes
 
 - Quel déclencheur pour le multi-compte ? (Réponse par défaut : le jour où un deuxième compte prop firm est ouvert.)
-- Source du calendrier économique : liste blanche FRED d'abord, API commerciale seulement si le consensus devient utile. Voir `context/product/tools/T03-gate-news.md`.
-- Rendu maison ou capture MT5 pour les screenshots ? Position par défaut : rendu maison. Voir `T05`.
+- Rendu maison ou capture MT5 pour les screenshots ? Position par défaut : rendu maison, à trancher avec l'utilisateur au démarrage de T05.
 - Authentification : hors sujet tant que l'usage est personnel et local.

@@ -1,3 +1,4 @@
+using TradingOs.Contracts;
 using TradingOs.Gateway;
 using TradingOs.Host;
 using TradingOs.Persistence;
@@ -20,7 +21,10 @@ builder.Services.AddSingleton(sp => new Mt5ObserverClient(sp.GetRequiredService<
 builder.Services.AddSingleton(new PersistenceWriter(connectionString));
 builder.Services.AddSingleton(new AuditRepository(connectionString));
 builder.Services.AddSingleton(new RiskTodayRepository(connectionString));
+builder.Services.AddSingleton(new NewsCalendarRepository(connectionString));
+builder.Services.AddHttpClient("fred");
 builder.Services.AddHostedService<GatewayBridgeService>();
+builder.Services.AddHostedService<NewsCalendarService>();
 
 var app = builder.Build();
 
@@ -68,6 +72,23 @@ app.MapGet("/api/risk/today", async (
     catch (Exception ex)
     {
         logger.LogError(ex, "/api/risk/today failed");
+        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
+    }
+});
+app.MapGet("/api/calendar/upcoming", async (
+    NewsCalendarRepository repository,
+    ILogger<Program> logger,
+    CancellationToken ct) =>
+{
+    try
+    {
+        var rows = await repository.GetUpcomingOrNullAsync(DateTime.UtcNow, ct);
+        var releases = rows?.Select(r => new UpcomingRelease(r.ReleaseId, r.Label, r.ScheduledAt.ToString("o")));
+        return Results.Ok(new { releases });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "/api/calendar/upcoming failed");
         return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
     }
 });

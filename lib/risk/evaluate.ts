@@ -40,6 +40,7 @@ export function evaluateRiskState(input: RiskEvaluationInput): RiskState {
     spreadPoints,
     session,
     sessionTradingEnabled,
+    upcomingReleases,
     now,
   } = input;
 
@@ -60,7 +61,7 @@ export function evaluateRiskState(input: RiskEvaluationInput): RiskState {
     consecutive,
     spreadGate(spreadPoints, policy),
     sessionGate(session, sessionTradingEnabled),
-    newsGate(),
+    newsGate(upcomingReleases, now, policy),
   ];
 
   // Account-level lockouts (not the entry-only gates).

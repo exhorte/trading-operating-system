@@ -110,6 +110,15 @@ public class PersistenceMapperTests
     }
 
     [Fact]
+    public void Maps_closed_trade_row()
+    {
+        var closed = Assert.IsType<ClosedTradeRow>(PersistenceMapper.ToTypedRow("journal.trade_closed",
+            """{"accountId":"acc-1","brokerPositionId":"pos-9","symbol":"XAUUSDm","side":"buy","volume":0.02,"realizedPnl":4.45,"closedAt":"2026-09-05T10:00:20.000Z"}"""));
+        Assert.Equal("pos-9", closed.BrokerPositionId);
+        Assert.Equal(4.45, closed.RealizedPnl);
+    }
+
+    [Fact]
     public void Maps_lockout_enabled_with_and_without_an_expiry()
     {
         var hard = Assert.IsType<LockoutEnabledRow>(PersistenceMapper.ToTypedRow("risk.lockout.enabled",

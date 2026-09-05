@@ -12,11 +12,16 @@ export { evaluateSignalRisk, type SignalRiskInput } from "./sizing";
 export { computeSizingPanel, type SizingPanelInput, type SizingPanelResult } from "./sizing-panel";
 export {
   applyActiveLockout,
+  detectConsecutiveLossPause,
   detectNewLockout,
+  isLockoutExpired,
   shouldAutoClearForNewDay,
+  CONSECUTIVE_LOSS_PAUSE_MINUTES,
+  CONSECUTIVE_LOSS_REASON,
   KILL_SWITCH_REASON,
   type ActiveLockout,
 } from "./lockout";
 export { openRiskPercent, positionRiskUsd } from "./open-risk";
 export { defaultRiskPolicy, WARNING_THRESHOLD } from "./policy";
+export { isNewsBlackout, nextRelease } from "./news-calendar";
 export type { RiskEvaluationInput, OpenRiskPosition } from "./types";

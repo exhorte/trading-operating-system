@@ -34,6 +34,7 @@ export type Mt5MessageType =
   | "market.candle"
   | "account.snapshot"
   | "positions.snapshot"
+  | "position.closed"
   | "execution.ack"
   | "execution.report"
   // gateway → agent (control / commands)
@@ -144,6 +145,23 @@ export interface Mt5PositionsSnapshotMessage extends Mt5Message {
   positions: Mt5PositionSnapshot[];
 }
 
+/**
+ * T02b: a position that fully closed since the last poll (observer-detected,
+ * never client-derived — only the terminal's deal history has the true net
+ * P&L across every partial close). `realizedPnl` is already the sum of
+ * profit + commission + swap over ALL deals on the position.
+ */
+export interface Mt5PositionClosedMessage extends Mt5Message {
+  type: "position.closed";
+  brokerPositionId: string;
+  symbol: SymbolCode;
+  side: Mt5Side;
+  volume: number;
+  realizedPnl: number;
+  /** Epoch ms UTC of the last exit deal. */
+  closedAt: number;
+}
+
 /** Immediate receipt for a command, before any broker outcome. */
 export interface Mt5AckMessage extends Mt5Message {
   type: "execution.ack";
@@ -247,6 +265,7 @@ export type Mt5InboundMessage =
   | Mt5CandleMessage
   | Mt5AccountSnapshotMessage
   | Mt5PositionsSnapshotMessage
+  | Mt5PositionClosedMessage
   | Mt5AckMessage
   | Mt5ReportMessage;
 

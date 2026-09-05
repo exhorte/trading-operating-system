@@ -32,6 +32,19 @@ export interface RiskPolicy {
   newsBlackoutMinutes: number;
 }
 
+/**
+ * T03: one scheduled FRED release from the whitelist (the whitelist IS the
+ * impact classification — context/product/tools/T03-gate-news.md). Portable
+ * shape, mirrored to `TradingOs.Contracts` like every other domain model.
+ */
+export interface UpcomingRelease {
+  /** FRED release_id. */
+  releaseId: number;
+  /** Human label for the cockpit, e.g. "CPI US". */
+  label: string;
+  scheduledAt: UtcTimestamp;
+}
+
 /** Overall risk posture derived from gate evaluation. */
 export type RiskMode = "normal" | "warning" | "locked";
 

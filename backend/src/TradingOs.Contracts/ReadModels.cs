@@ -69,6 +69,27 @@ public sealed record PositionsSnapshotPayload(Position[] Positions);
 /// server-UTC offset — never a client-computed guess.</summary>
 public sealed record DayAnchorResolvedPayload(string AccountId, string StartsAtUtc);
 
+/// <summary>T02b: one position fully closed, as observed on the MT5 terminal —
+/// RealizedPnl already sums every deal on the position (T02-lockout.md pitfall:
+/// a single partial-close deal must never stand in for the net outcome).</summary>
+public sealed record JournalTradeClosedPayload(
+    string AccountId,
+    string BrokerPositionId,
+    string Symbol,
+    string Side,
+    double Volume,
+    double RealizedPnl,
+    string ClosedAt);
+
+/// <summary>T03: one scheduled FRED release — mirrors lib/domain/risk.ts::UpcomingRelease.</summary>
+public sealed record UpcomingRelease(int ReleaseId, string Label, string ScheduledAt);
+
+/// <summary>T03: the full current upcoming list, always a replace, never a
+/// delta. Null means the cache has never been populated (see
+/// NewsCalendarRepository.GetUpcomingOrNullAsync) — the client's news gate
+/// must fail closed on null, never treat it as "confirmed empty".</summary>
+public sealed record CalendarUpdatedPayload(UpcomingRelease[]? Releases);
+
 /// <summary>Initial state a dashboard receives on hub connect (snapshot + events pattern).</summary>
 public sealed record CockpitSnapshotDto(
     AccountSummary? Account,

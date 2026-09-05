@@ -18,7 +18,8 @@ export function defaultRiskPolicy(accountId: AccountId): RiskPolicy {
     maxConsecutiveLosses: 3,
     // XAUUSD points (1 point = 0.01), i.e. a 0.40 spread.
     maxSpreadPoints: 40,
-    newsBlackoutMinutes: 15,
+    // T03: −30/+30 min around a whitelisted FRED release (was 15).
+    newsBlackoutMinutes: 30,
   };
 }
 

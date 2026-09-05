@@ -49,4 +49,12 @@ public static class EventTypes
     /// <summary>T02a: Gateway-originated (needs the MT5 terminal's server-time
     /// offset), never client-published — no PublishEvent whitelist entry.</summary>
     public const string RiskDayAnchorResolved = "risk.day_anchor.resolved";
+    /// <summary>T02b: Gateway-originated — only the observer's deal history
+    /// knows a real close happened, same category as RiskDayAnchorResolved
+    /// (no PublishEvent whitelist entry).</summary>
+    public const string JournalTradeClosed = "journal.trade_closed";
+    /// <summary>T03: Gateway-originated — the backend owns the FRED poll,
+    /// broadcast on every refresh cycle regardless of whether the list
+    /// changed (same idempotent-recheck pattern as RiskDayAnchorResolved).</summary>
+    public const string MarketCalendarUpdated = "market.calendar.updated";
 }

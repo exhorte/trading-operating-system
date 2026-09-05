@@ -156,6 +156,15 @@ public sealed class Mt5ObserverClient(GatewayState state, string url)
                 EnvelopeReady?.Invoke(EventTypes.AgentSnapshotPositions, new PositionsSnapshotPayload(mapped));
                 break;
             }
+            // T02b: only the observer's deal history knows a position truly
+            // closed — published direct like agent.snapshot.account, never
+            // through the dashboard PublishEvent whitelist.
+            case Mt5PositionClosedMessage closed:
+            {
+                var mapped = Mt5WireTranslator.ToTradeClosed(closed);
+                EnvelopeReady?.Invoke(EventTypes.JournalTradeClosed, mapped);
+                break;
+            }
             case Mt5TickMessage tick:
             {
                 state.SetTick(tick.Bid);

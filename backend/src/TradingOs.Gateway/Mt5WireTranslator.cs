@@ -63,6 +63,21 @@ public static class Mt5WireTranslator
             OpenedAt: openedAtIso);
     }
 
+    /// <summary>T02b: lean position.closed → dashboard/persistence payload.
+    /// ClosedAt converts the observer's epoch-ms to ISO, like every other
+    /// wire timestamp (Iso helper).</summary>
+    public static JournalTradeClosedPayload ToTradeClosed(Mt5PositionClosedMessage msg)
+    {
+        return new JournalTradeClosedPayload(
+            AccountId: msg.AccountId,
+            BrokerPositionId: msg.BrokerPositionId,
+            Symbol: msg.Symbol,
+            Side: LowercaseSide(msg.Side),
+            Volume: msg.Volume,
+            RealizedPnl: msg.RealizedPnl,
+            ClosedAt: Iso(msg.ClosedAt));
+    }
+
     public static Candle ToCandle(Mt5CandleMessage msg)
     {
         return new Candle(

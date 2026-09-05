@@ -5,9 +5,10 @@
  * detail — never a fabricated pass. Vocabulary source: context/domain/risk_ftmo.md.
  */
 
-import type { TradingSession } from "@/lib/domain/primitives";
+import type { TradingSession, UtcTimestamp } from "@/lib/domain/primitives";
 import type { RiskGateResult } from "@/lib/domain/risk";
 import type { RiskPolicy } from "@/lib/domain/risk";
+import { isNewsBlackout, nextRelease, type UpcomingRelease } from "./news-calendar";
 
 const SESSION_LABELS: Record<TradingSession, string> = {
   asia: "Asia",
@@ -114,7 +115,31 @@ export function sessionGate(
   );
 }
 
-/** MVP stub: no news calendar is wired yet, so the gate never blocks. */
-export function newsGate(): RiskGateResult {
-  return result("gate-news", "News filter", false, "No news feed connected");
+/**
+ * T03 — unlike every other gate in this file, missing data BLOCKS rather
+ * than passing through as "n/a": `releases === null` means the FRED cache
+ * was never hydrated, is stale past a failed refresh, or the API key is
+ * missing/invalid (context/product/tools/T03-gate-news.md). A silent
+ * fail-open here is exactly the failure mode this gate exists to prevent —
+ * getting stopped out by a forgotten CPI print.
+ */
+export function newsGate(
+  releases: UpcomingRelease[] | null,
+  now: UtcTimestamp,
+  policy: RiskPolicy,
+): RiskGateResult {
+  if (releases === null) {
+    return result("gate-news", "News filter", true, "No calendar data — failing closed");
+  }
+  const blocked = isNewsBlackout(now, releases, policy.newsBlackoutMinutes);
+  if (blocked) {
+    return result("gate-news", "News filter", true, `Blackout ±${policy.newsBlackoutMinutes}min around a release`);
+  }
+  const upcoming = nextRelease(now, releases);
+  return result(
+    "gate-news",
+    "News filter",
+    false,
+    upcoming ? `Next: ${upcoming.label} at ${upcoming.scheduledAt}` : "No upcoming release known",
+  );
 }

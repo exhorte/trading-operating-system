@@ -15,6 +15,7 @@ const base: RiskEvaluationInput = {
   spreadPoints: 20,
   session: "london",
   sessionTradingEnabled: true,
+  upcomingReleases: [],
   now: "2026-01-05T10:00:00.000Z",
 };
 
@@ -57,5 +58,27 @@ describe("evaluateRiskState", () => {
     const state = evaluateRiskState({ ...base, consecutiveLosses: 3 });
     expect(state.mode).toBe("locked");
     expect(state.lockoutReason).toContain("Consecutive losses");
+  });
+
+  // T03: the most important behavior of this gate — see T03-gate-news.md.
+  it("FAILS CLOSED (blocks entries) when the news calendar is absent, never open", () => {
+    const state = evaluateRiskState({ ...base, upcomingReleases: null });
+    const newsGate = state.gates.find((g) => g.gateId === "gate-news");
+    expect(newsGate?.state).toBe("blocked");
+    expect(state.mode).toBe("normal"); // entry gate, not an account-level lockout
+  });
+
+  it("blocks entries inside the configured window around a whitelisted release", () => {
+    const state = evaluateRiskState({
+      ...base,
+      now: "2026-01-05T13:45:00.000Z",
+      upcomingReleases: [{ releaseId: 10, label: "CPI US", scheduledAt: "2026-01-05T14:00:00.000Z" }],
+    });
+    expect(state.gates.find((g) => g.gateId === "gate-news")?.state).toBe("blocked");
+  });
+
+  it("stays open outside the window with a known, empty-near-term calendar", () => {
+    const state = evaluateRiskState({ ...base, upcomingReleases: [] });
+    expect(state.gates.find((g) => g.gateId === "gate-news")?.state).toBe("open");
   });
 });

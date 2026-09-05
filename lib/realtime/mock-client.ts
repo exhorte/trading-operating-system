@@ -22,6 +22,7 @@ import {
   mockRisk,
   mockRiskContext,
   mockSignals,
+  mockUpcomingReleases,
 } from "@/lib/mock/initial-snapshot";
 import { mockStrategySignal } from "@/lib/mock/signals";
 import type { MockRiskScenario } from "@/lib/mock/initial-snapshot";
@@ -91,6 +92,8 @@ export class MockRealtimeClient implements RealtimeClient {
     "wide_spread",
     "normal",
     "closed_session",
+    "normal",
+    "news_blackout",
   ];
 
   /** Evolving candle window the ICT/SMC engine recomputes context from. */
@@ -180,6 +183,9 @@ export class MockRealtimeClient implements RealtimeClient {
       pnlCalendar: mockPnlCalendar(),
       alerts: mockAlerts(),
       lastHeartbeatAt: new Date().toISOString(),
+      // T03: demo fixture only — not synced with the rotating risk scenario
+      // below, same documented limitation as mockRiskContext (T02a journal).
+      upcomingReleases: mockUpcomingReleases(),
     });
 
     if (initial) {

@@ -203,6 +203,11 @@ public sealed class PersistenceWriter
                 VALUES (@AccountId, @BrokerPositionId, @OpenedAt)
                 ON CONFLICT (account_id, broker_position_id) DO NOTHING
                 """,
+            ClosedTradeRow => """
+                INSERT INTO closed_trades (account_id, broker_position_id, symbol, side, volume, realized_pnl, closed_at)
+                VALUES (@AccountId, @BrokerPositionId, @Symbol, @Side, @Volume, @RealizedPnl, @ClosedAt)
+                ON CONFLICT (account_id, broker_position_id) DO NOTHING
+                """,
             LockoutEnabledRow => """
                 INSERT INTO risk_lockouts (lockout_id, account_id, reason, since, until)
                 VALUES (@LockoutId, @AccountId, @Reason, @Since, @Until)

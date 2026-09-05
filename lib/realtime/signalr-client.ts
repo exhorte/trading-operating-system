@@ -22,10 +22,13 @@ import { analyzeMarketContext, DEFAULT_SESSION_WINDOWS } from "@/lib/analysis";
 import { sessionEnabled, sessionForTimestamp } from "@/lib/analysis/sessions";
 import {
   applyActiveLockout,
+  CONSECUTIVE_LOSS_PAUSE_MINUTES,
   defaultRiskPolicy,
+  detectConsecutiveLossPause,
   detectNewLockout,
   evaluateRiskState,
   evaluateSignalRisk,
+  isLockoutExpired,
   KILL_SWITCH_REASON,
   shouldAutoClearForNewDay,
 } from "@/lib/risk";
@@ -51,6 +54,7 @@ import type {
   RiskLockoutEnabledPayload,
   SignalCreatedPayload,
   TicketCreatedPayload,
+  TradeClosedPayload,
 } from "@/lib/contracts/events";
 import type { PreTradeTicket } from "@/lib/domain/ticket";
 import type { CommandAckPayload } from "@/lib/contracts/commands";
@@ -62,16 +66,18 @@ import type {
 import type { Candle } from "@/lib/domain/market";
 import type { MarketContextState } from "@/lib/domain/analysis";
 import type { PlaceOrderCommand } from "@/lib/domain/execution";
-import type { RiskPolicy, RiskState } from "@/lib/domain/risk";
+import type { RiskPolicy, RiskState, UpcomingRelease } from "@/lib/domain/risk";
 import type { ActiveLockout } from "@/lib/risk/lockout";
 import type { RealtimeClient } from "./client";
 import type { CockpitStore } from "./store";
 
-/** T02a: shape of GET /api/risk/today (RiskTodayRepository.RiskTodaySummary). */
+/** T02a/T02b: shape of GET /api/risk/today (RiskTodayRepository.RiskTodaySummary). */
 interface RiskTodaySummary {
   dayAnchorStartsAtUtc: string | null;
   dayStartEquity: number | null;
   tradesToday: number;
+  consecutiveLosses: number;
+  lastConsecutiveLossAt: string | null;
   activeLockout: ActiveLockout | null;
 }
 
@@ -124,6 +130,15 @@ export class SignalRRealtimeClient implements RealtimeClient {
    *  and kept current as this.publishNewPositions detects more. Null (not 0)
    *  until hydration succeeds — never a guessed zero. */
   private tradesToday: number | null = null;
+
+  /** T02b: real trailing loss streak, hydrated from /api/risk/today and kept
+   *  current by the journal.trade_closed re-hydration below. Null only until
+   *  the first hydration succeeds — never a guessed 0. */
+  private consecutiveLosses: number | null = null;
+
+  /** T02b: when the most recent loss in that streak closed — the anchor the
+   *  30-minute pause counts from (detectConsecutiveLossPause). */
+  private lastConsecutiveLossAt: string | null = null;
 
   private symbol = "XAUUSDm";
 
@@ -259,7 +274,29 @@ export class SignalRRealtimeClient implements RealtimeClient {
       await this.hydrateRiskToday(snapshot.account.accountId);
       this.publishNewPositions(snapshot.account.accountId);
     }
+    // T03: not account-scoped (the FRED calendar is global) — always attempted.
+    await this.hydrateCalendar();
     this.recomputeRisk();
+  }
+
+  /**
+   * T03: the backend's FRED cache (GET /api/calendar/upcoming), hydrated on
+   * every connect/reconnect. A failed/unreachable fetch leaves
+   * store.upcomingReleases as it was (null on first connect) — newsGate
+   * fails CLOSED on null, so this never silently opens the blackout gate.
+   */
+  private async hydrateCalendar(): Promise<void> {
+    const base = this.hubUrl.replace(/\/hub\/cockpit\/?$/, "");
+    try {
+      const res = await fetch(`${base}/api/calendar/upcoming`);
+      if (!res.ok) {
+        return;
+      }
+      const data = (await res.json()) as { releases: UpcomingRelease[] | null };
+      this.store.hydrate({ upcomingReleases: data.releases });
+    } catch {
+      // Best-effort: the news gate stays fail-closed until this succeeds.
+    }
   }
 
   /**
@@ -278,6 +315,8 @@ export class SignalRRealtimeClient implements RealtimeClient {
       const data = (await res.json()) as RiskTodaySummary;
       this.dayAnchorStartsAtUtc = data.dayAnchorStartsAtUtc;
       this.tradesToday = data.tradesToday;
+      this.consecutiveLosses = data.consecutiveLosses;
+      this.lastConsecutiveLossAt = data.lastConsecutiveLossAt;
       if (data.dayStartEquity !== null) {
         this.baselineEquity = data.dayStartEquity;
       }
@@ -360,6 +399,14 @@ export class SignalRRealtimeClient implements RealtimeClient {
         }
         break;
       }
+      // T02b: Gateway-resolved fact (only the observer's deal history knows
+      // a real close) — re-hydrate rather than recompute the streak
+      // client-side, same pattern as risk.day_anchor.resolved.
+      case "journal.trade_closed": {
+        const { accountId } = envelope.payload as TradeClosedPayload;
+        void this.hydrateRiskToday(accountId);
+        break;
+      }
       case "agent.heartbeat": {
         const payload = envelope.payload as AgentHeartbeatPayload;
         this.store.setConnectionState("connected");
@@ -412,11 +459,11 @@ export class SignalRRealtimeClient implements RealtimeClient {
     this.store.hydrate({ marketContext: toMarketContextReadModel(state) });
   }
 
-  /** Real spread, real trade count since the day anchor (T02a), honest null
-   *  consecutive-loss count until T02b. The lockout ledger — not this
+  /** Real spread, real trade count since the day anchor (T02a), real
+   *  consecutive-loss streak (T02b). The lockout ledger — not this
    *  computation — decides "locked right now" (see applyActiveLockout). */
   private recomputeRisk(): void {
-    const { account, positions, activeLockout } = this.store.getSnapshot();
+    const { account, positions, activeLockout, upcomingReleases } = this.store.getSnapshot();
     if (!account || this.baselineBalance === null || this.baselineEquity === null) {
       return;
     }
@@ -440,16 +487,26 @@ export class SignalRRealtimeClient implements RealtimeClient {
         volume: p.volume,
       })),
       tradesToday: this.tradesToday,
-      consecutiveLosses: null, // T02b
+      consecutiveLosses: this.consecutiveLosses,
       spreadPoints,
       session,
       sessionTradingEnabled: sessionEnabled(session, DEFAULT_SESSION_WINDOWS),
+      upcomingReleases,
       now: nowIso,
     });
 
     const newLockout = detectNewLockout(computed, activeLockout);
     if (newLockout) {
       this.publishLockoutEnabled(makeId("lockout"), account.accountId, newLockout.reason);
+    }
+    const newPause = detectConsecutiveLossPause(
+      computed,
+      activeLockout,
+      this.lastConsecutiveLossAt,
+      CONSECUTIVE_LOSS_PAUSE_MINUTES,
+    );
+    if (newPause) {
+      this.publishLockoutEnabled(makeId("lockout"), account.accountId, newPause.reason, newPause.until);
     }
     if (
       activeLockout &&
@@ -458,20 +515,31 @@ export class SignalRRealtimeClient implements RealtimeClient {
     ) {
       this.publishLockoutCleared(account.accountId, "next-day-reset");
     }
-    const state = applyActiveLockout(computed, activeLockout);
+    // T02b: a timed pause whose clock ran out must not keep locking the
+    // account, and the ledger shouldn't keep a stale "active" row either —
+    // the backend's own /api/risk/today filter is only the backup for this.
+    if (activeLockout && isLockoutExpired(activeLockout, nowIso)) {
+      this.publishLockoutCleared(account.accountId, "pause-expired");
+    }
+    const state = applyActiveLockout(computed, activeLockout, nowIso);
 
     this.lastRisk = { state, policy };
     this.store.hydrate({ risk: toRiskStatusReadModel(state, policy) });
   }
 
-  private publishLockoutEnabled(lockoutId: string, accountId: string, reason: string): void {
+  private publishLockoutEnabled(
+    lockoutId: string,
+    accountId: string,
+    reason: string,
+    until: string | null = null,
+  ): void {
     this.publish(
       makeEnvelope<RiskLockoutEnabledPayload>("risk.lockout.enabled", "cockpit-risk-engine", {
         lockoutId,
         accountId,
         reason,
         since: new Date().toISOString(),
-        until: null,
+        until,
       }),
     );
   }

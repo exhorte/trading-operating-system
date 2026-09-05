@@ -11,6 +11,11 @@ import type { UtcTimestamp } from "@/lib/domain/primitives";
 
 export const KILL_SWITCH_REASON = "Kill switch manuel";
 
+export const CONSECUTIVE_LOSS_REASON = "Pertes consécutives";
+
+/** T02b: forced pause length after the configured number of consecutive losses. */
+export const CONSECUTIVE_LOSS_PAUSE_MINUTES = 30;
+
 export interface ActiveLockout {
   lockoutId: string;
   reason: string;
@@ -34,13 +39,27 @@ export function detectNewLockout(
   return { reason: state.lockoutReason ?? "locked" };
 }
 
+/** T02b: an auto-expiring pause (until !== null) whose clock has run out.
+ *  A manual/next-day lockout (until === null) is never "expired" this way. */
+export function isLockoutExpired(activeLockout: ActiveLockout, now: UtcTimestamp): boolean {
+  return activeLockout.until !== null && Date.parse(activeLockout.until) <= Date.parse(now);
+}
+
 /**
  * The ledger overrides live computation whenever it says locked: even if
  * gates recover on their own (e.g. equity ticks back up before the day
- * anchor rolls over), the stored lock still holds until cleared.
+ * anchor rolls over), the stored lock still holds until cleared. T02b: an
+ * expired timed pause is the one exception — the state passes through
+ * unchanged (never forced to "locked"), but the caller is still responsible
+ * for publishing risk.lockout.cleared so the ledger doesn't keep a stale row
+ * (see isLockoutExpired).
  */
-export function applyActiveLockout(state: RiskState, activeLockout: ActiveLockout | null): RiskState {
-  if (!activeLockout) {
+export function applyActiveLockout(
+  state: RiskState,
+  activeLockout: ActiveLockout | null,
+  now: UtcTimestamp,
+): RiskState {
+  if (!activeLockout || isLockoutExpired(activeLockout, now)) {
     return state;
   }
   return {
@@ -48,6 +67,32 @@ export function applyActiveLockout(state: RiskState, activeLockout: ActiveLockou
     mode: "locked",
     lockoutReason: activeLockout.reason,
     lockoutUntil: activeLockout.until,
+  };
+}
+
+/**
+ * T02b: the second hard lockout source, kept separate from detectNewLockout
+ * (different semantics — this one computes an `until`). Fires only on the
+ * specific consecutive-loss gate breach, edge-triggered like detectNewLockout
+ * (no re-fire while a lockout — of any reason — is already on record, so a
+ * further loss during the pause does not extend it).
+ */
+export function detectConsecutiveLossPause(
+  state: RiskState,
+  activeLockout: ActiveLockout | null,
+  lastConsecutiveLossAt: UtcTimestamp | null,
+  pauseMinutes: number,
+): { reason: string; until: UtcTimestamp } | null {
+  if (activeLockout !== null || lastConsecutiveLossAt === null) {
+    return null;
+  }
+  const consecutiveGate = state.gates.find((g) => g.gateId === "gate-consec-loss");
+  if (!consecutiveGate || consecutiveGate.state !== "blocked") {
+    return null;
+  }
+  return {
+    reason: CONSECUTIVE_LOSS_REASON,
+    until: new Date(Date.parse(lastConsecutiveLossAt) + pauseMinutes * 60_000).toISOString(),
   };
 }
 

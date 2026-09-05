@@ -5,6 +5,7 @@ import { useCockpit, useTriggerKillSwitch } from "@/lib/realtime/provider";
 import type { Environment } from "@/lib/contracts/enums";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 import { ConnectionBadge } from "./connection-badge";
+import { NewsCalendarBadge } from "./news-calendar-badge";
 import { PersistenceHealthBadge } from "./persistence-health-badge";
 import { pageTitleFor } from "./nav";
 
@@ -40,6 +41,7 @@ export function TopCommandBar({ onToggleSidebar }: { onToggleSidebar: () => void
         <span className="hidden rounded border border-border bg-surface-elevated px-2 py-1 text-xs text-muted sm:inline">
           {marketContext?.symbol ?? "XAUUSD"}
         </span>
+        <NewsCalendarBadge />
         <StatusPill tone={env.tone} pulse>
           {env.label}
         </StatusPill>

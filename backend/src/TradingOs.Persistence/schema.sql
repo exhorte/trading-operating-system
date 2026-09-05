@@ -169,6 +169,40 @@ CREATE TABLE IF NOT EXISTS kill_switch_acks (
     PRIMARY KEY (account_id, lockout_id)
 );
 
+-- T02b: one row per position actually closed (observer-detected from MT5
+-- deal history). realized_pnl already sums every deal on the position — see
+-- Mt5WireTranslator.ToTradeClosed / mt5_observer.py::sum_realized_pnl.
+-- No day-anchor scope: unlike position_opens, the consecutive-loss streak
+-- does not reset at midnight (T02-lockout.md), so this table is never
+-- filtered by trading day, only ordered by closed_at.
+CREATE TABLE IF NOT EXISTS closed_trades (
+    account_id         text NOT NULL,
+    broker_position_id text NOT NULL,
+    symbol             text NOT NULL,
+    side               text NOT NULL,
+    volume             double precision NOT NULL,
+    realized_pnl       double precision NOT NULL,
+    closed_at          timestamptz NOT NULL,
+    PRIMARY KEY (account_id, broker_position_id)
+);
+CREATE INDEX IF NOT EXISTS idx_closed_trades_account_time
+    ON closed_trades (account_id, closed_at DESC);
+
+-- T03: FRED release calendar cache. A reference-data cache, not a business
+-- event — written directly by NewsCalendarRepository (NewsCalendarService),
+-- outside the envelope/PersistenceWriter audit pipeline (that pipeline is
+-- one-row-per-envelope; a refresh here replaces a whole release's future
+-- rows at once — see NewsCalendarRepository.ReplaceUpcomingAsync). Must
+-- survive a backend restart with no network: the news gate fails closed on
+-- an empty/absent cache (context/product/tools/T03-gate-news.md).
+CREATE TABLE IF NOT EXISTS news_releases (
+    release_id    integer NOT NULL,
+    label         text NOT NULL,
+    scheduled_at  timestamptz NOT NULL,
+    PRIMARY KEY (release_id, scheduled_at)
+);
+CREATE INDEX IF NOT EXISTS idx_news_releases_scheduled ON news_releases (scheduled_at);
+
 CREATE TABLE IF NOT EXISTS execution_reports (
     report_id   text PRIMARY KEY,
     command_id  text NOT NULL,

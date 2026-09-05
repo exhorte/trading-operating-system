@@ -67,7 +67,13 @@ export type EventType =
   | "journal.position.opened"
   | "risk.day_anchor.resolved"
   | "risk.day_anchor.equity_observed"
-  | "risk.lockout.acknowledged";
+  | "risk.lockout.acknowledged"
+  // T02b: Gateway-only, same category as risk.day_anchor.resolved — only the
+  // observer's deal history knows a position truly closed.
+  | "journal.trade_closed"
+  // T03: Gateway-only — the backend polls FRED and owns the calendar cache;
+  // never client-published.
+  | "market.calendar.updated";
 
 export interface Envelope<TPayload = unknown> {
   messageId: string;

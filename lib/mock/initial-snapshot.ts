@@ -16,6 +16,7 @@ import type {
   StrategySignal,
 } from "@/lib/contracts/snapshots";
 import type { RiskPolicy, RiskState } from "@/lib/domain/risk";
+import type { UpcomingRelease } from "@/lib/risk/news-calendar";
 import { analyzeMarketContext } from "@/lib/analysis";
 import { evaluateRiskState, defaultRiskPolicy } from "@/lib/risk";
 import {
@@ -86,7 +87,16 @@ export function mockPositions(): Position[] {
  * the review, so what the cockpit shows always matches why a signal was
  * approved or rejected.
  */
-export type MockRiskScenario = "normal" | "wide_spread" | "closed_session";
+export type MockRiskScenario = "normal" | "wide_spread" | "closed_session" | "news_blackout";
+
+/** T03: a plausible upcoming FRED release, far enough out that the news gate
+ *  stays open by default — the "news_blackout" scenario overrides this. */
+export function mockUpcomingReleases(scenario: MockRiskScenario = "normal"): UpcomingRelease[] {
+  if (scenario === "news_blackout") {
+    return [{ releaseId: 10, label: "CPI US", scheduledAt: new Date(now().getTime() + 10 * 60_000).toISOString() }];
+  }
+  return [{ releaseId: 50, label: "NFP US", scheduledAt: new Date(now().getTime() + 3 * 60 * 60_000).toISOString() }];
+}
 
 /**
  * Risk is now COMPUTED by the Phase 06 risk engine from the mock account +
@@ -119,6 +129,8 @@ export function mockRiskContext(
     // closed_session: NY PM disabled → session gate blocks entries.
     session: scenario === "closed_session" ? "new_york_pm" : "new_york_am",
     sessionTradingEnabled: scenario !== "closed_session",
+    // news_blackout: a release inside the window → news gate blocks entries.
+    upcomingReleases: mockUpcomingReleases(scenario),
     now: new Date().toISOString(),
   });
   return { state, policy, balance: account.balance };

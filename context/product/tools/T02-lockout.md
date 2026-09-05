@@ -1,6 +1,6 @@
 # T02 — Lockout comportemental
 
-Statut : **en cours** (T02a livré 2026-09-05, T02b reste à faire) · Vague 1 · Effort 1–2 j · Dépend de : rien
+Statut : **livré** (T02a et T02b livrés le 2026-09-05) · Vague 1 · Effort 1–2 j · Dépend de : rien
 
 Découpé en deux incréments en cours de route — le plan initial (7 incréments,
 4 à 6 jours) mélangeait quatre verrous qui ne demandent rien à l'observer
@@ -20,7 +20,7 @@ Des verrous durs, configurés à froid, appliqués à chaud :
 | Nombre de trades maximum atteint | Séance verrouillée | **livré (T02a)** |
 | Hors fenêtre de session autorisée | Refus | déjà livré avant T02 (`sessionGate`) |
 | Kill switch manuel | Verrouille + bandeau manuel (pas de fermeture réelle) | **livré (T02a)** |
-| Deux pertes consécutives | Pause forcée de 30 min, chrono affiché | **T02b, à faire** |
+| Deux pertes consécutives | Pause forcée de 30 min, chrono affiché | **livré (T02b)** |
 
 L'état de verrouillage **persiste** : recharger la page ne déverrouille rien. Chaque refus porte un motif lisible et est tracé.
 
@@ -29,8 +29,9 @@ L'état de verrouillage **persiste** : recharger la page ne déverrouille rien. 
 - `lib/risk/gates.ts` — `maxTradesGate`, `consecutiveLossGate`, `sessionGate` **existent déjà** et sont inchangées. Elles restent de pures fonctions d'affichage (« combien utilisé sur combien autorisé ») ; ce qui manque était les compteurs réels et la persistance de la décision de verrouiller — livrés dans T02a via un mécanisme séparé (voir journal).
 - `lib/risk/evaluate.ts` — `evaluateRiskState` inchangée. `RiskState.mode` qu'elle calcule est maintenant traité comme une proposition, pas un verdict final : `lib/risk/lockout.ts::applyActiveLockout` a le dernier mot.
 - `lib/risk/lockout.ts` (nouveau, T02a) — `detectNewLockout`, `applyActiveLockout`, `shouldAutoClearForNewDay`. Le ledger (`risk_lockouts`) est la source de vérité pour « verrouillé maintenant », jamais re-dérivé du calcul live seul.
-- `lockoutUntil` ajouté à `RiskStatus` (`lib/contracts/snapshots.ts`) et à sa projection — la trouvaille de T01 est résolue. Toujours `null` pour les verrous T02a (clairance manuelle/lendemain) ; T02b le peuplera pour la pause de 30 min.
+- `lockoutUntil` ajouté à `RiskStatus` (`lib/contracts/snapshots.ts`) et à sa projection — la trouvaille de T01 est résolue. `null` pour les verrous T02a (clairance manuelle/lendemain) ; peuplé par T02b pour la pause de 30 min.
 - Le refus reste une `RiskDecision` refusée sur le chemin `RiskDecision → Command → ACK → Report` (ADR 0007), pas un `disabled` React — `applyActiveLockout` alimente `RiskState.mode`, qui alimente `evaluateSignalRisk`, inchangé.
+- T02b — `tools/mt5-observer/mt5_observer.py::poll_positions/build_position_closed/sum_realized_pnl`, wire `Mt5PositionClosedMessage` (TS + C#), `Mt5ObserverClient` case → `journal.trade_closed` (Gateway-direct, comme `risk.day_anchor.resolved`), table `closed_trades`, `RiskTodayRepository.CountConsecutiveLosses`, `lib/risk/lockout.ts::detectConsecutiveLossPause/isLockoutExpired`, chrono dans `RiskStatusPanel`.
 
 ## Limite assumée
 
@@ -212,3 +213,48 @@ Le nombre de trades pris hors fenêtre autorisée tombe à zéro sans effort de 
   `curl`/`psql` réels contre un backend + TimescaleDB lancés pour l'occasion ;
   la boucle clic-sur-Emergency-stop → bandeau → accusé → déverrouillage n'a
   pas été observée dans un navigateur.
+
+- 2026-09-05 — **T02b livré**, en suivant le plan ci-dessus point par point,
+  aucune déviation :
+  1. Observer : `poll_positions()` remplace `build_positions()` comme unique
+     point d'appel `positions_get()` par tick — évite un second appel MT5
+     redondant tout en détectant les fermetures (diff des tickets vus). Sur
+     un compte déjà ouvert au démarrage, la première mesure établit la
+     baseline sans jamais émettre de fermeture fantôme.
+  2. `sum_realized_pnl` / `build_position_closed` extraites en fonctions
+     pures, testées (`test_mt5_observer.py`, stdlib `unittest`, pas de
+     nouvelle dépendance pytest) : un test reproduit exactement le piège
+     signalé en revue (dernier deal partiel négatif après swap, somme nette
+     positive) et vérifie la classification correcte. `python -m py_compile`
+     reste le seul gate CI pour ce dossier ; `unittest` est un ajout local,
+     pas encore branché à un pipeline.
+  3. `journal.trade_closed` — publié direct par le Gateway (comme
+     `risk.day_anchor.resolved`), **absent** de `PublishableTypes` dans
+     `CockpitHub.cs` : confirmé en relisant le whitelist, aucune entrée
+     ajoutée par erreur.
+  4. `closed_trades` n'a pas de scope calendaire (contrairement à
+     `position_opens`) — testé explicitement
+     (`RiskTodayRepositoryTests.Does_not_reset_across_a_streak_that_spans_the_day_anchor`).
+  5. `applyActiveLockout` prend désormais un `now` obligatoire (pas de valeur
+     par défaut) — tout appelant qui l'oublierait ne compile pas ; les deux
+     usages existants (`signalr-client.ts`, tests) mis à jour. Extrait aussi
+     `isLockoutExpired` en fonction pure séparée, réutilisée par le client
+     pour décider quand publier `risk.lockout.cleared` (`clearedBy:
+     "pause-expired"`) — pas dupliquée dans `applyActiveLockout` lui-même.
+  6. `detectConsecutiveLossPause` se déclenche sur `gate-consec-loss` blocked
+     spécifiquement (pas sur `state.mode === "locked"` en général, qui
+     mélangerait perte quotidienne/max trades) — sinon une perte quotidienne
+     déclencherait à tort une pause chronométrée de 30 min au lieu d'un verrou
+     manuel/lendemain.
+  7. Chrono cockpit (`LockoutCountdown` dans `risk-status-panel.tsx`) :
+     `setInterval` 1s local au composant, dérivé de `risk.lockoutUntil` —
+     aucun nouvel état dans le store, la source de vérité reste le ledger.
+
+  Vérification manuelle non faite en session (même contrainte qu'en T02a,
+  pas d'extension Chrome connectée) : la chaîne complète clôture MT5 réelle →
+  `position.closed` → `journal.trade_closed` → pause 30 min → chrono cockpit
+  → expiration → déverrouillage n'a pas été observée de bout en bout contre
+  un terminal MT5 réel. Couvert par unité (Python `unittest`, Vitest, xUnit)
+  à chaque étage ; gates `npm run lint`, `npx tsc --noEmit`, `npm test`,
+  `npm run build`, `dotnet build`, `dotnet test`, `python -m py_compile`
+  tous verts au moment de la clôture.

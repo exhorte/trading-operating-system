@@ -4,7 +4,7 @@
  */
 
 import type { TradingSession, UtcTimestamp } from "@/lib/domain/primitives";
-import type { RiskPolicy } from "@/lib/domain/risk";
+import type { RiskPolicy, UpcomingRelease } from "@/lib/domain/risk";
 
 /** Minimal position shape needed to size open risk. */
 export interface OpenRiskPosition {
@@ -35,5 +35,8 @@ export interface RiskEvaluationInput {
   spreadPoints: number | null;
   session: TradingSession;
   sessionTradingEnabled: boolean;
+  /** T03: null means the FRED calendar cache is absent/stale — the news gate
+   *  fails CLOSED on null, unlike every other nullable gate input here. */
+  upcomingReleases: UpcomingRelease[] | null;
   now: UtcTimestamp;
 }

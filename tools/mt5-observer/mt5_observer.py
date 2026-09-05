@@ -45,6 +45,10 @@ EXECUTION_MODE = "observe"
 # Idempotency: command ids already processed (survives client reconnects).
 _seen_command_ids: set[str] = set()
 
+# T02b: brokerPositionId tickets seen on the last positions_get() poll — a
+# ticket that disappears between polls is a closed position.
+_known_position_ids: set[int] = set()
+
 
 def now_ms() -> int:
     return int(time.time() * 1000)
@@ -114,30 +118,82 @@ def build_account() -> dict[str, Any] | None:
     }
 
 
-def build_positions(symbol: str) -> dict[str, Any]:
-    positions = mt5.positions_get(symbol=symbol) or ()
-    mapped = []
-    for p in positions:
-        mapped.append(
-            {
-                "brokerPositionId": str(p.ticket),
-                "symbol": p.symbol,
-                # POSITION_TYPE_BUY == 0, POSITION_TYPE_SELL == 1
-                "side": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
-                "volume": p.volume,
-                "entryPrice": p.price_open,
-                "stopLoss": p.sl,
-                "takeProfit": p.tp,
-                "floatingPnl": p.profit,
-            }
-        )
+def _map_position(p: Any) -> dict[str, Any]:
+    return {
+        "brokerPositionId": str(p.ticket),
+        "symbol": p.symbol,
+        # POSITION_TYPE_BUY == 0, POSITION_TYPE_SELL == 1
+        "side": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
+        "volume": p.volume,
+        "entryPrice": p.price_open,
+        "stopLoss": p.sl,
+        "takeProfit": p.tp,
+        "floatingPnl": p.profit,
+    }
+
+
+def build_positions_snapshot(positions: Any) -> dict[str, Any]:
     return {
         "version": WIRE_VERSION,
         "type": "positions.snapshot",
         "accountId": account_id(),
         "time": now_ms(),
-        "positions": mapped,
+        "positions": [_map_position(p) for p in positions],
     }
+
+
+def sum_realized_pnl(deals: Any) -> float:
+    """Net P&L of a closed position across ALL its deals (entry + every exit).
+
+    T02b pitfall (flagged in review): a position can close in several partial
+    deals. Judging the outcome from a single deal — e.g. the last partial
+    close, which can be marginally negative after swap even though the
+    position was net profitable — misclassifies a winner as a loser. Summing
+    profit + commission + swap over the whole deal history is the only
+    correct net.
+    """
+    return round(sum(d.profit + d.commission + d.swap for d in deals), 2)
+
+
+def build_position_closed(ticket: int, deals: Any) -> dict[str, Any] | None:
+    """None when the deal history for this ticket isn't available yet (a
+    disconnect racing the close) — callers must not emit a half-known fact."""
+    entry_deals = [d for d in deals if d.entry == mt5.DEAL_ENTRY_IN]
+    exit_deals = [d for d in deals if d.entry == mt5.DEAL_ENTRY_OUT]
+    if not entry_deals or not exit_deals:
+        return None
+    entry = entry_deals[0]
+    return {
+        "version": WIRE_VERSION,
+        "type": "position.closed",
+        "accountId": account_id(),
+        "time": now_ms(),
+        "brokerPositionId": str(ticket),
+        "symbol": entry.symbol,
+        "side": "BUY" if entry.type == mt5.DEAL_TYPE_BUY else "SELL",
+        "volume": round(sum(d.volume for d in entry_deals), 2),
+        "realizedPnl": sum_realized_pnl(deals),
+        "closedAt": max(d.time for d in exit_deals) * 1000,
+    }
+
+
+def poll_positions(symbol: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """One positions_get() call: the live snapshot, plus a position.closed
+    message for every ticket that vanished since the previous poll (T02b).
+    """
+    global _known_position_ids
+    current = mt5.positions_get(symbol=symbol) or ()
+    current_ids = {p.ticket for p in current}
+    closed_ids = _known_position_ids - current_ids
+    _known_position_ids = current_ids
+
+    closed_messages = []
+    for ticket in closed_ids:
+        deals = mt5.history_deals_get(position=ticket) or ()
+        msg = build_position_closed(ticket, deals)
+        if msg is not None:
+            closed_messages.append(msg)
+    return build_positions_snapshot(current), closed_messages
 
 
 def build_tick(symbol: str) -> dict[str, Any] | None:
@@ -308,7 +364,8 @@ async def handler(websocket, symbol: str, candle_count: int) -> None:
         # Backfill: identity + snapshots + recent candles.
         await send(build_hello(symbol))
         await send(build_account())
-        await send(build_positions(symbol))
+        snapshot, _ = poll_positions(symbol)  # baseline: never fires closes on boot
+        await send(snapshot)
         for candle in build_candles(symbol, candle_count):
             await send(candle)
 
@@ -321,7 +378,12 @@ async def handler(websocket, symbol: str, candle_count: int) -> None:
             now = time.time()
             if now - last_account >= 2:
                 await send(build_account())
-                await send(build_positions(symbol))
+                snapshot, closed = poll_positions(symbol)
+                await send(snapshot)
+                for msg in closed:
+                    print(f"[observer] position {msg['brokerPositionId']} closed, "
+                          f"realizedPnl={msg['realizedPnl']}")
+                    await send(msg)
                 last_account = now
             if now - last_heartbeat >= 3:
                 await send(build_heartbeat())

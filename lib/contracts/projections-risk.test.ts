@@ -19,6 +19,7 @@ describe("toRiskStatusReadModel", () => {
       spreadPoints: 20,
       session: "london",
       sessionTradingEnabled: true,
+      upcomingReleases: [],
       now: "t",
     });
     const rm = toRiskStatusReadModel(state, policy);
@@ -43,6 +44,7 @@ describe("toRiskStatusReadModel", () => {
       spreadPoints: null,
       session: "off_session",
       sessionTradingEnabled: false,
+      upcomingReleases: [],
       now: "t",
     });
     const rm = toRiskStatusReadModel(state, policy);

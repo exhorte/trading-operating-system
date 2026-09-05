@@ -47,6 +47,14 @@ public sealed record Mt5PositionsSnapshotMessage(
     Mt5PositionSnapshot[] Positions)
     : Mt5Message(Version, Type, AccountId, Time);
 
+/// <summary>T02b: observer-detected closed position — realizedPnl is already
+/// summed over every deal on the position (entry + all partial exits).</summary>
+public sealed record Mt5PositionClosedMessage(
+    int Version, string Type, string AccountId, long Time,
+    string BrokerPositionId, string Symbol, string Side, double Volume,
+    double RealizedPnl, long ClosedAt)
+    : Mt5Message(Version, Type, AccountId, Time);
+
 /// <summary>Parses one lean wire JSON message by its "type" discriminator.</summary>
 public static class Mt5WireParser
 {
@@ -69,6 +77,7 @@ public static class Mt5WireParser
             "market.candle" => doc.RootElement.Deserialize<Mt5CandleMessage>(Options),
             "account.snapshot" => doc.RootElement.Deserialize<Mt5AccountSnapshotMessage>(Options),
             "positions.snapshot" => doc.RootElement.Deserialize<Mt5PositionsSnapshotMessage>(Options),
+            "position.closed" => doc.RootElement.Deserialize<Mt5PositionClosedMessage>(Options),
             // Phase 09: command receipts and SIMULATED outcomes from the agent.
             "execution.ack" => doc.RootElement.Deserialize<Mt5AckMessage>(Options),
             "execution.report" => doc.RootElement.Deserialize<Mt5ReportMessage>(Options),

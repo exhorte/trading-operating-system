@@ -17,6 +17,7 @@ const baseState: RiskEvaluationInput = {
   spreadPoints: 20,
   session: "london",
   sessionTradingEnabled: true,
+  upcomingReleases: [],
   now: "2026-01-05T10:00:00.000Z",
 };
 

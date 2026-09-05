@@ -30,6 +30,7 @@ import type {
 import type {
   AccountSnapshotPayload,
   AgentHeartbeatPayload,
+  CalendarUpdatedPayload,
   ExecutionReportPayload,
   MarketContextUpdatedPayload,
   MarketTickPayload,
@@ -42,6 +43,7 @@ import type {
   SignalUpdatedPayload,
   TicketCreatedPayload,
 } from "@/lib/contracts/events";
+import type { UpcomingRelease } from "@/lib/domain/risk";
 import type { ActiveLockout } from "@/lib/risk/lockout";
 
 export interface CockpitSnapshot {
@@ -76,6 +78,12 @@ export interface CockpitSnapshot {
   activeLockout: ActiveLockout | null;
   /** lockoutIds this tab has seen acknowledged (kill-switch banner dismissal). */
   acknowledgedLockoutIds: string[];
+  /**
+   * T03: the backend's FRED cache, as of the last hydrate/market.calendar.updated.
+   * Null means "never hydrated yet" — components must render this as
+   * "no calendar data" (fail-closed), never as an empty, healthy calendar.
+   */
+  upcomingReleases: UpcomingRelease[] | null;
 }
 
 export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
@@ -96,6 +104,7 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   confirmedTicketIds: [],
   activeLockout: null,
   acknowledgedLockoutIds: [],
+  upcomingReleases: null,
 };
 
 const MAX_FEED_LENGTH = 20;
@@ -219,6 +228,13 @@ export class CockpitStore {
             MAX_FEED_LENGTH,
           ),
         });
+        break;
+      }
+      // T03: Gateway-originated, always the full current list (never a delta) —
+      // a plain replace, same as risk.lockout.enabled overwriting the ledger.
+      case "market.calendar.updated": {
+        const { releases } = envelope.payload as CalendarUpdatedPayload;
+        this.patch({ upcomingReleases: releases });
         break;
       }
       case "agent.heartbeat": {
