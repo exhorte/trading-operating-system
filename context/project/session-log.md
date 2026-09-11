@@ -6,6 +6,18 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-11 (suivi)
+
+Aucun code. Six jours sans session depuis le 2026-09-05 : la clôture de la
+Vague 1 n'a pas été faite. Mise à jour de `state.md` — « Ce qui bloque »
+nomme désormais le seul point ouvert, la validation contre un vrai terminal
+MT5 — et remplissage de `03_Suivi_Projet/Suivi.md`, vide depuis la création
+du dossier.
+Ouvert : ADR 0009 (faits capturés / rendu à la demande), puis la séance
+réelle de bout en bout qui clôt la vague.
+
+---
+
 ## 2026-09-05 (revue T05)
 
 Deux défauts trouvés en revue sur `tools/mt5-observer/mt5_observer.py`

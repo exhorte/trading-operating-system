@@ -1,8 +1,7 @@
 # État du projet
 
-Dernière mise à jour : 2026-09-05. Instantané seulement — l'historique
-détaillé vit dans `context/project/session-log.md` (ADR 0008) et dans le
-journal de chaque fiche d'outil.
+Dernière mise à jour : 2026-09-11. Instantané seulement — l'historique vit
+dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
 
 ## En une phrase
 
@@ -13,7 +12,10 @@ d'edge (ADR 0002) ; **la Vague 1 est entièrement livrée** (T01–T05, statuts 
 
 ## Ce qui existe et fonctionne
 
-Tout ce qui suit a été **validé en live** contre le compte de démonstration Exness de l'utilisateur (XAUUSDm) entre juillet 2026 et le 28 juillet 2026.
+Validé en live contre le compte de démonstration Exness (XAUUSDm) jusqu'au
+28 juillet 2026 : la chaîne temps réel, les contrats, la persistance, le
+chemin d'exécution. **Ce que la Vague 1 a ajouté par-dessus (T01–T05) n'a
+jamais tourné contre un vrai terminal** — voir « Ce qui bloque ».
 
 | Brique | Où | État |
 |---|---|---|
@@ -28,27 +30,30 @@ Tout ce qui suit a été **validé en live** contre le compte de démonstration 
 
 ## Ce qui a été supprimé le 2026-09-04
 
-`lib/backtest/`, `lib/strategy/`, les scripts de backtest, `app/(cockpit)/backtests/`, les tables `backtest_*`/`holdout_*`, l'ancienne série d'ADR 0001–0013, et les anciens fichiers de suivi (`changelog.md`, `session-history.md`, `handoff.md`, `memory.md`, `project_state.md`). Détail complet : `context/project/pivot-2026-09-04.md`. Reste consultable dans le reflog git local.
+La recherche d'edge et la mémoire de la série 1, en entier. Liste exhaustive
+et raisons : `context/project/pivot-2026-09-04.md`.
 
 ## Ce qui bloque
 
-Rien de bloquant. Un point de friction connu, hérité du 28 juillet 2026 :
-l'observer a calé une fois (28/07, 14:03) pendant une collecte longue. Piste
-retenue si ça revient : conteneuriser via `gmag11/MetaTrader5-Docker`.
+Un seul point, et c'est le critère de sortie de vague lui-même : **aucun des
+cinq outils n'a été vérifié contre un vrai terminal MT5 ni dans un
+navigateur**. Les gates vertes prouvent que le code compile et que la logique
+pure est juste — pas que la chaîne tient sur des données MT5 réelles
+(identifiants de position, deals partiels, offset serveur, rollover).
+Séquence de validation : `02_Plan_Projet/prompt-claude-code-vague-1.md`.
+
+Friction héritée du 28 juillet 2026 : l'observer a calé une fois (14:03) sur
+une collecte longue. Piste si ça revient : `gmag11/MetaTrader5-Docker`.
 
 ## Prochaine action
 
-Les cinq outils de la Vague 1 sont livrés. Prochaine étape : la **clôture de
-vague** (`02_Plan_Projet/prompt-claude-code-vague-1.md`, section « Clôture de
-la Vague 1 ») — relire les cinq fiches, écrire en ADR les décisions
-d'architecture prises pendant la vague (au moins un candidat identifié :
-« le serveur capture des faits immuables, le cockpit rend », voir
-`T05-captures-auto.md`), puis la séance réelle de bout en bout qui est le
-vrai critère de sortie de vague. Ensuite : T06 — journal auto-alimenté
-(sauf second compte prop firm ouvert entre-temps, auquel cas T11/T12
-remontent en tête, per `roadmap.md`).
+**Clôture de la Vague 1**, en attente depuis le 2026-09-05
+(`02_Plan_Projet/prompt-claude-code-vague-1.md`, section « Clôture ») :
+écrire l'ADR 0009 « le serveur capture des faits immuables, le cockpit rend »
+— candidat identifié en T05 — puis la séance réelle de bout en bout.
+Ensuite T06, journal auto-alimenté ; sauf second compte prop firm ouvert
+entre-temps, auquel cas T11/T12 remontent (voir `roadmap.md`).
 
 ## Questions ouvertes
 
-- Quel déclencheur pour le multi-compte ? (Réponse par défaut : le jour où un deuxième compte prop firm est ouvert.)
-- Authentification : hors sujet tant que l'usage est personnel et local.
+- Quel déclencheur pour le multi-compte ? Par défaut : le jour où un deuxième compte prop firm est ouvert.
