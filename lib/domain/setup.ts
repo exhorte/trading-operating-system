@@ -31,3 +31,31 @@ export interface SetupProposal {
   riskRewardRatio: number;
   detectedAt: UtcTimestamp;
 }
+
+/** Where the S01 sequence stopped when it doesn't reach a proposal — the
+ * whole point of EA-02's measurement (S01: "l'étape exacte à laquelle la
+ * séquence s'est arrêtée... dit POURQUOI la machine n'a rien proposé").
+ * The five "precondition_*" stages are evaluated by whatever orchestrates
+ * lib/setup/ live (EA-02's worker) BEFORE the pure pipeline ever runs —
+ * S01: "si une seule [précondition] manque, il n'y a pas de recherche" —
+ * they are not returned by lib/setup/proposal.ts itself. */
+export type SetupStage =
+  | "precondition_session_window"
+  | "precondition_ny_lunch"
+  | "precondition_calendar"
+  | "precondition_lockout"
+  | "precondition_trades_limit"
+  | "bias"
+  | "dealing_range"
+  | "range_location"
+  | "liquidity"
+  | "sweep"
+  | "opposite_swing"
+  | "displacement"
+  | "poi"
+  | "stop"
+  | "gates";
+
+export type SetupOutcome =
+  | { status: "proposed"; proposal: SetupProposal }
+  | { status: "blocked"; stage: SetupStage; detail: string };

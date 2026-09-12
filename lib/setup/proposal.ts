@@ -8,7 +8,7 @@
 
 import type { Candle, SessionWindow } from "@/lib/domain/market";
 import type { Side } from "@/lib/domain/primitives";
-import type { SetupProposal } from "@/lib/domain/setup";
+import type { SetupOutcome, SetupProposal } from "@/lib/domain/setup";
 import type { Swing } from "@/lib/analysis/types";
 import { detectSwings } from "@/lib/analysis/swings";
 import { detectStructureShifts } from "@/lib/analysis/structure";
@@ -68,51 +68,62 @@ function lastOppositeSwing(swings: Swing[], side: Side): Swing | null {
   return candidates.reduce((a, b) => (a.index > b.index ? a : b));
 }
 
-export function proposeSetup(input: SetupProposalInput): SetupProposal | null {
+/**
+ * The full step-by-step evaluation: either a completed proposal, or the
+ * exact stage where the sequence stopped and why (EA-02 needs this to
+ * measure agreement — "l'étape exacte... dit POURQUOI la machine n'a rien
+ * proposé"). `proposeSetup` below is a thin wrapper for callers that only
+ * care about the proposal itself (EA-01's original shape, unchanged).
+ */
+export function evaluateSetup(input: SetupProposalInput): SetupOutcome {
   const bias = dailyBias(input.h4Candles, input.d1Candles, input.swingLookback);
   if (bias === "neutral") {
-    return null;
+    return { status: "blocked", stage: "bias", detail: "H4/D1 disagree or show no confirmed structure" };
   }
   const side: Side = bias === "bullish" ? "buy" : "sell";
 
   const range = lastDealingRange(input.h1Candles, input.swingLookback);
   if (!range) {
-    return null;
+    return { status: "blocked", stage: "dealing_range", detail: "fewer than two 1H swings to anchor a range" };
   }
   const h1Last = input.h1Candles.at(-1);
   if (!h1Last) {
-    return null;
+    return { status: "blocked", stage: "dealing_range", detail: "no 1H candles" };
   }
   const location = locationInRange(h1Last.close, range);
   if ((side === "buy" && location !== "discount") || (side === "sell" && location !== "premium")) {
-    return null;
+    return {
+      status: "blocked",
+      stage: "range_location",
+      detail: `price is ${location}, need ${side === "buy" ? "discount" : "premium"} for a ${side}`,
+    };
   }
 
   const contextSwings = detectSwings(input.contextCandles, input.swingLookback);
   const pool = liquidityPool(input.contextCandles, contextSwings, input.equalLevelTolerance, input.sessionWindows);
   const contextLast = input.contextCandles.at(-1);
   if (!contextLast) {
-    return null;
+    return { status: "blocked", stage: "liquidity", detail: "no context candles" };
   }
   const referencePrice = contextLast.close;
 
   const triggerLevel = sweepTriggerCandidate(pool, side, referencePrice);
   if (!triggerLevel) {
-    return null;
+    return { status: "blocked", stage: "liquidity", detail: "no resting liquidity on the trigger side" };
   }
   const target = opposingTarget(pool, side, referencePrice);
   if (!target) {
-    return null;
+    return { status: "blocked", stage: "liquidity", detail: "no unswept liquidity on the target side" };
   }
 
   const sweep = detectSweep(input.reactionCandles, { kind: triggerLevel.kind, price: triggerLevel.price }, side);
   if (!sweep) {
-    return null;
+    return { status: "blocked", stage: "sweep", detail: "level never touched, or breached without reclaiming" };
   }
 
   const oppositeSwing = lastOppositeSwing(contextSwings, side);
   if (!oppositeSwing) {
-    return null;
+    return { status: "blocked", stage: "opposite_swing", detail: "no prior swing to break for an MSS" };
   }
 
   const sweepIndex = input.reactionCandles.findIndex((c) => c.openTime === sweep.sweptAt);
@@ -123,7 +134,7 @@ export function proposeSetup(input: SetupProposalInput): SetupProposal | null {
     minFvgSize: input.minFvgSize,
   });
   if (!displacement) {
-    return null;
+    return { status: "blocked", stage: "displacement", detail: "no body-close break with a big-enough, FVG-backed candle" };
   }
 
   const allCandles = [...input.contextCandles, ...input.reactionCandles];
@@ -132,13 +143,13 @@ export function proposeSetup(input: SetupProposalInput): SetupProposal | null {
   const orderBlocks = detectOrderBlocks(allCandles, structureShifts);
   const poi = pointOfInterestFor(displacement, orderBlocks, side);
   if (!poi) {
-    return null;
+    return { status: "blocked", stage: "poi", detail: "FVG already mitigated and no usable order block" };
   }
 
   const entryPrice = poi.ce;
   const stop = computeStopLoss(side, sweep.wickExtreme, input.spreadBuffer, entryPrice, input.maxStopDistance);
   if (!stop) {
-    return null;
+    return { status: "blocked", stage: "stop", detail: "stop distance exceeds the symbol's calibrated ceiling" };
   }
 
   const gate = evaluateViabilityGates({
@@ -152,20 +163,30 @@ export function proposeSetup(input: SetupProposalInput): SetupProposal | null {
     minRiskReward: input.minRiskReward,
   });
   if (!gate.passed) {
-    return null;
+    return { status: "blocked", stage: "gates", detail: gate.reason ?? "viability gate refused" };
   }
 
   return {
-    proposalId: `setup-${input.symbol}-${displacement.occurredAt}`,
-    symbol: input.symbol,
-    side,
-    sweptLevelKind: triggerLevel.kind,
-    sweptLevelPrice: triggerLevel.price,
-    entryPrice,
-    stopLoss: stop.price,
-    takeProfit: target.price,
-    costRatio: gate.costRatio,
-    riskRewardRatio: gate.riskRewardRatio,
-    detectedAt: displacement.occurredAt,
+    status: "proposed",
+    proposal: {
+      proposalId: `setup-${input.symbol}-${displacement.occurredAt}`,
+      symbol: input.symbol,
+      side,
+      sweptLevelKind: triggerLevel.kind,
+      sweptLevelPrice: triggerLevel.price,
+      entryPrice,
+      stopLoss: stop.price,
+      takeProfit: target.price,
+      costRatio: gate.costRatio,
+      riskRewardRatio: gate.riskRewardRatio,
+      detectedAt: displacement.occurredAt,
+    },
   };
+}
+
+/** Thin wrapper over evaluateSetup for callers that only need the proposal
+ * itself (EA-01's original shape) — unchanged behavior, no test rewritten. */
+export function proposeSetup(input: SetupProposalInput): SetupProposal | null {
+  const outcome = evaluateSetup(input);
+  return outcome.status === "proposed" ? outcome.proposal : null;
 }

@@ -15,7 +15,7 @@ La fiche est écrite **avant** de coder, complétée **pendant**, close **après
 | T05 | Captures automatiques entrée/sortie | 1 | livré |
 | S01 | Stratégie « Sweep aligné » | EA | à faire |
 | EA-01 | Détection S01, en TypeScript pur | EA | livré |
-| EA-02 | Mode OBSERVE et taux d'accord | EA | en cours |
+| EA-02 | Mode OBSERVE et taux d'accord | EA | livré (code) |
 
 Les outils T06 à T19 sont décrits dans `../backlog.md`. Leur fiche est créée au moment de les démarrer, pas avant — une fiche écrite trois mois trop tôt décrit un problème qui a changé.
 

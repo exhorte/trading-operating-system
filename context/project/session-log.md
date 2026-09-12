@@ -6,6 +6,35 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-12 (EA-02 — livré côté code)
+
+Écart trouvé avant tout code : la chaîne temps réel ne fournit ni le
+multi-symbole ni le M1 nécessaires à S01 (un seul symbole, M15, en dur).
+Architecture validée avec l'utilisateur : `tools/mt5-observer/export_m1_candles.py`
+(nouveau, ne touche pas `mt5_observer.py`) + `scripts/run-setup-detection.ts`
+(worker `npx tsx`, Postgres direct pour les pré-conditions T02a/T02b/T03).
+
+Dix incréments livrés et vérifiés de bout en bout contre le terminal démo
+réel : extension d'EA-01 (`evaluateSetup`), agrégation M1→H1/H4/D1,
+killzones NY (DST-aware, valeurs ICT provisoires), export Python, table
+`setup_proposals`, worker de détection, endpoint .NET + rapprochement,
+panneau cockpit (`/setups`) — observé dans Chrome avec de vraies données.
+
+Quatre défauts réels trouvés en testant (pas en relisant) : double comptage
+de volume dans l'agrégation de bougies ; un bug de mapping Dapper
+(`DateTimeOffset` dans un record lu, même classe de bug que celui déjà
+documenté dans `/api/audit/recent` le 2026-07-12) ; `closed_trades` sans
+heure d'ouverture (jointure `position_opens` ajoutée) ; un appariement de
+rapprochement premier-arrivé-premier-servi au lieu du plus proche
+globalement. Détail complet dans `EA-02-observe-taux-accord.md`.
+
+Gates verts : lint, tsc, 165 tests TS, build, dotnet build/test (38,
+inchangé). Non fait : le critère de réussite de S01 (taux d'accord sur un
+échantillon de séances) — demande de faire tourner le worker plusieurs
+séances réelles, pas du code qui manque.
+
+---
+
 ## 2026-09-12 (EA-01 — livré)
 
 `lib/setup/` : neuf modules purs (bias, dealing-range, liquidity, sweep,

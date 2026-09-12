@@ -46,6 +46,7 @@ backend/**/obj/
 __pycache__/
 *.pyc
 tools/mt5-observer/*.jsonl
+tools/mt5-observer/spread_*.json
 
 
 # typescript

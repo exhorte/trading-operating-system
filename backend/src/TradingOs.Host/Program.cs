@@ -24,6 +24,7 @@ builder.Services.AddSingleton(new RiskTodayRepository(connectionString));
 builder.Services.AddSingleton(new NewsCalendarRepository(connectionString));
 builder.Services.AddSingleton(new TradeCaptureRepository(connectionString));
 builder.Services.AddSingleton(new CandleRepository(connectionString));
+builder.Services.AddSingleton(new SetupProposalRepository(connectionString));
 builder.Services.AddHttpClient("fred");
 builder.Services.AddHostedService<GatewayBridgeService>();
 builder.Services.AddHostedService<NewsCalendarService>();
@@ -128,6 +129,40 @@ app.MapGet("/api/candles", async (
     catch (Exception ex)
     {
         logger.LogError(ex, "/api/candles failed");
+        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
+    }
+});
+app.MapGet("/api/setup-proposals", async (
+    SetupProposalRepository repository,
+    ILogger<Program> logger,
+    CancellationToken ct,
+    DateTime since) =>
+{
+    try
+    {
+        return Results.Ok(await repository.GetRecentAsync(since, ct));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "/api/setup-proposals failed");
+        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
+    }
+});
+app.MapGet("/api/trades/closed", async (
+    SetupProposalRepository repository,
+    ILogger<Program> logger,
+    CancellationToken ct,
+    string accountId,
+    DateTime from,
+    DateTime to) =>
+{
+    try
+    {
+        return Results.Ok(await repository.GetClosedTradesAsync(accountId, from, to, ct));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "/api/trades/closed failed");
         return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
     }
 });

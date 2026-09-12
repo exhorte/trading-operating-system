@@ -234,6 +234,39 @@ CREATE TABLE IF NOT EXISTS news_releases (
 );
 CREATE INDEX IF NOT EXISTS idx_news_releases_scheduled ON news_releases (scheduled_at);
 
+-- EA-02: one evaluation of the S01 sequence, whether or not it produced a
+-- proposal — the instrument of measurement (ADR 0011), never a performance
+-- metric. `event_at` is deliberately dual-purpose, not the worker's own
+-- wall-clock run time:
+--   status='proposed' -> the displacement candle's open_time. A rolling
+--     worker (scripts/run-setup-detection.ts) re-evaluates a sliding
+--     window every cycle, so the SAME real setup would otherwise re-detect
+--     on several consecutive runs; keying on the displacement's own,
+--     stable timestamp makes re-detection an idempotent upsert of the same
+--     row instead of a stream of duplicates for one real event.
+--   status='blocked' -> the M1 candle's open_time this evaluation ran
+--     against — one row per evaluated candle is exactly what's wanted
+--     here: the distribution of block reasons across a session is the
+--     measurement, not a single latest reason.
+CREATE TABLE IF NOT EXISTS setup_proposals (
+    symbol            text NOT NULL,
+    event_at          timestamptz NOT NULL,
+    status            text NOT NULL CHECK (status IN ('proposed', 'blocked')),
+    stage             text,  -- NULL when status='proposed'
+    detail            text,  -- NULL when status='proposed'
+    side              text,  -- NULL when status='blocked'
+    swept_level_kind  text,
+    swept_level_price double precision,
+    entry_price       double precision,
+    stop_loss         double precision,
+    take_profit       double precision,
+    cost_ratio        double precision,
+    risk_reward_ratio double precision,
+    recorded_at       timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (symbol, event_at)
+);
+CREATE INDEX IF NOT EXISTS idx_setup_proposals_symbol_time ON setup_proposals (symbol, event_at DESC);
+
 CREATE TABLE IF NOT EXISTS execution_reports (
     report_id   text PRIMARY KEY,
     command_id  text NOT NULL,

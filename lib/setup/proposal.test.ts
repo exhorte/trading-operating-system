@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { proposeSetup, type SetupProposalInput } from "./proposal";
+import { evaluateSetup, proposeSetup, type SetupProposalInput } from "./proposal";
 import { candleAt, series } from "@/lib/analysis/test-helpers";
 import { DEFAULT_SESSION_WINDOWS } from "@/lib/analysis/config";
 
@@ -109,17 +109,66 @@ describe("proposeSetup — full sequence", () => {
   });
 
   it("is null when price sits on the wrong side of the dealing range (premium, not discount, for a buy)", () => {
+    // Same shape as h1Discount plus one bar, so idx3 stays a confirmed swing
+    // high (a range still exists) while the final close lands above
+    // equilibrium — genuinely a range_location rejection, not "no range".
     const h1Premium = series([
       { high: 10, low: 9, close: 9.5 },
       { high: 9, low: 8, close: 8.5 },
       { high: 10, low: 9, close: 9.5 },
       { high: 12, low: 10, close: 11 },
-      { high: 12, low: 11, close: 11.5 }, // 11.5 > equilibrium 10 -> premium
+      { high: 10, low: 9, close: 9.5 },
+      { high: 12, low: 11, close: 11.5 }, // above equilibrium -> premium
     ]);
+    const outcome = evaluateSetup({ ...baseInput(), h1Candles: h1Premium });
+    expect(outcome).toMatchObject({ status: "blocked", stage: "range_location" });
     expect(proposeSetup({ ...baseInput(), h1Candles: h1Premium })).toBeNull();
   });
 
   it("is null when the cost gate refuses (stop too tight for the spread/commission)", () => {
     expect(proposeSetup({ ...baseInput(), spread: 5, commission: 5 })).toBeNull();
+  });
+});
+
+describe("evaluateSetup — blocked stage reporting", () => {
+  it("reports 'proposed' with the full proposal on the success path", () => {
+    const outcome = evaluateSetup(baseInput());
+    expect(outcome.status).toBe("proposed");
+  });
+
+  it("reports stage 'bias' when H4/D1 disagree", () => {
+    const bearishHtf = series([
+      { high: 12, low: 10, close: 11 },
+      { high: 11, low: 8, close: 9 },
+      { high: 11, low: 9, close: 10 },
+      { high: 10, low: 7, close: 7.5 },
+    ]);
+    const outcome = evaluateSetup({ ...baseInput(), d1Candles: bearishHtf });
+    expect(outcome).toMatchObject({ status: "blocked", stage: "bias" });
+  });
+
+  it("reports stage 'liquidity' when no candidate levels exist", () => {
+    const outcome = evaluateSetup({ ...baseInput(), contextCandles: contextCandles.slice(0, 2) });
+    expect(outcome).toMatchObject({ status: "blocked", stage: "liquidity" });
+  });
+
+  it("reports stage 'sweep' when the level is never touched", () => {
+    const noSweep = reactionCandles.map((c) => ({ ...c, low: 99.5, high: Math.max(c.high, 99.6) }));
+    const outcome = evaluateSetup({ ...baseInput(), reactionCandles: noSweep });
+    expect(outcome).toMatchObject({ status: "blocked", stage: "sweep" });
+  });
+
+  it("reports stage 'displacement' when the reclaim never breaks out", () => {
+    const noDisplacement = [
+      reactionCandles[0],
+      ...reactionCandles.slice(1).map((c) => ({ ...c, close: 99.5, open: 99.4, high: 99.6 })),
+    ];
+    const outcome = evaluateSetup({ ...baseInput(), reactionCandles: noDisplacement });
+    expect(outcome).toMatchObject({ status: "blocked", stage: "displacement" });
+  });
+
+  it("reports stage 'gates' when the cost gate refuses", () => {
+    const outcome = evaluateSetup({ ...baseInput(), spread: 5, commission: 5 });
+    expect(outcome).toMatchObject({ status: "blocked", stage: "gates" });
   });
 });

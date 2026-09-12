@@ -1,6 +1,6 @@
 # EA-02 — Mode OBSERVE et taux d'accord
 
-Statut : **en cours** · Vague EA · Effort 1–2 j (révisé, voir note) · Valeur 5 · Dépend de : EA-01
+Statut : **livré** (code) · Vague EA · Effort 1–2 j (révisé, voir note) · Valeur 5 · Dépend de : EA-01
 
 C'est l'instrument de mesure, pas un écran de signaux : ce panneau existe pour comparer la machine à l'utilisateur, pas pour dire quoi faire. Aucune exécution, aucun ordre.
 
@@ -103,3 +103,63 @@ Voir S01, section « Critère de réussite » : sur un échantillon de séances 
   Deux paramètres non spécifiés par S01 identifiés et posés à titre
   provisoire (killzones ICT standard) plutôt que devinés silencieusement.
   Extension d'EA-01 (`evaluateSetup`) planifiée, pas une réécriture.
+
+- 2026-09-12 (suite) — **livré côté code**, vérifié de bout en bout contre
+  le terminal démo réel (login 477029930) : export Python → upsert
+  TimescaleDB → agrégation → pré-conditions → `evaluateSetup` → écriture
+  `setup_proposals` → `GET /api/setup-proposals` → panneau cockpit, observé
+  dans le navigateur avec de vraies données (deux lignes EURUSDm/GBPUSDm,
+  bloquées `precondition_session_window`, horaire du run hors killzone).
+
+  Dix incréments livrés : `evaluateSetup`/`SetupStage` (extension EA-01),
+  `lib/analysis/aggregate.ts`, `lib/setup/preconditions.ts`,
+  `tools/mt5-observer/export_m1_candles.py`, `setup_proposals` (schema),
+  `scripts/run-setup-detection.ts`, `SetupProposalRepository` + deux
+  endpoints (`/api/setup-proposals`, `/api/trades/closed` — celui-ci
+  manquait), `lib/setup/reconciliation.ts`, panneau cockpit + vue de
+  rapprochement (`/setups`, nouvelle entrée de nav).
+
+  Quatre défauts réels trouvés en testant contre de vraies données, corrigés
+  avant tout usage :
+  1. **Double comptage du volume dans `aggregateCandles`** — le bucket
+     initialisait `volume` à la valeur de la première bougie, puis
+     l'incrément générique la recomptait une seconde fois. 3 bougies de
+     100 donnaient 400, pas 300. Trouvé par le test, pas en relisant le code.
+  2. **`sweepTriggerCandidate` avait un problème de conception, pas un bug
+     de code** : calculer le pool de liquidité sur des bougies qui
+     contiennent déjà le sweep rend le niveau « déjà balayé » avant même que
+     `detectSweep` s'exécute — auto-contradictoire. Corrigé en amont, dans
+     EA-01 (`contextCandles`/`reactionCandles`), pas ici — mais c'est en
+     construisant le worker EA-02 que la conséquence se serait vue en
+     premier si EA-01 ne l'avait pas déjà réglé.
+  3. **`ClosedTradeRow` (write-side, `PersistenceMapper.cs`) ne se lit pas
+     via Dapper** — `DateTimeOffset` dans le constructeur positionnel d'un
+     `record` reproduit exactement le bug de mapping que le commentaire de
+     `/api/audit/recent` documentait déjà (2026-07-12, `DateTimeOffset` vs
+     `DateTime`). Reproduit contre la vraie DB, pas deviné. Corrigé par un
+     type de lecture dédié (`ClosedTradeSummaryRow`, `DateTime`), qui ne
+     porte pas non plus `RealizedPnl` (ADR 0011).
+  4. **`closed_trades` seul n'a pas l'heure d'ouverture** — le rapprochement
+     compare la détection d'une proposition à l'OUVERTURE d'une position,
+     pas à sa clôture. `GetClosedTradesAsync` fait maintenant un `JOIN`
+     avec `position_opens` (T02a) pour `OpenedAt`.
+
+  Un test de `reconciliation.ts` a aussi trouvé une vraie faute d'appariement
+  (premier arrivé, premier servi, au lieu du plus proche globalement) —
+  corrigé avant que quoi que ce soit d'autre en dépende.
+
+  Gates verts : `npm run lint`, `npx tsc --noEmit`, `npm test` (165 tests,
+  dépôt entier), `npm run build`, `dotnet build`, `dotnet test` (38, inchangé).
+  `mt5_observer.py` non modifié (diff vide). Panneau vérifié dans Chrome
+  (dev server + backend + worker + terminal réel) — un avertissement
+  d'hydratation React vient d'une extension navigateur (attribut
+  `translate-tooltip-mtz`), pas du code.
+
+  Non fait, volontairement hors périmètre de ce tour : le **critère de
+  réussite de S01 lui-même** (taux d'accord sur un échantillon de séances)
+  ne peut être jugé qu'après que `export_m1_candles.py` et
+  `run-setup-detection.ts` aient tourné en continu sur plusieurs séances
+  réelles — ce n'est pas un manque de code, c'est un manque de temps qui
+  passe. `TRADINGOS_ACCOUNT_ID` doit être positionné (env var) avant de
+  lancer le worker en continu ; pas fait automatiquement pour ne pas figer
+  un identifiant de compte dans un script committé.
