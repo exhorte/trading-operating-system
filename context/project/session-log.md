@@ -6,6 +6,28 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-11 (suite — cadrage EA)
+
+Aucun code. Interview de cadrage sur une proposition d'évolution arrivée de
+l'extérieur (`01_Recherche/EA_implementation.md`) : ajouter un agent d'exécution
+MT5 et deux profils de compte séparés, FTMO et réel.
+
+Décisions prises : l'EA passe en priorité **devant** la clôture de la Vague 1,
+qui attend ; construction jusqu'au mode CONFIRM seulement, AUTO explicitement
+exclu ; v1 sur EURUSD/GBPUSD ; stratégie unique synthétisée depuis trois systèmes
+réellement tradés (SCALP, Liquidity Trap, FULL 1:20RR), régime de sortie hybride ;
+banc de replay autorisé en dépôt séparé, sans aucune métrique de performance.
+
+Écrit : **ADR 0009** (dette de T05, en attente depuis le 05/09), **ADR 0010**
+(le Trading OS exécute, l'EA est un agent), **ADR 0011** (banc de replay ≠
+backtester), **fiche S01** (stratégie « Sweep aligné »).
+
+Ouvert : les vérifications listées en fin de S01 — le spread réel contre un SL de
+3 à 7 pips en tête, parce qu'il peut invalider le régime de sortie — puis les
+fiches EA-01 à EA-06.
+
+---
+
 ## 2026-09-11 (suivi)
 
 Aucun code. Six jours sans session depuis le 2026-09-05 : la clôture de la
