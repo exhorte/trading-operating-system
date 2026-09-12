@@ -22,6 +22,9 @@ import { aggregateCandles } from "@/lib/analysis/aggregate";
 import { DEFAULT_SESSION_WINDOWS } from "@/lib/analysis/config";
 import { defaultRiskPolicy } from "@/lib/risk/policy";
 import { isNewsBlackout, type UpcomingRelease } from "@/lib/risk/news-calendar";
+import { commissionInPriceUnits } from "@/lib/accounts/cost-model";
+import { ACCOUNT_PROFILES, resolveAccountProfile } from "@/lib/accounts/registry";
+import { symbolMetadata } from "@/lib/market/symbols/registry";
 import { isInKillzone, isPastNyLunch } from "@/lib/setup/preconditions";
 import { evaluateSetup, type SetupProposalInput } from "@/lib/setup/proposal";
 import type { Candle, SessionWindow } from "@/lib/domain/market";
@@ -37,8 +40,10 @@ const REACTION_WINDOW_M1_BARS = 30;
 // Provisional, FX-scale defaults for EURUSD/GBPUSD (5-digit quotes) — NOT
 // DEFAULT_ANALYSIS_CONFIG's values, which are tuned for XAUUSD's ~4000
 // price scale (e.g. equalLevelTolerance 0.3 would be 3000 pips on EURUSD).
-// Posed, not derived — same status as S01's cost threshold, to revisit
-// once EA-04's symbol registry and an observation sample exist.
+// Posed, not derived — to revisit once EA-04's symbol registry and an
+// observation sample exist. `costThreshold` moved out of this object in
+// EA-04: it now comes from the account's CostModel (lib/accounts/), not a
+// fixed default here — see `resolveCostInputs` below.
 const FX_DETECTION_CONFIG = {
   swingLookback: 2,
   equalLevelTolerance: 0.0003, // 3 pips
@@ -46,9 +51,27 @@ const FX_DETECTION_CONFIG = {
   atrPeriod: 14,
   minBodyAtrMultiple: 1.5, // S01, step 5 — given, not guessed
   spreadBuffer: 0.0001, // 1 pip
-  costThreshold: 0.25, // S01, "porte de coût" — given
   minRiskReward: 3, // S01, "porte R:R" — given
 };
+
+/**
+ * EA-04: costThreshold and commission for one symbol, from the account's
+ * registered CostModel. `ACCOUNT_PROFILES` is empty until a real account is
+ * confirmed (see lib/accounts/registry.ts) — until then this falls back to
+ * S01's own provisional default (0.25 / no commission), exactly what this
+ * worker already did before EA-04, just no longer hardcoded in this file.
+ */
+function resolveCostInputs(canonical: string): { costThreshold: number; commission: number } {
+  const profile = resolveAccountProfile(ACCOUNT_PROFILES, ACCOUNT_ID);
+  if (!profile) {
+    return { costThreshold: 0.25, commission: 0 };
+  }
+  const meta = symbolMetadata(canonical);
+  return {
+    costThreshold: profile.costModel.costThreshold,
+    commission: meta ? commissionInPriceUnits(profile.costModel, meta) : 0,
+  };
+}
 
 const SYMBOLS = [
   { canonical: "EURUSD", jsonlName: "m1_eurusd.jsonl", spreadName: "spread_eurusd.json" },
@@ -281,7 +304,7 @@ async function evaluateSymbol(
     reactionCandles: m1.slice(cutoff),
     sessionWindows,
     spread: spread.spread,
-    commission: 0, // no per-account commission model until EA-04's CostModel
+    ...resolveCostInputs(canonical),
     ...FX_DETECTION_CONFIG,
   };
 

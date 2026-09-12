@@ -1,13 +1,33 @@
 /**
- * Default FTMO-style risk policy (v0.1). Percent limits are account-agnostic;
- * every value is a hypothesis, not a validated constraint. Vocabulary source:
- * context/domain/risk_ftmo.md, model: lib/domain/risk.ts.
+ * Risk policy resolution (v0.1 -> EA-04). Percent limits are hypotheses, not
+ * validated constraints. Vocabulary source: context/domain/risk_ftmo.md,
+ * model: lib/domain/risk.ts.
+ *
+ * EA-04: `accountId` now actually matters. An account registered in
+ * lib/accounts/registry.ts gets its own configured RiskPolicy (FTMO,
+ * real, ...); every other accountId — every caller today, since the
+ * registry starts empty — falls back to the same hardcoded values this
+ * function always returned. Signature and behavior for existing callers
+ * are unchanged.
  */
 
 import type { AccountId } from "@/lib/domain/primitives";
 import type { RiskPolicy } from "@/lib/domain/risk";
+import {
+  ACCOUNT_PROFILES,
+  resolveAccountProfile,
+  type AccountProfileRegistry,
+} from "@/lib/accounts/registry";
 
-export function defaultRiskPolicy(accountId: AccountId): RiskPolicy {
+export function defaultRiskPolicy(
+  accountId: AccountId,
+  registry: AccountProfileRegistry = ACCOUNT_PROFILES,
+): RiskPolicy {
+  const profile = resolveAccountProfile(registry, accountId);
+  if (profile) {
+    return profile.riskPolicy;
+  }
+
   return {
     accountId,
     dailyLossLimitPercent: 5,

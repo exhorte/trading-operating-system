@@ -6,6 +6,36 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-12 (EA-04 — livré)
+
+Profils de compte, modèle de coût, registre de symboles. Cartographie avant
+code : `TradingAccount`/`AccountKind` (`lib/domain/account.ts`) existaient
+déjà mais n'étaient utilisés nulle part ; `RiskProfile` demandé par le prompt
+de lancement est le même concept que `RiskPolicy` existant. La porte de coût
+d'EA-01 attendait déjà `costThreshold`/`commission` en paramètres — seul
+`scripts/run-setup-detection.ts` les codait en dur.
+
+Trois décisions validées avec l'utilisateur avant code : réutiliser
+`AccountKind` plutôt qu'un second axe `AccountType`, `XAUUSDm` comme symbole
+XAUUSD canonique (`XAUUSD247m` documenté à part), et une structure FTMO avec
+placeholders `TODO(FTMO-rules)` documentés plutôt que des chiffres devinés —
+le compte FTMO n'existe pas encore.
+
+Livré : `lib/market/symbols/registry.ts` (canonique↔broker, réutilise
+`SymbolMetadata`), `lib/accounts/{types,cost-model,ftmo,real,registry}.ts`,
+`defaultRiskPolicy` étendu avec un paramètre `registry` optionnel (signature
+compatible, les cinq appelants réels dont T01 sont inchangés puisque le
+registre réel est vide), et le câblage réel dans
+`scripts/run-setup-detection.ts`. T01 vérifié inchangé — cette fiche rend la
+*policy* multi-compte, pas le *sizing* multi-symbole (hors périmètre,
+assumé).
+
+Ouvert : `ACCOUNT_PROFILES` reste vide tant qu'un compte FTMO ou réel n'est
+pas confirmé ; les valeurs FTMO/real restent des placeholders à renseigner
+depuis la source officielle avant d'enregistrer un compte.
+
+---
+
 ## 2026-09-12 (EA-03 — livré)
 
 Protocole d'exécution et machine à états, sans MQL5 ni réseau. Cartographie
