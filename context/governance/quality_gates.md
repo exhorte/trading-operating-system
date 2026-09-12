@@ -19,6 +19,22 @@ cd backend && dotnet build && dotnet test   # C#
 python -m py_compile tools/mt5-observer/*.py
 ```
 
+Depuis EA-05, si `tools/mt5-execution-agent/*.mq5` a changé, en plus des gates
+ci-dessus — compilation headless via MetaEditor (aucune gate MQL5 n'existait
+avant EA-05) :
+
+```powershell
+& "C:\Program Files\MetaTrader 5\MetaEditor64.exe" `
+  /compile:"tools\mt5-execution-agent\TradingOsAgent.mq5" `
+  /log:"tools\mt5-execution-agent\compile.log"
+```
+
+Lire `compile.log` : doit afficher `0 errors`. Ne vérifie que la syntaxe et
+le typage — pas le comportement réseau ni l'exécution, qui restent à valider
+à la main contre le terminal (voir `tools/mt5-execution-agent/README.md`).
+Le chemin de MetaEditor suppose une installation locale de MetaTrader 5 ;
+adapter s'il diffère.
+
 - Toutes vertes, sans exception tolérée en silence.
 - La nouvelle logique de domaine a des tests, ou l'absence de test est écrite dans la fiche.
 - Tout comportement lié au risque est relu explicitement.

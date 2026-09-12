@@ -22,8 +22,17 @@ export type Mt5Side = "BUY" | "SELL";
 /**
  * Execution mode carried by the agent. `observe` never touches the broker and
  * replies SIMULATED; the terminal action is the only difference between modes.
+ *
+ * EA-05: renamed the third rung from this type's original `"live"` to
+ * `"confirm"`, to match ADR 0010's ladder (OBSERVE -> PAPER -> CONFIRM) —
+ * this type predates that ADR. Pure rename: nothing in the repo branches on
+ * the literal `"live"` value (checked before renaming), and `"confirm"`
+ * names what actually matters here — every order in this rung still
+ * requires explicit human validation (EA-07) — rather than just "is this a
+ * real-money account", which `lib/domain/account.ts::AccountKind` already
+ * covers on its own, unrelated axis.
  */
-export type Mt5ExecutionMode = "observe" | "paper" | "live";
+export type Mt5ExecutionMode = "observe" | "paper" | "confirm";
 
 export type Mt5MessageType =
   // agent → gateway (telemetry / lifecycle)

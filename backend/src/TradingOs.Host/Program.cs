@@ -8,6 +8,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Dashboard origin for local dev; SignalR needs credentials-compatible CORS.
 var dashboardOrigin = builder.Configuration["Cockpit:DashboardOrigin"] ?? "http://localhost:3000";
 var observerUrl = builder.Configuration["Cockpit:ObserverUrl"] ?? "ws://localhost:8765";
+// EA-05: plain TCP, not WSS — see Mt5AgentServer's doc comment for why.
+// Distinct port from the observer's WS server (8765): two processes, two
+// responsibilities, never merged (ADR 0010).
+var agentPort = builder.Configuration.GetValue<int?>("Cockpit:AgentPort") ?? 9765;
 var connectionString = builder.Configuration.GetConnectionString("TradingOs")
     ?? "Host=localhost;Port=5433;Database=tradingos;Username=tradingos;Password=tradingos_dev";
 
@@ -18,6 +22,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddSingleton<GatewayState>();
 builder.Services.AddSingleton(sp => new Mt5ObserverClient(sp.GetRequiredService<GatewayState>(), observerUrl));
+builder.Services.AddSingleton(new Mt5AgentServer(agentPort));
 builder.Services.AddSingleton(new PersistenceWriter(connectionString));
 builder.Services.AddSingleton(new AuditRepository(connectionString));
 builder.Services.AddSingleton(new RiskTodayRepository(connectionString));
@@ -34,10 +39,12 @@ var app = builder.Build();
 app.UseCors();
 
 // Minimal HTTP surface (backend_plan.md): health + audit export only.
-app.MapGet("/health", (PersistenceWriter writer) => Results.Ok(new
+app.MapGet("/health", (PersistenceWriter writer, Mt5AgentServer agentServer) => Results.Ok(new
 {
     status = "ok",
     observer = observerUrl,
+    agentPort,
+    agentConnected = agentServer.IsConnected,
     db = writer.Status.DbUp ? "ok" : "down",
     persisted = writer.Status.Written,
     dropped = writer.Status.Dropped,

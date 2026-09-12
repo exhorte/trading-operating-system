@@ -6,6 +6,35 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-12 (EA-05 — incréments 2–5 livrés, en attente avant l'exécution)
+
+Agent MQL5. Cartographie avant code a trouvé un trou structurel que le
+prompt de lancement ne nommait pas : aucun point d'écoute Gateway n'existait
+pour un agent entrant (`Mt5ObserverClient` ne fait que dialer *vers*
+l'observer Python). Trouvé aussi un conflit documentaire :
+`context/realtime/mt5_agent_realtime_lifecycle.md` décrit une architecture
+sidecar pré-pivot, obsolète, contredisant `mt5_wire_protocol.md`. Deux
+décisions validées avec l'utilisateur : TCP brut (pas WSS) entre l'agent et
+le Gateway, et le nouveau point d'écoute dans le périmètre de cette fiche.
+
+Livré : `Mt5AgentServer.cs` (nouveau, jamais fusionné avec l'observer),
+`CockpitHub`/`GatewayBridgeService`/`Program.cs` branchés,
+`tools/mt5-execution-agent/TradingOsAgent.mq5` + deux includes (JSON plat
+maison, persistance `commandId → résultat` sur disque), toutes les
+barrières locales de `safety.md` sauf l'exécution elle-même. **Aucun
+`OrderSend` dans le fichier.** Correction en route : `Mt5ExecutionMode`
+portait encore `"live"` (vocabulaire pré-ADR 0010) — renommé `"confirm"`,
+renommage pur vérifié sans effet de bord.
+
+Nouvelle gate ajoutée : compilation MQL5 headless via `MetaEditor64.exe`
+(trouvé installé localement), 0 erreur sur le premier essai.
+
+Ouvert : incréments 2–5 vérifiés seulement par compilation, pas contre un
+vrai terminal — procédure dans le README de l'outil. L'incrément 6
+(exécution) attend un accord explicite séparé, conformément à l'ADR 0010.
+
+---
+
 ## 2026-09-12 (EA-04 — livré)
 
 Profils de compte, modèle de coût, registre de symboles. Cartographie avant

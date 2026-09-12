@@ -11,7 +11,10 @@ namespace TradingOs.Host;
 /// Pattern: snapshot on connect via GetSnapshot, then "event" messages
 /// carrying Envelope&lt;T&gt; (see dashboard_realtime_model.md).
 /// </summary>
-public sealed class CockpitHub(GatewayState state, Mt5ObserverClient observer, PersistenceWriter writer) : Hub
+public sealed class CockpitHub(
+    GatewayState state,
+    Mt5AgentServer agentServer,
+    PersistenceWriter writer) : Hub
 {
     private const string Source = "cockpit-hub";
 
@@ -72,10 +75,15 @@ public sealed class CockpitHub(GatewayState state, Mt5ObserverClient observer, P
         e.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
 
     /// <summary>
-    /// Phase 09 command loop, observe-only. Broadcasts the command to every
-    /// dashboard (single source of truth for the lifecycle), then flattens to
-    /// the lean wire and forwards to the agent. Hard guard: the agent must be
-    /// in observe mode — an absent/unknown mode is refused, never forwarded.
+    /// Command loop, observe-only in this build (EA-05: no OrderSend path
+    /// exists yet in the execution agent — increment 6, pending explicit
+    /// approval). Broadcasts the command to every dashboard (single source
+    /// of truth for the lifecycle), then flattens to the lean wire and
+    /// forwards to the execution agent registered for this command's
+    /// account. Hard guard: the agent must report observe mode — an
+    /// absent/unknown mode is refused, never forwarded. EA-05: targets
+    /// Mt5AgentServer (the execution agent), not the read-only observer —
+    /// the two are never merged (ADR 0010).
     /// </summary>
     public async Task SubmitCommand(PlaceOrderCommand command)
     {
@@ -87,7 +95,7 @@ public sealed class CockpitHub(GatewayState state, Mt5ObserverClient observer, P
         await Clients.All.SendAsync("event", issued);
         GatewayBridgeService.Persist(writer, issued);
 
-        var mode = state.Hello?.Mode;
+        var mode = agentServer.Hello?.Mode;
         if (mode != "observe")
         {
             await RejectAsync(command, $"agent mode '{mode ?? "unknown"}' is not observe — command refused");
@@ -95,7 +103,7 @@ public sealed class CockpitHub(GatewayState state, Mt5ObserverClient observer, P
         }
 
         var lean = Mt5WireTranslator.FlattenPlaceOrder(command);
-        var sent = await observer.SendCommandAsync(lean.ToJson(), CancellationToken.None);
+        var sent = await agentServer.SendCommandAsync(command.AccountId, lean.ToJson(), CancellationToken.None);
         if (!sent)
         {
             await RejectAsync(command, "agent unreachable — command not delivered");

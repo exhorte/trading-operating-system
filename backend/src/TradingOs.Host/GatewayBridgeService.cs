@@ -13,6 +13,7 @@ namespace TradingOs.Host;
 /// </summary>
 public sealed class GatewayBridgeService(
     Mt5ObserverClient observer,
+    Mt5AgentServer agentServer,
     GatewayState state,
     IHubContext<CockpitHub> hub,
     PersistenceWriter writer,
@@ -54,9 +55,22 @@ public sealed class GatewayBridgeService(
         observer.ConnectionChanged += (connected) =>
             logger.LogInformation("MT5 observer {State}", connected ? "connected" : "disconnected — retrying");
 
-        // Drain the persistence channel alongside the observer connection.
+        // EA-05: the execution agent is a separate connection from the
+        // read-only observer above — never merged (ADR 0010) — but shares
+        // the same broadcast/persist plumbing.
+        agentServer.EnvelopeReady += (type, payload) =>
+        {
+            var envelope = Envelope<object>.Create(type, Source, payload);
+            _ = hub.Clients.All.SendAsync("event", envelope, stoppingToken);
+            Persist(writer, envelope);
+        };
+        agentServer.ConnectionChanged += (connected) =>
+            logger.LogInformation("MT5 execution agent {State}", connected ? "connected" : "disconnected");
+
+        // Drain the persistence channel alongside both connections.
         await Task.WhenAll(
             observer.RunAsync(stoppingToken),
+            agentServer.RunAsync(stoppingToken),
             writer.RunAsync(stoppingToken),
             DayAnchorRecheckLoopAsync(stoppingToken));
     }

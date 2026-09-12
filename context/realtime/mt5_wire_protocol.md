@@ -82,14 +82,18 @@ The agent applies a mode to every command; the command payload is identical acro
 | --- | --- | --- |
 | `observe` (default) | never sends to broker | `SIMULATED` |
 | `paper` | routes to a demo account | real broker statuses |
-| `live` | routes to the FTMO broker | real broker statuses |
+| `confirm` | routes to the real broker, one order at a time, only after explicit human validation (EA-07) | real broker statuses |
+
+> Renamed from `live` (EA-05) to match ADR 0010's ladder — `confirm` names
+> the actual safety property of this rung (per-order human approval), not
+> just "is this a real-money account".
 
 Agent config:
 
 ```yaml
 execution:
   enabled: false   # false ⇒ observe regardless of mode
-  mode: observe    # observe → paper → live
+  mode: observe    # observe → paper → confirm
 ```
 
 Backend counterpart: the Trading Engine talks to an `ExecutionAdapter` (`NullExecution` / `PaperExecution` / `MT5Execution` / future `FIXExecution`) and never knows which is active. `LocalRiskGuard` treats an unknown or absent mode as `observe` — the safe default.

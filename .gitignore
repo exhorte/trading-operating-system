@@ -48,6 +48,12 @@ __pycache__/
 tools/mt5-observer/*.jsonl
 tools/mt5-observer/spread_*.json
 
+# MQL5 compiled binaries and MetaEditor headless-compile logs (EA-05)
+tools/mt5-execution-agent/*.ex5
+tools/mt5-execution-agent/compile.log
+tools/mt5-execution-agent/*.log
+tools/mt5-execution-agent/tradingos_commands*.log
+
 
 # typescript
 *.tsbuildinfo
