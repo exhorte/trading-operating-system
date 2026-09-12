@@ -315,3 +315,10 @@ explicite.
   `tools/mt5-execution-agent/README.md`). Je n'écris pas l'incrément 6
   (exécution, `OrderSend`) sans un accord explicite séparé, conformément au
   prompt de lancement et à l'ADR 0010.
+
+- 2026-09-12 (suite) — **incréments 2 à 5 vérifiés par l'utilisateur contre
+  un vrai terminal, tout est vert.** Ceci confirme la connexion/heartbeat,
+  la réception/accusés, la validation locale (dont `ACCOUNT_MISMATCH` contre
+  un vrai second compte) et la persistance `commandId → résultat`. Ne
+  remplace pas l'accord explicite distinct exigé avant l'incrément 6
+  (exécution) — demandé, pas encore donné.

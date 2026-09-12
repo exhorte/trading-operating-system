@@ -29,9 +29,12 @@ renommage pur vérifié sans effet de bord.
 Nouvelle gate ajoutée : compilation MQL5 headless via `MetaEditor64.exe`
 (trouvé installé localement), 0 erreur sur le premier essai.
 
-Ouvert : incréments 2–5 vérifiés seulement par compilation, pas contre un
-vrai terminal — procédure dans le README de l'outil. L'incrément 6
-(exécution) attend un accord explicite séparé, conformément à l'ADR 0010.
+Ouvert : incréments 2–5 vérifiés seulement par compilation au moment
+d'écrire ce qui précède. **Mise à jour même session** — l'utilisateur a
+testé les incréments 2 à 5 contre un vrai terminal, tout est vert (procédure
+du README de l'outil suivie). L'incrément 6 (exécution) reste soumis à un
+accord explicite séparé, distinct de cette vérification, conformément à
+l'ADR 0010 — pas encore donné.
 
 ---
 

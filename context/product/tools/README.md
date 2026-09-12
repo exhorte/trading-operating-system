@@ -18,7 +18,7 @@ La fiche est écrite **avant** de coder, complétée **pendant**, close **après
 | EA-02 | Mode OBSERVE et taux d'accord | EA | livré (code) |
 | EA-03 | Protocole d'exécution et machine à états | EA | livré |
 | EA-04 | Profils de compte, modèle de coût, registre de symboles | EA | livré |
-| EA-05 | Agent MQL5 | EA | en cours (incréments 2–5, avant vérification humaine + incrément 6) |
+| EA-05 | Agent MQL5 | EA | en cours (incréments 2–5 vérifiés en réel ; incrément 6 en attente d'accord explicite) |
 
 Les outils T06 à T19 sont décrits dans `../backlog.md`. Leur fiche est créée au moment de les démarrer, pas avant — une fiche écrite trois mois trop tôt décrit un problème qui a changé.
 
