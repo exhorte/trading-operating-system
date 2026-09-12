@@ -6,6 +6,31 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-12 (Phase 0 — préalables et mesure)
+
+Aucun code de production, conformément au bloc Phase 0 de
+`02_Plan_Projet/prompt-claude-code-vague-ea.md`.
+
+Écrits : `tools/mt5-observer/log_spread.py` (échantillonnage jetable du
+spread EURUSD/GBPUSD toutes les 5 s, JSONL local, ne touche pas à
+`mt5_observer.py`), `analyze_spread.py` (médiane/p90/p99/max par tranche de
+15 min en heure de New York), `list_symbols.py` (résolution des suffixes
+broker). Testés en syntaxe et sur un JSONL synthétique.
+
+Bloqué : le terminal MT5 local est lancé mais pas connecté à un compte
+(`mt5.initialize()` échoue avec `Authorization failed`) — aucun identifiant
+n'est demandé ni stocké ici (charte). `context/domain/symbols-broker.md` est
+créé avec la structure attendue et un statut « en attente » ; la connexion
+manuelle puis `list_symbols.py` restent à faire pour le remplir, et
+`log_spread.py` doit tourner au moins cinq séances avant de calibrer le
+seuil de `c`.
+
+Tags d'archive : confirmé via `git ls-remote --tags origin` que
+`archive/pre-pivot-2026-09-04` et `archive/pivot-commits-2026-09-04`
+n'existent que localement. Pas poussés — en attente de confirmation.
+
+---
+
 ## 2026-09-11 (suite — cadrage EA)
 
 Aucun code. Interview de cadrage sur une proposition d'évolution arrivée de
