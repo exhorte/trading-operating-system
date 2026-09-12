@@ -57,6 +57,11 @@ def sample(symbol: str) -> dict | None:
     info = mt5.symbol_info(symbol)
     if tick is None or info is None:
         return None
+    if tick.bid <= 0 or tick.ask <= 0:
+        # Right after symbol_select() the terminal hasn't streamed a real
+        # quote yet and returns a zeroed tick — a zero-spread row here would
+        # silently corrupt the measurement this script exists to produce.
+        return None
     point = info.point or 0.0
     # pip = 10 * point for a 5/3-digit symbol, point itself for a 4/2-digit
     # one — the same convention used across lib/analysis/ for FX pairs.
