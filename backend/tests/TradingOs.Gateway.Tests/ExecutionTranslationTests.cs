@@ -14,6 +14,7 @@ public class ExecutionTranslationTests
         CommandId: "cmd-sig-301",
         AccountId: "436634705",
         AgentId: "mt5-observer-1",
+        ProtocolVersion: 1,
         RiskApprovalId: "risk-sig-301",
         ExpiresAt: "2026-07-11T10:01:00.000Z",
         IssuedAt: "2026-07-11T10:00:00.000Z",

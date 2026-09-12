@@ -20,6 +20,14 @@ import type {
   UtcTimestamp,
 } from "./primitives";
 
+/**
+ * Version of the OS<->agent execution protocol a command was issued under
+ * (ADR 0010: every command carries commandId, accountId, protocolVersion,
+ * expiresAt). Bumped only on a breaking change to the contracts in
+ * lib/contracts/execution/; see context/execution/protocol.md.
+ */
+export type ProtocolVersion = 1;
+
 export type OrderType = "market" | "limit" | "stop";
 
 export type OrderStatus =
@@ -103,6 +111,8 @@ interface ExecutionCommandBase {
   commandId: CommandId;
   accountId: AccountId;
   agentId: AgentId;
+  /** Protocol the receiving agent must speak to accept this command. */
+  protocolVersion: ProtocolVersion;
   /** Risk approval that authorized this command — mandatory, no bypass. */
   riskApprovalId: RiskApprovalId;
   /** Agents must refuse the command after this time. */

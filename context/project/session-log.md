@@ -6,6 +6,28 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-12 (EA-03 — livré)
+
+Protocole d'exécution et machine à états, sans MQL5 ni réseau. Cartographie
+avant code : le chemin `RiskDecision → Command → ACK → Report` existait déjà
+au niveau wire, mais sans machine à états nommée, sans `UNKNOWN`, sans
+`ACCOUNT_MISMATCH`, sans `protocolVersion` explicite sur la commande.
+
+Décision d'architecture validée avec l'utilisateur : la machine à états (12
+états, `transition()` pure) vit dans `lib/domain/execution-state.ts`, pas
+dans `lib/contracts/execution/` — écart assumé au texte du prompt de
+lancement, par cohérence avec l'ADR 0004. `lib/contracts/execution/` porte le
+vocabulaire de rejet typé (`ACCOUNT_MISMATCH` en premier) et la règle
+d'idempotence (`recordOrReplay`, testée : un rejeu ne ré-exécute jamais).
+Trois documents `context/execution/{protocol,state-machine,safety}.md`
+écrits. `CockpitHub.SubmitCommand` non branché — posé pour EA-05/EA-06.
+
+Ouvert : le branchement réel (persistance de l'état par `commandId`,
+vérification `ACCOUNT_MISMATCH` contre un agent réel, résolution
+d'`UNKNOWN`) attend l'agent MQL5 (EA-05) et la réconciliation (EA-06).
+
+---
+
 ## 2026-09-12 (EA-02 — livré côté code)
 
 Écart trouvé avant tout code : la chaîne temps réel ne fournit ni le

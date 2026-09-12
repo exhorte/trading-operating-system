@@ -60,6 +60,7 @@ describe("buildPlaceOrderCommand", () => {
     expect(cmd).toMatchObject({
       kind: "place_order",
       commandId: "cmd-sig-101",
+      protocolVersion: 1,
       riskApprovalId: "risk-sig-101",
       volume: 0.02, // decision volume, never the strategy's ask
       orderType: "market",

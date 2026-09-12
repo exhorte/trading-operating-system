@@ -37,6 +37,7 @@ export function buildPlaceOrderCommand(args: {
     commandId: `cmd-${signal.signalId}`,
     accountId: signal.accountId,
     agentId,
+    protocolVersion: 1,
     riskApprovalId: decision.approvalId,
     expiresAt: new Date(Date.parse(now) + COMMAND_TTL_MS).toISOString(),
     issuedAt: now,

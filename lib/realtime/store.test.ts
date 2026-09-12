@@ -18,6 +18,7 @@ const command: PlaceOrderCommand = {
   commandId: "cmd-sig-201",
   accountId: "acc",
   agentId: "mt5-observer-1",
+  protocolVersion: 1,
   riskApprovalId: "risk-sig-201",
   expiresAt: "2026-07-11T10:01:00.000Z",
   issuedAt: "2026-07-11T10:00:00.000Z",

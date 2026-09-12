@@ -12,6 +12,7 @@ public sealed record PlaceOrderCommand(
     string CommandId,
     string AccountId,
     string AgentId,
+    int ProtocolVersion,
     string RiskApprovalId,
     string ExpiresAt,
     string IssuedAt,
@@ -45,6 +46,22 @@ public sealed record ExecutionReportView(
     string Status,
     string Detail,
     string ReportedAt);
+
+/// <summary>
+/// Typed rejection vocabulary (ADR 0010, EA-03) — mirror of
+/// lib/contracts/execution/reject-reason.ts. Codes named in later fiches
+/// (e.g. SYMBOL_MISMATCH) are documented in context/execution/protocol.md
+/// but not added here until the gate that raises them exists.
+/// </summary>
+public static class CommandRejectCode
+{
+    public const string AccountMismatch = "ACCOUNT_MISMATCH";
+    public const string ModeNotObserve = "MODE_NOT_OBSERVE";
+    public const string AgentUnreachable = "AGENT_UNREACHABLE";
+    public const string RiskNotApproved = "RISK_NOT_APPROVED";
+}
+
+public sealed record CommandRejection(string Code, string Detail);
 
 public sealed record PlaceOrderCommandPayload(PlaceOrderCommand Command);
 
