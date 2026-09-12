@@ -1,6 +1,6 @@
 # EA-01 — Détection S01, en TypeScript pur
 
-Statut : **en cours** · Vague EA · Effort 2–3 j · Valeur 5 · Dépend de : rien pour la détection (l'exécution dépendra d'EA-01 à EA-06)
+Statut : **livré** · Vague EA · Effort 2–3 j · Valeur 5 · Dépend de : rien pour la détection (l'exécution dépendra d'EA-01 à EA-06)
 
 ## Problème
 
@@ -70,9 +70,9 @@ Chaque incrément laisse les gates vertes (`npm run lint`, `npx tsc --noEmit`, `
 
 Les quatre cas pièges (sweep sans réintégration, displacement par la mèche, POI invalidé par le CE, gate de coût qui refuse un stop serré) sont testés dans les incréments 4, 5, 6 et 8 respectivement.
 
-## Question ouverte avant de coder
+## Décision prise avant de coder
 
-Le type `SetupProposal` (étape 9) : le confirmer comme nouveau type distinct de `StrategySignal`, ou préférez-vous que je regarde d'abord s'il peut réutiliser un sous-ensemble de `StrategySignal` pour éviter deux types qui se ressemblent ? Ma lecture du domaine penche pour un type distinct (le cycle de vie de `StrategySignal` suppose une intégration au Risk Engine qui n'existe pas encore), mais c'est une décision de modélisation, pas un détail d'implémentation.
+`SetupProposal` (étape 9) est un type neuf, distinct de `StrategySignal` — confirmé par l'utilisateur. Vit dans `lib/domain/setup.ts`, conforme à l'ADR 0004 (schémas canoniques du domaine en TypeScript portable).
 
 ## Critère de réussite
 
@@ -88,3 +88,63 @@ Voir `S01-strategie-sweep-aligne.md`, section « Critère de réussite » — c'
   déplacement composée, CE, portes de viabilité) et au nouveau type
   `SetupProposal`. En attente de validation du découpage en incréments et
   de la question sur `SetupProposal` avant d'écrire du code.
+
+- 2026-09-12 (suite) — livré. `SetupProposal` confirmé comme type neuf par
+  l'utilisateur. Neuf modules écrits sous `lib/setup/` suivant exactement le
+  découpage proposé, chacun testé (36 tests, 4 fichiers avec les cas pièges
+  demandés : sweep sans réintégration, displacement par la mèche seule, POI
+  invalidé par le CE, gate de coût sur stop serré). Gates vertes : `npm run
+  lint`, `npx tsc --noEmit`, `npm test` (143 tests au total, dépôt entier),
+  `npm run build`. `lib/analysis/` et `lib/risk/` non modifiés (vérifié par
+  diff) ; `lib/domain/` n'a reçu qu'un ajout additif (`setup.ts` + son export
+  dans `index.ts`). `lib/strategy/` n'existe pas.
+
+  Défaut trouvé et corrigé **pendant** l'implémentation, pas anticipé dans
+  la cartographie : calculer le pool de liquidité (`liquidityPool`) sur un
+  tableau de bougies qui contient AUSSI la bougie du sweep est
+  auto-contradictoire. `detectLiquidity` (`lib/analysis/liquidity.ts`)
+  marque un niveau « déjà balayé » (`sweptAt`) dès qu'une bougie future le
+  dépasse par la mèche, sans condition de réintégration — donc la bougie
+  même qui doit réaliser LE sweep qu'on cherche à détecter fait apparaître
+  ce niveau comme déjà balayé, et `sweepTriggerCandidate` l'exclut avant
+  même que `detectSweep` ait pu s'exécuter. Corrigé en séparant l'entrée de
+  `proposeSetup` en `contextCandles` (bougies avant la fenêtre de réaction —
+  ce qui alimente `liquidityPool` et le swing de référence du déplacement)
+  et `reactionCandles` (bougies à partir du moment où l'on guette le sweep).
+  Ce n'était pas dans le découpage initial ; conforme à la façon dont EA-02
+  fera tourner ceci en continu (le pool est ce qu'on connaît *avant* de
+  guetter un sweep, pas un rejeu complet d'une issue déjà connue).
+
+  Autres décisions prises en écrivant, non détaillées dans la cartographie
+  initiale :
+  1. **`locationInRange`** (dealing-range.ts) implémente un partage strict à
+     50 % (pas de bande neutre), délibérément différent de
+     `priceLocationOf` (`lib/analysis/bias.ts`, bande 45–55 %) — S01 demande
+     « achat uniquement sous l'équilibre, vente uniquement au-dessus », pas
+     une zone neutre.
+  2. **Asia High/Low** (`liquidity.ts`) ne scanne que le bloc Asia contigu
+     le plus récent en remontant depuis la fin du tableau, pas un min/max
+     toutes sessions confondues — sinon plusieurs jours d'Asia se
+     mélangeraient.
+  3. **Sélection de niveau** (cible et déclencheur) : convention « le plus
+     proche du prix courant parmi les non-balayés », comme S01 le fait déjà
+     pour sa propre notion de liquidité interne — à ajuster après
+     observation, pas une règle numérique donnée par la fiche.
+  4. **Breaker Block hors périmètre v1** (poi.ts) : aucun détecteur n'existe
+     dans `lib/analysis/` ; le repli va au FVG puis à l'Order Block, jamais
+     à un Breaker inventé pour l'occasion. Une proposition sans FVG ni OB
+     utilisable rend `null` plutôt que de forcer une géométrie non écrite.
+  5. **Plafond de stop optionnel** (`stop.ts`) : S01 parle d'un « plafond
+     calibré du symbole » sans jamais donner de valeur numérique (contraire
+     au seuil de coût, explicitement 0,25). `maxDistance` reste un
+     paramètre optionnel, non appliqué tant qu'EA-04 ne fournit rien.
+  6. **`lib/risk/gates.ts` et `lib/setup/gates.ts` coexistent sans lien** —
+     même nom, responsabilités disjointes (gates FTMO vs portes de
+     viabilité S01) ; noté pour ne pas les confondre plus tard, pas
+     renommé pour éviter d'introduire un vocabulaire qui ne suit pas S01.
+
+  Vérification manuelle non faite : aucun flux live n'existe encore pour
+  cette détection (c'est EA-02). Le critère de réussite propre à EA-01 —
+  neuf modules purs, testés, quatre cas pièges couverts — est atteint ; le
+  critère de réussite de S01 lui-même (taux d'accord machine/humain) reste
+  entier, à mesurer en EA-02.

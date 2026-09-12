@@ -12,3 +12,4 @@ export * from "./risk";
 export * from "./strategy";
 export * from "./execution";
 export * from "./ticket";
+export * from "./setup";

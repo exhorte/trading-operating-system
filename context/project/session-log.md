@@ -6,6 +6,27 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-12 (EA-01 — livré)
+
+`lib/setup/` : neuf modules purs (bias, dealing-range, liquidity, sweep,
+displacement, poi, stop, gates, proposal) détectant la séquence S01 sur des
+bougies, sans réseau ni exécution. `SetupProposal` (nouveau, distinct de
+`StrategySignal`) dans `lib/domain/setup.ts`. 36 tests dédiés, 143 au total
+dans le dépôt, quatre gates vertes (lint, tsc, test, build). `lib/analysis/`
+et `lib/risk/` non modifiés ; `lib/strategy/` n'existe pas.
+
+Défaut trouvé et corrigé en construisant : calculer le pool de liquidité sur
+des bougies qui contiennent déjà la bougie du sweep se contredit tout seul
+(`detectLiquidity` marque le niveau « balayé » avant que `detectSweep` ait pu
+tester la réintégration). Corrigé en séparant l'entrée en `contextCandles` /
+`reactionCandles`. Détail complet et cinq autres décisions dans la fiche
+`EA-01-detection-s01.md`.
+
+Prochaine étape : EA-02 (mode OBSERVE + taux d'accord machine/humain) —
+voir `02_Plan_Projet/prompt-claude-code-vague-ea.md`.
+
+---
+
 ## 2026-09-12 (Phase 0 — préalables et mesure)
 
 Aucun code de production, conformément au bloc Phase 0 de
