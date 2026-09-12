@@ -27,7 +27,7 @@ seuil de `c`.
 
 Tags d'archive : confirmé via `git ls-remote --tags origin` que
 `archive/pre-pivot-2026-09-04` et `archive/pivot-commits-2026-09-04`
-n'existent que localement. Pas poussés — en attente de confirmation.
+n'existaient que localement. Poussés sur `origin` après confirmation.
 
 ---
 
