@@ -1,6 +1,6 @@
 # T01 — Calculateur de taille one-click
 
-Statut : **livré** · Vague 1 · Effort 0,5–1 j · Valeur 5 · Dépend de : rien
+Statut : **retiré** (2026-09-14) · Vague 1 · Effort 0,5–1 j · Valeur 5 · Dépend de : rien
 
 ## Problème
 
@@ -108,3 +108,14 @@ Une séance entière sans ouvrir la calculatrice de MT5.
   notée dans `context/product/tools/T02-lockout.md` : `RiskStatus` n'a pas
   de champ `lockoutUntil`, donc l'adaptateur de sizing le force à `null` —
   T02 devra l'ajouter au read model et à son miroir C#.
+
+- 2026-09-14 — **retiré, par décision explicite de l'utilisateur.** Panneau
+  et logique pure supprimés du dépôt : `components/cockpit/sizing-panel.tsx`,
+  `lib/risk/sizing-panel.ts` (+ test), la moitié T01 de
+  `components/cockpit/trade-draft-context.tsx` (fichier entier supprimé,
+  T04 partait avec). `lib/risk/index.ts` et `components/shell/cockpit-shell.tsx`
+  nettoyés en conséquence. Aucune dépendance externe cassée : `lib/risk/sizing.ts`
+  (`evaluateSignalRisk`, la fonction pure que T01 appelait) n'est pas touché
+  et reste utilisé ailleurs. Gates vertes après retrait (lint, tsc, 193
+  tests, build, `dotnet build`/`test`). Récupérable via l'historique git si
+  besoin — rien n'a été perdu, seulement retiré du cockpit.

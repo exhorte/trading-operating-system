@@ -17,15 +17,8 @@ export type EventType =
   | "analysis.fvg.detected"
   | "analysis.structure.shifted"
   | "analysis.bias.updated"
-  // strategy
-  | "strategy.signal.created"
-  | "strategy.signal.cancelled"
-  | "strategy.setup.expired"
   // risk
   | "risk.state.updated"
-  | "risk.decision.made"
-  | "risk.command.approved"
-  | "risk.command.rejected"
   | "risk.lockout.enabled"
   | "risk.lockout.cleared"
   // execution commands
@@ -57,12 +50,9 @@ export type EventType =
   | "dashboard.unsubscribe"
   | "dashboard.snapshot.requested"
   | "dashboard.alert.acknowledged"
-  // journal (T04: dashboard-originated, published through the same
-  // whitelisted PublishEvent path as strategy.signal.created)
-  | "journal.ticket.created"
-  // T02a: risk.day_anchor.equity_observed is a dashboard-observed fact
-  // (published like the ticket above); risk.day_anchor.resolved is
-  // Gateway-only (needs the MT5 terminal's server-UTC offset) — never
+  // T02a: risk.day_anchor.equity_observed is a dashboard-observed fact,
+  // published through the whitelisted PublishEvent path; risk.day_anchor.resolved
+  // is Gateway-only (needs the MT5 terminal's server-UTC offset) — never
   // published by a dashboard.
   //
   // journal.position.opened moved to Gateway-only in T05 (server-side diff,

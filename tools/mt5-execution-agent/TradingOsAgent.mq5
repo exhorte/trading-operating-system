@@ -8,23 +8,27 @@
 //| NOTHING: no strategy, no signal, no market analysis, no decision    |
 //| parameter. It does not know why it executes.                       |
 //|                                                                     |
-//| THIS BUILD CONTAINS NO OrderSend CALL. That is not an oversight —   |
-//| it is EA-05 increment 6, and it is added only after a separate,     |
-//| explicit approval (context/product/tools/EA-05-agent-mql5.md). A   |
-//| command that passes every local barrier is acknowledged and        |
-//| reported SIMULATED, exactly like the read-only Python observer's    |
-//| own stub loop (tools/mt5-observer/mt5_observer.py) — validated       |
-//| end-to-end, at zero financial risk, before a single line of order   |
-//| code exists in this file.                                          |
+//| THIS FILE CONTAINS THE ONLY OrderSend CALL IN THE REPOSITORY        |
+//| (EA-05 increment 6, added 2026-09-15 on the separate explicit       |
+//| approval that ADR 0010 requires). It lives in exactly one function, |
+//| ExecuteOrder, whose first statement returns unless the mode is      |
+//| CONFIRM — grep OrderSend and read that function: there is no        |
+//| execution path that reaches the broker without passing that test.   |
 //|                                                                     |
-//| Mode is a physical barrier, not a switch (ADR 0010): this build     |
-//| never sets any mode other than OBSERVE — there is no code path      |
-//| that could. Reaching CONFIRM in a working system requires EA-07's   |
-//| mode ladder, which does not exist yet either.                       |
+//| Mode is a physical barrier, not a switch (ADR 0010): g_mode below   |
+//| is a compile-time const set to MODE_OBSERVE, so in THIS build the   |
+//| guard can never pass and the whole execution body is provably dead  |
+//| code. Writing the path and being allowed to run it are two separate |
+//| approvals — turning the mode ladder on is EA-07, which does not     |
+//| exist. A command that passes every local barrier is still           |
+//| acknowledged and reported SIMULATED today, exactly as before.       |
+//|                                                                     |
+//| It still decides NOTHING: no strategy, no signal, no market         |
+//| analysis, no decision parameter. It does not know why it executes.  |
 //+------------------------------------------------------------------+
 #property copyright "Trading Operating System — personal use only"
-#property version   "1.00"
-#property description "EA-05 execution agent — OBSERVE only, no OrderSend in this build."
+#property version   "1.01"
+#property description "EA-05 execution agent — OrderSend exists but is unreachable outside CONFIRM; this build is OBSERVE."
 
 #include "Include/JsonLite.mqh"
 #include "Include/CommandStore.mqh"
@@ -40,6 +44,7 @@ input double InpMaxVolumePerOrder = 1.0;         // lots — local barrier, last
 input int    InpMaxOpenPositions  = 3;           // local barrier — counts ALL positions on this terminal; excluding external ones is EA-06
 input int    InpMaxSpreadPoints   = 50;          // local barrier, re-checked at validation time, not just at proposal time
 input string InpAllowedSymbolsCsv = "EURUSDm,GBPUSDm"; // local whitelist — broker-side names (context/domain/symbols-broker.md)
+input int    InpMaxSlippagePoints = 10;          // EA-05 inc. 6: MqlTradeRequest.deviation — a bound on the fill, never a decision
 
 //--- Execution mode ladder (ADR 0010): OBSERVE -> PAPER -> CONFIRM.
 //    "AUTO" is not a value this enum can express — reaching it requires an
@@ -397,7 +402,13 @@ void SendAck(const string commandId, const string status, const string reason)
    SendRawLine(json);
 }
 
-void SendReport(const string commandId, const string status, const string symbol, const string side, const string detail)
+//--- Broker fields default to 0, which serialises as JSON null: "not
+//    applicable / unknown", never "zero". Same null-≠-zero convention the
+//    rest of the repo runs on. Only a real fill (increment 6) passes them.
+void SendReport(const string commandId, const string status, const string symbol, const string side,
+                const string detail, const long brokerOrderId = 0, const long brokerPositionId = 0,
+                const double filledVolume = 0.0, const double averagePrice = 0.0,
+                const int brokerRetcode = 0)
 {
    long timeMs = (long)TimeGMT() * 1000;
    string json = "{";
@@ -409,20 +420,97 @@ void SendReport(const string commandId, const string status, const string symbol
    json += "\"status\":\"" + status + "\",";
    json += "\"symbol\":\"" + JsonEscape(symbol) + "\",";
    json += "\"side\":\"" + JsonEscape(side) + "\",";
-   json += "\"brokerOrderId\":null,";
-   json += "\"brokerPositionId\":null,";
-   json += "\"filledVolume\":null,";
-   json += "\"averagePrice\":null,";
-   json += "\"brokerRetcode\":null,";
+   json += "\"brokerOrderId\":" + (brokerOrderId == 0 ? "null" : IntegerToString(brokerOrderId)) + ",";
+   json += "\"brokerPositionId\":" + (brokerPositionId == 0 ? "null" : IntegerToString(brokerPositionId)) + ",";
+   json += "\"filledVolume\":" + (filledVolume == 0.0 ? "null" : DoubleToString(filledVolume, 2)) + ",";
+   json += "\"averagePrice\":" + (averagePrice == 0.0 ? "null" : DoubleToString(averagePrice, 5)) + ",";
+   json += "\"brokerRetcode\":" + (brokerRetcode == 0 ? "null" : IntegerToString(brokerRetcode)) + ",";
    json += "\"detail\":\"" + JsonEscape(detail) + "\"";
    json += "}";
    SendRawLine(json);
 }
 
 //+------------------------------------------------------------------+
+//| execute — EA-05 increment 6. THE ONLY OrderSend IN THE REPOSITORY. |
+//|                                                                    |
+//| Structural barrier, not a flag (ADR 0010): the mode test is this   |
+//| function's first statement and its early return leaves the entire  |
+//| rest of the body dead. The fiche's review question is "can any     |
+//| execution path reach OrderSend without passing this test?" — there |
+//| is exactly one call site of OrderSend, it is below this guard, and |
+//| the answer is no. The caller checks the mode too; that is defence  |
+//| in depth, not the barrier. This test is the barrier, and it stays  |
+//| here even if a future caller forgets.                              |
+//|                                                                    |
+//| In this build g_mode is a compile-time const MODE_OBSERVE, so the  |
+//| guard can never pass at all: everything below is provably          |
+//| unreachable until EA-07 builds the mode ladder.                    |
+//|                                                                    |
+//| "Jamais deux positions" (ADR 0010): the command is written to disk |
+//| as UNKNOWN BEFORE the broker call and rewritten with the real      |
+//| outcome after. An agent that dies between the two leaves UNKNOWN   |
+//| behind; replaying that commandId then returns DUPLICATE/UNKNOWN    |
+//| from the store and never calls OrderSend a second time. Resolving  |
+//| an UNKNOWN is EA-06's reconciliation — never a retry from here.    |
+//+------------------------------------------------------------------+
+void ExecuteOrder(const string commandId, const string symbol, const string side,
+                  const double volume, const double sl, const double tp)
+{
+   if(g_mode != MODE_CONFIRM)
+   {
+      return;
+   }
+
+   CommandStoreRecord(commandId, "UNKNOWN", "OrderSend in flight — outcome not yet known");
+
+   bool isBuy = (side == "BUY");
+   MqlTradeRequest request;
+   MqlTradeResult  result;
+   ZeroMemory(request);
+   ZeroMemory(result);
+   request.action       = TRADE_ACTION_DEAL;
+   request.symbol       = symbol;
+   request.volume       = volume;
+   request.type         = isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   request.price        = isBuy ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
+   request.sl           = sl;
+   request.tp           = tp;
+   request.deviation    = InpMaxSlippagePoints;
+   request.magic        = InpMagicNumber;
+   request.type_filling = ORDER_FILLING_IOC;
+   request.comment      = "TradingOS " + commandId;
+
+   bool sent = OrderSend(request, result);
+
+   bool filled = sent && (result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_DONE_PARTIAL);
+   if(!filled)
+   {
+      // A refusal is a definite outcome, safe to record as final: the broker
+      // rejected it, nothing is open. Only a crash mid-call leaves UNKNOWN.
+      string failDetail = "OrderSend refused: retcode " + IntegerToString(result.retcode) +
+                          (result.comment == "" ? "" : " (" + result.comment + ")");
+      CommandStoreRecord(commandId, "FAILED", failDetail);
+      SendReport(commandId, "FAILED", symbol, side, failDetail, 0, 0, 0.0, 0.0, (int)result.retcode);
+      return;
+   }
+
+   // A fresh market entry's position identifier is its opening order ticket
+   // (verified against this account's own history). That equivalence does NOT
+   // hold for a deal that closes or reverses an existing position — this build
+   // only ever sends fresh entries (max-positions barrier above), and the
+   // general case is EA-06's reconciliation, not an assumption made here.
+   string status = (result.retcode == TRADE_RETCODE_DONE_PARTIAL) ? "PARTIALLY_FILLED" : "FILLED";
+   string detail = status + " " + DoubleToString(result.volume, 2) + " lot " + side + " " + symbol +
+                   " @ " + DoubleToString(result.price, 5) + " (order " + IntegerToString((long)result.order) + ")";
+   CommandStoreRecord(commandId, status, detail);
+   SendReport(commandId, status, symbol, side, detail,
+              (long)result.order, (long)result.order, result.volume, result.price, (int)result.retcode);
+}
+
+//+------------------------------------------------------------------+
 //| The whole command path: receive -> idempotency -> account check -> |
-//| expiry -> validate -> acknowledge -> report. NO EXECUTE STEP EXISTS |
-//| — every accepted command reports SIMULATED. See the file header.   |
+//| expiry -> validate -> acknowledge -> execute (CONFIRM only) or     |
+//| report SIMULATED. See ExecuteOrder above for the execution gate.   |
 //+------------------------------------------------------------------+
 void HandleOrderCommand(const string json)
 {
@@ -434,6 +522,7 @@ void HandleOrderCommand(const string json)
    string orderType = JsonGetString(json, "orderType");
    double volume    = JsonGetDouble(json, "volume");
    double sl        = JsonGetDouble(json, "sl");
+   double tp        = JsonGetDouble(json, "tp");
 
    if(commandId == "")
    {
@@ -479,8 +568,19 @@ void HandleOrderCommand(const string json)
    }
 
    SendAck(commandId, "ACCEPTED", "");
+
+   // The fork. CONFIRM is the only branch that can reach a broker, and
+   // ExecuteOrder re-checks the mode itself — this test is convenience, that
+   // one is the barrier. In this build g_mode is const MODE_OBSERVE, so the
+   // SIMULATED path below is the only one that ever runs.
+   if(g_mode == MODE_CONFIRM)
+   {
+      ExecuteOrder(commandId, symbol, side, volume, sl, tp);
+      return;
+   }
+
    string simDetail = "SIMULATED " + DoubleToString(volume, 2) + " lot " + side + " " + symbol +
-                       " (observe-only build, no broker order — EA-05 increment 6 not yet approved)";
+                       " (mode " + ModeToWireString(g_mode) + ", no broker order — CONFIRM is EA-07)";
    CommandStoreRecord(commandId, "SIMULATED", simDetail);
    SendReport(commandId, "SIMULATED", symbol, side, simDetail);
 }

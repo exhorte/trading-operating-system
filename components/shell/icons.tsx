@@ -17,11 +17,6 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M21 20H3" />
     </>
   ),
-  signal: (
-    <>
-      <path d="M3 12h4l2-7 4 14 2-7h6" />
-    </>
-  ),
   layers: (
     <>
       <path d="m12 3 9 5-9 5-9-5 9-5Z" />

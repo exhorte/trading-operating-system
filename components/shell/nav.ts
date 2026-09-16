@@ -1,7 +1,6 @@
 export type IconName =
   | "grid"
   | "chart"
-  | "signal"
   | "layers"
   | "book"
   | "replay"
@@ -20,7 +19,6 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Command Center", href: "/", icon: "grid", section: "operate" },
   { label: "Market Context", href: "/market-context", icon: "chart", section: "operate" },
-  { label: "Signals", href: "/signals", icon: "signal", section: "operate" },
   { label: "Positions", href: "/positions", icon: "layers", section: "operate" },
   { label: "Risk Monitor", href: "/risk", icon: "shield", section: "operate" },
   { label: "Trades Journal", href: "/journal", icon: "book", section: "analyze" },

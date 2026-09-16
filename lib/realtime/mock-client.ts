@@ -10,7 +10,7 @@
  * observable in the UI without touching the code.
  */
 
-import { makeEnvelope, uuid } from "@/lib/mock/envelope";
+import { makeEnvelope } from "@/lib/mock/envelope";
 import {
   mockAccount,
   mockAgents,
@@ -20,38 +20,21 @@ import {
   mockPnlCalendar,
   mockPositions,
   mockRisk,
-  mockRiskContext,
-  mockSignals,
   mockUpcomingReleases,
 } from "@/lib/mock/initial-snapshot";
-import { mockStrategySignal } from "@/lib/mock/signals";
-import type { MockRiskScenario } from "@/lib/mock/initial-snapshot";
 import { mockCandles, nextCandles } from "@/lib/mock/candles";
 import { analyzeMarketContext } from "@/lib/analysis";
-import { evaluateSignalRisk } from "@/lib/risk";
-import {
-  toMarketContextReadModel,
-  toRiskDecisionView,
-  toRiskStatusReadModel,
-  toStrategySignalReadModel,
-} from "@/lib/contracts/projections";
+import { toMarketContextReadModel } from "@/lib/contracts/projections";
 import type { Candle } from "@/lib/domain/market";
-import type { StrategySignal as DomainStrategySignal } from "@/lib/domain/strategy";
 import type {
   AgentHeartbeatPayload,
-  ExecutionReportPayload,
   MarketContextUpdatedPayload,
   MarketTickPayload,
-  RiskDecisionMadePayload,
   RiskLockoutAcknowledgedPayload,
   RiskLockoutClearedPayload,
   RiskLockoutEnabledPayload,
-  RiskStateUpdatedPayload,
-  SignalCreatedPayload,
-  TicketCreatedPayload,
 } from "@/lib/contracts/events";
 import { KILL_SWITCH_REASON } from "@/lib/risk";
-import type { PreTradeTicket } from "@/lib/domain/ticket";
 import type { RealtimeClient } from "./client";
 import type { CockpitStore } from "./store";
 
@@ -64,7 +47,6 @@ const HEARTBEAT_INTERVAL_MS = 3_000;
 const WATCHDOG_INTERVAL_MS = 2_000;
 const HEARTBEAT_STALE_AFTER_MS = 7_000;
 const CONTEXT_UPDATE_INTERVAL_MS = 12_000;
-const SIGNAL_INTERVAL_MS = 15_000;
 const CONNECTED_PERIOD_MS = 40_000;
 const STALE_PERIOD_MS = 10_000;
 const RECONNECT_PERIOD_MS = 4_000;
@@ -77,24 +59,6 @@ export class MockRealtimeClient implements RealtimeClient {
   private heartbeatsSuspended = false;
 
   private price = 3312.1;
-
-  private signalCounter = 15;
-
-  /** Domain signal awaiting risk review on the next tick (Signal → Risk Review). */
-  private pendingReview: DomainStrategySignal | null = null;
-
-  /** Rotating market/risk conditions so reviews also produce rejections. */
-  private reviewCounter = 0;
-
-  private static readonly SCENARIOS: MockRiskScenario[] = [
-    "normal",
-    "normal",
-    "wide_spread",
-    "normal",
-    "closed_session",
-    "normal",
-    "news_blackout",
-  ];
 
   /** Evolving candle window the ICT/SMC engine recomputes context from. */
   private candles: Candle[] = mockCandles();
@@ -115,17 +79,9 @@ export class MockRealtimeClient implements RealtimeClient {
     this.timers = [];
   }
 
-  /** No real hub in mock mode: echo immediately, same as a successful publish. */
-  publishTicket(ticket: PreTradeTicket): void {
-    this.store.apply(
-      makeEnvelope<TicketCreatedPayload>("journal.ticket.created", "mock-cockpit", { ticket }, ticket.ticketId),
-    );
-  }
-
-  /** T02a demo: the mock's own scenarios never breach a real threshold (see
-   *  mockRiskContext), so the kill switch is the only lockout path exercised
-   *  in mock mode — no-ops if already locked, same edge-trigger as the real
-   *  client. */
+  /** T02a demo: mock risk data is static (mockRisk()), so the kill switch is
+   *  the only lockout path exercised in mock mode — no-ops if already locked,
+   *  same edge-trigger as the real client. */
   triggerKillSwitch(): void {
     const { account, activeLockout } = this.store.getSnapshot();
     if (!account || activeLockout !== null) {
@@ -175,7 +131,6 @@ export class MockRealtimeClient implements RealtimeClient {
       positions: mockPositions(),
       risk: mockRisk(),
       marketContext: mockMarketContext(),
-      signals: initial ? mockSignals() : this.store.getSnapshot().signals,
       agents: mockAgents(),
       executionReports: initial
         ? mockExecutionReports()
@@ -183,8 +138,7 @@ export class MockRealtimeClient implements RealtimeClient {
       pnlCalendar: mockPnlCalendar(),
       alerts: mockAlerts(),
       lastHeartbeatAt: new Date().toISOString(),
-      // T03: demo fixture only — not synced with the rotating risk scenario
-      // below, same documented limitation as mockRiskContext (T02a journal).
+      // T03: demo fixture only, static — not wired to a scenario.
       upcomingReleases: mockUpcomingReleases(),
     });
 
@@ -193,7 +147,6 @@ export class MockRealtimeClient implements RealtimeClient {
       this.every(HEARTBEAT_INTERVAL_MS, () => this.emitHeartbeat());
       this.every(WATCHDOG_INTERVAL_MS, () => this.checkHeartbeat());
       this.every(CONTEXT_UPDATE_INTERVAL_MS, () => this.emitContextUpdate());
-      this.every(SIGNAL_INTERVAL_MS, () => this.advanceSignals());
     }
     this.after(CONNECTED_PERIOD_MS, () => this.beginOutage());
   }
@@ -260,99 +213,6 @@ export class MockRealtimeClient implements RealtimeClient {
         "mock-analysis-engine",
         { context },
       ),
-    );
-  }
-
-  /**
-   * Signal → Risk Review. One tick reviews the pending signal with the REAL
-   * risk engine (evaluateSignalRisk against the current risk state), the next
-   * creates a fresh signal from the computed market context. No more faked
-   * score-threshold approvals.
-   */
-  private advanceSignals(): void {
-    if (this.heartbeatsSuspended) {
-      return;
-    }
-
-    if (this.pendingReview) {
-      const signal = this.pendingReview;
-      this.pendingReview = null;
-      // Rotate market/risk conditions and publish the SAME state to the Risk
-      // panel that the review uses, so an approval/rejection always matches
-      // what the cockpit shows (wide spread and closed session cause real
-      // gate rejections).
-      const scenario =
-        MockRealtimeClient.SCENARIOS[this.reviewCounter % MockRealtimeClient.SCENARIOS.length];
-      this.reviewCounter += 1;
-      const { state, policy, balance } = mockRiskContext(scenario);
-      this.store.apply(
-        makeEnvelope<RiskStateUpdatedPayload>("risk.state.updated", "mock-risk-engine", {
-          risk: toRiskStatusReadModel(state, policy),
-        }),
-      );
-      const decision = evaluateSignalRisk({
-        signalId: signal.signalId,
-        accountId: signal.accountId,
-        entryPrice: signal.entryPrice,
-        stopLoss: signal.stopLoss,
-        balance,
-        state,
-        policy,
-        now: new Date().toISOString(),
-      });
-      this.store.apply(
-        makeEnvelope<RiskDecisionMadePayload>(
-          "risk.decision.made",
-          "mock-risk-engine",
-          { decision: toRiskDecisionView(decision) },
-          signal.signalId,
-        ),
-      );
-      if (decision.approved) {
-        this.after(2_500, () => this.emitFillReport(signal, decision.approvedVolume));
-      }
-      return;
-    }
-
-    this.signalCounter += 1;
-    const context = analyzeMarketContext({
-      symbol: "XAUUSD",
-      timeframe: "M15",
-      candles: this.candles,
-    });
-    const signal = mockStrategySignal({
-      context,
-      account: mockAccount(),
-      price: this.price,
-      seq: this.signalCounter,
-    });
-    this.pendingReview = signal;
-    this.store.apply(
-      makeEnvelope<SignalCreatedPayload>("strategy.signal.created", "mock-strategy-engine", {
-        signal: toStrategySignalReadModel(signal),
-      }),
-    );
-  }
-
-  private emitFillReport(signal: DomainStrategySignal, volume: number | null): void {
-    if (this.heartbeatsSuspended) {
-      return;
-    }
-    this.store.apply(
-      makeEnvelope<ExecutionReportPayload>("execution.order.filled", "mt5-agent-001", {
-        report: {
-          reportId: uuid(),
-          commandId: `cmd-${signal.signalId}`,
-          correlationId: `corr-${signal.signalId}`,
-          accountId: signal.accountId,
-          agentId: "mt5-agent-001",
-          symbol: signal.symbol,
-          side: signal.side,
-          status: "filled",
-          detail: `Mock fill ${volume ?? "?"} lot for ${signal.signalId}, TRADE_RETCODE_DONE`,
-          reportedAt: new Date().toISOString(),
-        },
-      }),
     );
   }
 

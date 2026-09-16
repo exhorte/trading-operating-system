@@ -12,10 +12,9 @@
  *
  * XAUUSD note: the broker exposes both `XAUUSDm` and `XAUUSD247m`
  * (continuous/weekend quoting). `XAUUSDm` is the canonical entry here,
- * matching every other XAUUSD reference already in this repo (mock data,
- * `lib/risk/sizing-panel.ts`). `XAUUSD247m` is not registered — XAUUSD is
- * out of scope for S01 v1 (fiche S01, "Périmètre"), so nothing depends on
- * this choice yet.
+ * matching every other XAUUSD reference already in this repo (mock data).
+ * `XAUUSD247m` is not registered — XAUUSD is out of scope for S01 v1 (fiche
+ * S01, "Périmètre"), so nothing depends on this choice yet.
  */
 
 import type { SymbolCode } from "@/lib/domain/primitives";

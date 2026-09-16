@@ -19,7 +19,8 @@ Ce dépôt est un **poste de travail personnel pour trader intraday**. Ce n'est 
 - **L'EA n'est pas le cerveau.** MT5 est un point d'exécution et de télémétrie.
 - **Le Risk Engine est le point de contrôle unique** (ADR 0007). Toute règle passe par une gate testée, jamais par un bouton grisé.
 - **L'IA reste en lecture** (ADR 0005). Classer, résumer, retrouver, expliquer. Jamais décider, jamais ordonner.
-- Aucun appel de trade n'existe dans ce dépôt. Le mode `observe` / SIMULATED est le seul chemin implémenté.
+- **Un** appel d'exécution existe désormais (`OrderSend`, EA-05 incrément 6, livré le 2026-09-15 sur accord explicite) : `tools/mt5-execution-agent/TradingOsAgent.mq5`, dans `ExecuteOrder` uniquement. Il est **structurellement inatteignable** — première instruction de la fonction, sortie si le mode n'est pas `CONFIRM` ; et `g_mode` est un `const` de compilation à `MODE_OBSERVE`, jamais affecté nulle part. `observe` / SIMULATED reste donc le seul chemin qui s'exécute réellement.
+- **Ne jamais élargir ce chemin sans accord explicite et séparé** : pas de second `OrderSend`, pas de mode rendu configurable, pas de `CONFIRM` atteignable. Basculer l'échelle de mode est le travail d'EA-07, sous les conditions de sa fiche — ça ne se déduit d'aucune consigne générale d'avancement ou de « clôture ».
 - Pas de martingale, pas de grille, pas de moyenne à la baisse.
 - Aucun identifiant de compte n'est jamais demandé, stocké ou partagé.
 

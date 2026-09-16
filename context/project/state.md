@@ -1,17 +1,20 @@
 # État du projet
 
-Dernière mise à jour : 2026-09-12. Instantané seulement — l'historique vit
+Dernière mise à jour : 2026-09-15. Instantané seulement — l'historique vit
 dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
 
 ## En une phrase
 
 Poste de travail personnel pour trader intraday, sorti de la recherche
-d'edge (ADR 0002). La Vague 1 est livrée mais **non close**, et sa clôture
-attend par décision : la priorité est passée à l'**agent d'exécution MT5**
-(ADR 0010), construit jusqu'au mode CONFIRM uniquement. Phase 0 et EA-01 à
-EA-04 sont livrés ; EA-05 (agent MQL5) est vérifié en conditions réelles
-jusqu'à la validation locale — **il ne contient toujours aucun `OrderSend`**,
-et son dernier incrément (exécution) attend un accord explicite séparé.
+d'edge (ADR 0002). T01 et T04 ont été retirés le 2026-09-14 (décision
+explicite) ; le critère de sortie de Vague 1 a été reformulé le même jour et
+**n'est toujours pas rempli** — voir « Ce qui bloque ». La priorité reste
+l'**agent d'exécution MT5** (ADR 0010), construit jusqu'au mode CONFIRM
+uniquement. Phase 0 et EA-01 à **EA-05 sont livrés**, incrément 6 compris
+(2026-09-15, sur accord explicite séparé) : le dépôt contient désormais **un**
+`OrderSend`, unique, **structurellement inatteignable hors `CONFIRM`** — et le
+mode est une constante de compilation figée à `OBSERVE`, jamais affectée. Il
+n'a donc jamais tourné contre un broker, même en démo. L'ouvrir est EA-07.
 
 ## Ce qui existe et fonctionne
 
@@ -26,12 +29,12 @@ jamais tourné contre un vrai terminal** — voir « Ce qui bloque ».
 | Contrats de domaine | `lib/domain/`, `lib/contracts/` | TypeScript portable, miroirs C# dans `TradingOs.Contracts`. |
 | Moteur d'analyse | `lib/analysis/` | Swings, structure, liquidité, PD arrays, sessions, ATR. Pur, testé. Sert de source de niveaux — **pas de source de signal**. |
 | Risk Engine | `lib/risk/` | Gates FTMO, sizing, lockout (ledger stocké, pause de 30 min sur pertes consécutives depuis T02b), gate calendrier FRED fail-closed depuis T03. Pur, testé. |
-| Chemin d'exécution | `lib/execution/`, `lib/domain/execution-state.ts`, `CockpitHub`, `Mt5AgentServer` | `RiskDecision → Command → ACK → Report`, mode `observe`/SIMULATED. Protocole et machine à états figés (EA-03) : `commandId`/`accountId`/`protocolVersion`, `UNKNOWN` de premier ordre, `ACCOUNT_MISMATCH` typé. **Aucun `OrderSend` n'existe nulle part dans le dépôt** — le seul point qui pourrait un jour en contenir un (`tools/mt5-execution-agent/TradingOsAgent.mq5`, EA-05) ne l'a pas encore, par accord explicite requis. |
+| Chemin d'exécution | `lib/execution/`, `lib/domain/execution-state.ts`, `CockpitHub`, `Mt5AgentServer` | `RiskDecision → Command → ACK → Report`, mode `observe`/SIMULATED. Protocole et machine à états figés (EA-03) : `commandId`/`accountId`/`protocolVersion`, `UNKNOWN` de premier ordre, `ACCOUNT_MISMATCH` typé. **Un seul `OrderSend` existe** (`tools/mt5-execution-agent/TradingOsAgent.mq5`, `ExecuteOrder`, EA-05 incrément 6) — première instruction de la fonction : sortie si le mode n'est pas `CONFIRM` ; `g_mode` est un `const` de compilation à `MODE_OBSERVE`, jamais affecté. Chemin prouvablement mort dans ce build. |
 | Comptes et symboles | `lib/accounts/`, `lib/market/symbols/` | EA-04 : `defaultRiskPolicy` résout par compte (registre vide à ce jour — aucun compte FTMO/réel confirmé), registre canonique↔broker EURUSD/GBPUSD/XAUUSD. |
 | Agent d'exécution MT5 | `tools/mt5-execution-agent/`, `backend/src/TradingOs.Gateway/Mt5AgentServer.cs` | EA-05 : connexion, heartbeat, réception, validation locale, persistance `commandId → résultat` sur disque — **vérifiés par l'utilisateur contre un vrai terminal** (2026-09-12). Mode figé à `OBSERVE` par construction. |
 | Persistance | `backend/src/TradingOs.Persistence/`, `docker-compose.yml` | TimescaleDB port 5433, écriture non bloquante, audit JSONB. |
-| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; panneaux permanents T01/T04, bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03, viewer de capture T05 (`/journal/[brokerPositionId]`, pas le journal complet — T06). |
-| Captures de trade | `lib/journal/`, `components/journal/`, `trade_captures` | T05 : faits immuables écrits par le Gateway (fenêtre, prix), rendu à la demande côté cockpit via `analyzeMarketContext` — jamais une image pré-rendue (ADR 0009). |
+| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; T01 (sizing) et T04 (ticket) retirés le 2026-09-14 (décision explicite), bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03, viewer de capture T05 (`/journal/[brokerPositionId]`, pas le journal complet — T06). |
+| Captures de trade | `lib/journal/`, `components/journal/`, `trade_captures` | T05 : faits immuables écrits par le Gateway (fenêtre, prix), rendu à la demande côté cockpit via `analyzeMarketContext` — jamais une image pré-rendue (ADR 0009). Écriture fiable même sur aller-retour rapide depuis le correctif du 2026-09-15. **Rendu cassé pour tout symbole hors XAUUSDm** (pas de M15 en base pour EURUSD/GBPUSD) — voir « Ce qui bloque ». |
 
 ## Ce qui a été supprimé le 2026-09-04
 
@@ -40,29 +43,49 @@ et raisons : `context/project/pivot-2026-09-04.md`.
 
 ## Ce qui bloque
 
-**Aucun des cinq outils de la Vague 1 n'a été vérifié contre un vrai terminal
-MT5 ni dans un navigateur.** Les gates vertes prouvent que le code compile et
-que la logique pure est juste — pas que la chaîne tient sur des données MT5
-réelles (identifiants de position, deals partiels, offset serveur, rollover).
+**Le critère de sortie de Vague 1 (reformulé le 2026-09-14) n'est pas
+rempli.** Sur ses trois points : le kill switch a été déclenché et acquitté
+pour de vrai (2026-09-15, cycle complet vérifié dans `risk_lockouts` +
+`kill_switch_acks`) ; les captures tiennent sur un aller-retour de 60 s
+(2026-09-15, voir T05) ; mais **une position EURUSDm a été ouverte à
+09:36:00 UTC pendant que le lockout kill-switch était actif (09:34:44 →
+09:37:18)** — exactement ce que le critère existe pour détecter. La vague
+reste ouverte.
 
-Ce point ne bloque plus l'avancement — la clôture de vague a été repoussée
-par décision le 2026-09-11 — mais il **bloque toujours le passage en mode
-CONFIRM** : T02a (kill switch) et T02b (lockout) deviennent de la sécurité
-d'exécution dès que l'EA peut placer un ordre (ADR 0010).
+**T02a/T02b, précision utile pour EA-07** : le kill switch et la gate
+« Daily loss guard » ont tous deux tourné en réel plusieurs fois (verrouillage
+→ acquittement/reset → levée, tracé en base). **La pause de 30 min sur deux
+pertes consécutives (T02b, la gate temporisée spécifique) n'a elle jamais
+été déclenchée** — un seul trade perdant est survenu jusqu'ici, jamais deux
+d'affilée (`risk_lockouts` : zéro ligne avec `until` renseigné). La barrière
+d'EA-07 (« T02a/T02b vérifiés en réel ») n'est donc que partiellement remplie.
+
+*(Corrigé le 2026-09-15 — le rendu T05 hors XAUUSD : le viewer rebâtit
+désormais le timeframe de la capture depuis le M1 avec l'agrégation d'EA-02,
+et n'affiche plus de ligne pour un SL/TP à 0, qui écrasait l'échelle de prix.
+Vérifié à l'écran sur la position 3230177984.)*
 
 Friction héritée du 28 juillet 2026 : l'observer a calé une fois (14:03) sur
 une collecte longue. Piste si ça revient : `gmag11/MetaTrader5-Docker`.
 
 ## Prochaine action
 
-**EA-05, incrément 6 (exécution).** Les incréments 2 à 5 sont vérifiés par
-l'utilisateur contre un vrai terminal. Écrire l'appel `OrderSend`
-(structurellement inatteignable hors `CONFIRM`) attend un accord explicite
-séparé — pas encore donné.
+**EA-06 — réconciliation de l'état `UNKNOWN` et des positions externes.**
+C'est la suite logique maintenant qu'un chemin d'exécution existe : l'agent
+écrit `UNKNOWN` sur disque avant l'appel broker et ne rejoue jamais, donc
+quelqu'un doit savoir résoudre cet état (interroger MT5 par magic number +
+`commandId`) — et exclure du compteur `PositionsTotal()` les positions
+ouvertes hors agent.
 
-Ensuite : EA-06 (réconciliation de l'état `UNKNOWN`, positions externes),
-EA-07 (mode CONFIRM, sous condition de la barrière listée dans sa fiche —
-T02a/T02b vérifiés en réel, taux d'accord d'EA-02 connu).
+**Ce qui reste fermé, et ne s'ouvre pas par déduction** : rendre `CONFIRM`
+atteignable (EA-07). Pas d'input de mode, pas de `control.set_mode`, pas de
+seconde voie d'exécution — aucune consigne générale d'« avancer » ou de
+« clôturer » ne vaut accord pour ça. Les conditions de sa fiche ne sont de
+toute façon pas remplies : (a) T02b — la pause 30 min sur deux pertes
+consécutives — n'a jamais été déclenchée en réel ; (b) le taux d'accord
+d'EA-02 est toujours inconnu (zéro proposition sur 595 évaluations) ;
+(c) la Vague 1 n'est pas close (un trade a été ouvert pendant un lockout
+actif le 2026-09-15).
 
 ## Questions ouvertes
 

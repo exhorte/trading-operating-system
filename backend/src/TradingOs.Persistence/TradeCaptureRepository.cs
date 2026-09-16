@@ -78,14 +78,25 @@ public sealed class TradeCaptureRepository(string connectionString)
             });
     }
 
+    /// <summary>How many times FindEntryWithRetryAsync re-checks for the
+    /// 'entry' row before giving up, and the gap between checks.</summary>
+    private const int EntryLookupMaxAttempts = 5;
+    private static readonly TimeSpan EntryLookupRetryDelay = TimeSpan.FromMilliseconds(200);
+
     /// <summary>
     /// Written once, at journal.trade_closed. Reuses the matching 'entry'
     /// row's window_start_utc/entry_price/stop_loss/take_profit — the exit
     /// capture shows the same pre-entry context plus the full trade
-    /// duration. Silently no-ops when no entry row exists (a position this
-    /// backend never saw open — e.g. it predates this feature): there is no
+    /// duration. Silently no-ops when no entry row exists even after a short
+    /// bounded retry (a position this backend never saw open — e.g. it
+    /// predates this feature, or a backfilled historical trade): there is no
     /// window to anchor an exit capture to, and inventing one would violate
-    /// the non-anticipation guarantee this table exists to provide.
+    /// the non-anticipation guarantee this table exists to provide. The
+    /// retry (FindEntryWithRetryAsync) exists because RecordEntryAsync and
+    /// RecordExitAsync are both dispatched fire-and-forget the instant their
+    /// envelope arrives, each on its own connection, with no ordering
+    /// guarantee between the two — a position that round-trips fast enough
+    /// can have its exit envelope reach here before the entry insert commits.
     /// </summary>
     public async Task RecordExitAsync(
         string accountId,
@@ -97,17 +108,7 @@ public sealed class TradeCaptureRepository(string connectionString)
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync(ct);
 
-        var entry = await conn.QuerySingleOrDefaultAsync<TradeCaptureFact>(
-            """
-            SELECT account_id AS AccountId, broker_position_id AS BrokerPositionId, kind AS Kind,
-                   symbol AS Symbol, timeframe AS Timeframe,
-                   window_start_utc AS WindowStartUtc, window_end_utc AS WindowEndUtc,
-                   entry_price AS EntryPrice, stop_loss AS StopLoss, take_profit AS TakeProfit,
-                   exit_price AS ExitPrice, captured_at AS CapturedAt
-            FROM trade_captures
-            WHERE account_id = @accountId AND broker_position_id = @brokerPositionId AND kind = 'entry'
-            """,
-            new { accountId, brokerPositionId });
+        var entry = await FindEntryWithRetryAsync(conn, accountId, brokerPositionId, ct);
         if (entry is null)
         {
             return;
@@ -138,6 +139,30 @@ public sealed class TradeCaptureRepository(string connectionString)
                 takeProfit = entry.TakeProfit,
                 exitPrice,
             });
+    }
+
+    private static async Task<TradeCaptureFact?> FindEntryWithRetryAsync(
+        NpgsqlConnection conn, string accountId, string brokerPositionId, CancellationToken ct)
+    {
+        const string sql = """
+            SELECT account_id AS AccountId, broker_position_id AS BrokerPositionId, kind AS Kind,
+                   symbol AS Symbol, timeframe AS Timeframe,
+                   window_start_utc AS WindowStartUtc, window_end_utc AS WindowEndUtc,
+                   entry_price AS EntryPrice, stop_loss AS StopLoss, take_profit AS TakeProfit,
+                   exit_price AS ExitPrice, captured_at AS CapturedAt
+            FROM trade_captures
+            WHERE account_id = @accountId AND broker_position_id = @brokerPositionId AND kind = 'entry'
+            """;
+        for (var attempt = 1; attempt <= EntryLookupMaxAttempts; attempt++)
+        {
+            var entry = await conn.QuerySingleOrDefaultAsync<TradeCaptureFact>(sql, new { accountId, brokerPositionId });
+            if (entry is not null || attempt == EntryLookupMaxAttempts)
+            {
+                return entry;
+            }
+            await Task.Delay(EntryLookupRetryDelay, ct);
+        }
+        return null;
     }
 
     /// <summary>Read surface for GET /api/captures/{brokerPositionId}.</summary>

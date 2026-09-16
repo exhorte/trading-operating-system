@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import type { ConnectionState } from "@/lib/contracts/enums";
-import type { PreTradeTicket } from "@/lib/domain/ticket";
 import { MockRealtimeClient } from "./mock-client";
 import { SignalRRealtimeClient } from "./signalr-client";
 import type { RealtimeClient } from "./client";
@@ -20,7 +19,6 @@ import { CockpitStore, EMPTY_COCKPIT_SNAPSHOT, type CockpitSnapshot } from "./st
 const CockpitStoreContext = createContext<CockpitStore | null>(null);
 
 interface RealtimeActions {
-  publishTicket: (ticket: PreTradeTicket) => void;
   triggerKillSwitch: () => void;
   acknowledgeLockout: (lockoutId: string) => void;
 }
@@ -58,7 +56,6 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   // swaps), the action function passed down never needs to.
   const actions = useMemo<RealtimeActions>(
     () => ({
-      publishTicket: (ticket) => clientRef.current?.publishTicket(ticket),
       triggerKillSwitch: () => clientRef.current?.triggerKillSwitch(),
       acknowledgeLockout: (lockoutId) => clientRef.current?.acknowledgeLockout(lockoutId),
     }),
@@ -78,11 +75,6 @@ function useRealtimeActions(): RealtimeActions {
     throw new Error("realtime action hooks must be used inside <RealtimeProvider>");
   }
   return actions;
-}
-
-/** T04: publish a pre-trade ticket through whichever transport is active. */
-export function usePublishTicket(): (ticket: PreTradeTicket) => void {
-  return useRealtimeActions().publishTicket;
 }
 
 /** T02a: manual kill switch — locks the account, no close_all command. */

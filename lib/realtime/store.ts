@@ -14,19 +14,12 @@ import type {
   AccountSummary,
   AgentStatus,
   CockpitAlert,
-  ExecutionCommandView,
   ExecutionReport,
   MarketContext,
   PnlCalendarDay,
   Position,
-  RiskDecisionView,
   RiskStatus,
-  StrategySignal,
 } from "@/lib/contracts/snapshots";
-import type {
-  CommandAckPayload,
-  PlaceOrderCommandPayload,
-} from "@/lib/contracts/commands";
 import type {
   AccountSnapshotPayload,
   AgentHeartbeatPayload,
@@ -35,13 +28,9 @@ import type {
   MarketContextUpdatedPayload,
   MarketTickPayload,
   PositionsSnapshotPayload,
-  RiskDecisionMadePayload,
   RiskLockoutAcknowledgedPayload,
   RiskLockoutEnabledPayload,
   RiskStateUpdatedPayload,
-  SignalCreatedPayload,
-  SignalUpdatedPayload,
-  TicketCreatedPayload,
 } from "@/lib/contracts/events";
 import type { UpcomingRelease } from "@/lib/domain/risk";
 import type { ActiveLockout } from "@/lib/risk/lockout";
@@ -53,24 +42,11 @@ export interface CockpitSnapshot {
   positions: Position[];
   risk: RiskStatus | null;
   marketContext: MarketContext | null;
-  signals: StrategySignal[];
-  /** Audit-grade risk decisions keyed by signalId (Signal → Risk Review). */
-  riskDecisions: Record<string, RiskDecisionView>;
-  /** Execution command lifecycle keyed by commandId (Phase 09 bridge audit). */
-  commands: Record<string, ExecutionCommandView>;
   agents: AgentStatus[];
   executionReports: ExecutionReport[];
   pnlCalendar: PnlCalendarDay[];
   alerts: CockpitAlert[];
   lastHeartbeatAt: string | null;
-  /**
-   * T04: ticketIds that have echoed back through the event stream — i.e.
-   * actually broadcast (and, best-effort, persisted) by the hub, not just
-   * submitted by this tab. TicketPanel watches this to know whether to
-   * reset the form; a ticket that never appears here was silently refused
-   * or dropped (see PublishEvent / PersistenceWriter).
-   */
-  confirmedTicketIds: string[];
   /**
    * T02a: the ledger's current lock for this account, or null when clear.
    * Authoritative — components must not re-derive "locked" from `risk` alone.
@@ -93,15 +69,11 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   positions: [],
   risk: null,
   marketContext: null,
-  signals: [],
-  riskDecisions: {},
-  commands: {},
   agents: [],
   executionReports: [],
   pnlCalendar: [],
   alerts: [],
   lastHeartbeatAt: null,
-  confirmedTicketIds: [],
   activeLockout: null,
   acknowledgedLockoutIds: [],
   upcomingReleases: null,
@@ -157,56 +129,9 @@ export class CockpitStore {
         this.patch({ marketContext: context });
         break;
       }
-      case "strategy.signal.created": {
-        const { signal } = envelope.payload as SignalCreatedPayload;
-        this.patch({
-          signals: [signal, ...this.snapshot.signals].slice(0, MAX_FEED_LENGTH),
-        });
-        break;
-      }
-      case "risk.decision.made": {
-        const { decision } = envelope.payload as RiskDecisionMadePayload;
-        this.patch({
-          signals: this.snapshot.signals.map((signal) =>
-            signal.signalId === decision.signalId
-              ? {
-                  ...signal,
-                  status: decision.approved ? "approved" : "rejected",
-                  riskDecision: decision.reason,
-                }
-              : signal,
-          ),
-          riskDecisions: { ...this.snapshot.riskDecisions, [decision.signalId]: decision },
-        });
-        break;
-      }
-      case "risk.command.approved":
-      case "risk.command.rejected": {
-        const update = envelope.payload as SignalUpdatedPayload;
-        this.patch({
-          signals: this.snapshot.signals.map((signal) =>
-            signal.signalId === update.signalId
-              ? { ...signal, status: update.status, riskDecision: update.riskDecision }
-              : signal,
-          ),
-        });
-        break;
-      }
       case "risk.state.updated": {
         const { risk } = envelope.payload as RiskStateUpdatedPayload;
         this.patch({ risk });
-        break;
-      }
-      // T04: the hub's echo of a ticket this tab (or another tab) published —
-      // the only signal that PublishEvent actually broadcast it.
-      case "journal.ticket.created": {
-        const { ticket } = envelope.payload as TicketCreatedPayload;
-        this.patch({
-          confirmedTicketIds: [ticket.ticketId, ...this.snapshot.confirmedTicketIds].slice(
-            0,
-            MAX_FEED_LENGTH,
-          ),
-        });
         break;
       }
       // T02a: the ledger is authoritative — set/clear it here, never derive
@@ -258,74 +183,17 @@ export class CockpitStore {
         });
         break;
       }
-      // A command was issued after an approved RiskDecision (Phase 09 bridge).
-      case "execution.command.place_order": {
-        const { command } = envelope.payload as PlaceOrderCommandPayload;
-        // Idempotent re-registration (the single retry re-broadcasts the same
-        // commandId): never downgrade an existing lifecycle back to "sent".
-        if (this.snapshot.commands[command.commandId]) {
-          break;
-        }
-        this.patch({
-          commands: {
-            ...this.snapshot.commands,
-            [command.commandId]: {
-              commandId: command.commandId,
-              signalId: command.signalId,
-              riskApprovalId: command.riskApprovalId,
-              symbol: command.symbol,
-              side: command.side,
-              volume: command.volume,
-              status: "sent",
-              reason: null,
-              issuedAt: command.issuedAt,
-              updatedAt: envelope.sentAt,
-            },
-          },
-          signals: this.setSignalStatus(command.signalId, "commanded", null),
-        });
-        break;
-      }
-      // Agent receipt. accepted/duplicate confirm; rejected/expired terminate —
-      // a rejected or expired command NEVER produces a fill.
-      case "execution.command.acknowledged":
-      case "execution.command.rejected": {
-        const { ack } = envelope.payload as CommandAckPayload;
-        const confirmed = ack.status === "accepted" || ack.status === "duplicate";
-        const commandStatus = confirmed
-          ? "acknowledged"
-          : ack.status === "expired"
-            ? "expired"
-            : "rejected";
-        const command = this.snapshot.commands[ack.commandId];
-        this.patch({
-          commands: this.setCommandStatus(ack.commandId, commandStatus, ack.reason),
-          signals: command
-            ? this.setSignalStatus(
-                command.signalId,
-                confirmed ? "acknowledged" : ack.status === "expired" ? "expired" : "rejected",
-                // Confirmations keep the risk-decision text on the card;
-                // only failure reasons replace it.
-                confirmed ? null : ack.reason,
-              )
-            : this.snapshot.signals,
-        });
-        break;
-      }
       // Observe-mode outcome: validated end-to-end, no broker order. Distinct
-      // status by contract — never rendered as a fill.
+      // status by contract — never rendered as a fill. Real EA-05 traffic
+      // lands here (Mt5AgentServer -> ExecutionOrderSimulated) as much as
+      // anything else that ever reaches this event type.
       case "execution.order.simulated": {
         const { report } = envelope.payload as ExecutionReportPayload;
-        const command = this.snapshot.commands[report.commandId];
         this.patch({
           executionReports: [report, ...this.snapshot.executionReports].slice(
             0,
             MAX_FEED_LENGTH,
           ),
-          commands: this.setCommandStatus(report.commandId, "reported", null),
-          signals: command
-            ? this.setSignalStatus(command.signalId, "reported", null)
-            : this.snapshot.signals,
         });
         break;
       }
@@ -345,56 +213,6 @@ export class CockpitStore {
         // Unhandled event families are ignored by the Phase 01 dashboard.
         break;
     }
-  }
-
-  /** Client-side lifecycle: no ack before timeout (after the single retry). */
-  markCommandFailed(commandId: string, reason: string): void {
-    const command = this.snapshot.commands[commandId];
-    if (!command || command.status === "acknowledged" || command.status === "reported") {
-      return;
-    }
-    this.patch({
-      commands: this.setCommandStatus(commandId, "failed", reason),
-      signals: this.setSignalStatus(command.signalId, "rejected", reason),
-    });
-  }
-
-  /** Client-side lifecycle: the single idempotent resend happened. */
-  markCommandRetried(commandId: string): void {
-    const command = this.snapshot.commands[commandId];
-    if (command && command.status === "sent") {
-      this.patch({ commands: this.setCommandStatus(commandId, "retried", null) });
-    }
-  }
-
-  private setCommandStatus(
-    commandId: string,
-    status: ExecutionCommandView["status"],
-    reason: string | null,
-  ): Record<string, ExecutionCommandView> {
-    const command = this.snapshot.commands[commandId];
-    if (!command) {
-      return this.snapshot.commands;
-    }
-    return {
-      ...this.snapshot.commands,
-      [commandId]: { ...command, status, reason, updatedAt: new Date().toISOString() },
-    };
-  }
-
-  private setSignalStatus(
-    signalId: string | null,
-    status: StrategySignal["status"],
-    reason: string | null,
-  ): StrategySignal[] {
-    if (!signalId) {
-      return this.snapshot.signals;
-    }
-    return this.snapshot.signals.map((signal) =>
-      signal.signalId === signalId
-        ? { ...signal, status, riskDecision: reason ?? signal.riskDecision }
-        : signal,
-    );
   }
 
   private applyTick(symbol: string, price: number): void {

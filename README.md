@@ -2,7 +2,9 @@
 
 Poste de travail personnel pour trader intraday. Automatise, mesure et fait respecter le process de son unique utilisateur.
 
-Ce n'est pas un Expert Advisor, pas un bot, pas un backtester. **Aucun module ne dit quoi trader, quand, ni dans quel sens.** Aucun appel de trade n'existe dans ce dépôt.
+Ce n'est pas un Expert Advisor, pas un bot, pas un backtester. **Aucun module ne dit quoi trader, quand, ni dans quel sens.**
+
+Depuis le 2026-09-15, le dépôt contient **un** appel d'exécution — `OrderSend`, dans `tools/mt5-execution-agent/TradingOsAgent.mq5` (EA-05 incrément 6, ADR 0010). Il vit dans une seule fonction dont la première instruction sort si le mode n'est pas `CONFIRM`, et le mode est une constante de compilation figée à `OBSERVE` : dans ce build, ce chemin est prouvablement mort. Le faire vivre demande l'échelle de mode d'EA-07, qui n'existe pas. Aucun ordre n'est envoyé sans qu'un humain l'ait déclenché (charte, principe 6).
 
 Usage strictement personnel — pas de distribution, pas de vente.
 

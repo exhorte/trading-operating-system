@@ -8,9 +8,8 @@
  * slice: real candles → ICT/SMC market context, account/positions → risk
  * state (engine port to C# is deferred).
  *
- * Not purely read-only: also submits observe-mode commands (never a real
- * trade call — see command-builder.ts) and publishes whitelisted dashboard
- * facts (signal/decision reviews, T04 tickets) through PublishEvent.
+ * Not purely read-only: also publishes whitelisted dashboard facts through
+ * PublishEvent (see CockpitHub.PublishableTypes).
  */
 
 import {
@@ -27,20 +26,12 @@ import {
   detectConsecutiveLossPause,
   detectNewLockout,
   evaluateRiskState,
-  evaluateSignalRisk,
   isLockoutExpired,
   KILL_SWITCH_REASON,
   shouldAutoClearForNewDay,
 } from "@/lib/risk";
-import { buildPlaceOrderCommand } from "@/lib/execution/command-builder";
-import { mockStrategySignal } from "@/lib/mock/signals";
 import { makeEnvelope } from "@/lib/mock/envelope";
-import {
-  toMarketContextReadModel,
-  toRiskDecisionView,
-  toRiskStatusReadModel,
-  toStrategySignalReadModel,
-} from "@/lib/contracts/projections";
+import { toMarketContextReadModel, toRiskStatusReadModel } from "@/lib/contracts/projections";
 import type { Envelope } from "@/lib/contracts/envelope";
 import type {
   AgentHeartbeatPayload,
@@ -48,25 +39,18 @@ import type {
   MarketCandlePayload,
   MarketTickPayload,
   PositionOpenedPayload,
-  RiskDecisionMadePayload,
   RiskLockoutAcknowledgedPayload,
   RiskLockoutClearedPayload,
   RiskLockoutEnabledPayload,
-  SignalCreatedPayload,
-  TicketCreatedPayload,
   TradeClosedPayload,
 } from "@/lib/contracts/events";
-import type { PreTradeTicket } from "@/lib/domain/ticket";
-import type { CommandAckPayload } from "@/lib/contracts/commands";
 import type {
   AccountSummary,
   AgentStatus,
   Position,
 } from "@/lib/contracts/snapshots";
 import type { Candle } from "@/lib/domain/market";
-import type { MarketContextState } from "@/lib/domain/analysis";
-import type { PlaceOrderCommand } from "@/lib/domain/execution";
-import type { RiskPolicy, RiskState, UpcomingRelease } from "@/lib/domain/risk";
+import type { UpcomingRelease } from "@/lib/domain/risk";
 import type { ActiveLockout } from "@/lib/risk/lockout";
 import type { RealtimeClient } from "./client";
 import type { CockpitStore } from "./store";
@@ -89,10 +73,6 @@ const WATCHDOG_INTERVAL_MS = 2_000;
 const HEARTBEAT_STALE_AFTER_MS = 8_000;
 const CONTEXT_DEBOUNCE_MS = 200;
 const MAX_CANDLES = 300;
-/** Cadence of the transitional in-browser strategy stub (Phase 09). */
-const SIGNAL_INTERVAL_MS = 30_000;
-/** No ack within this window → the single idempotent retry, then failed. */
-const ACK_TIMEOUT_MS = 5_000;
 
 /** Shape returned by CockpitHub.GetSnapshot (C# CockpitSnapshotDto, camelCase). */
 interface HubSnapshot {
@@ -144,25 +124,9 @@ export class SignalRRealtimeClient implements RealtimeClient {
 
   private contextTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // --- Phase 09: transitional in-browser decision loop (documented, ADR 0010) ---
-
-  private lastContextState: MarketContextState | null = null;
-
-  private lastRisk: { state: RiskState; policy: RiskPolicy } | null = null;
-
-  private signalTimer: ReturnType<typeof setInterval> | null = null;
-
-  private signalCounter = 100;
-
-  /** Session-unique id prefix: prevents cross-session/tab commandId collisions
-   *  against the agent's persistent dedup set (seen live on 2026-07-11). */
-  private readonly runId = Date.now().toString(36).slice(-4);
-
-  /** Commands awaiting an ack: single 5s timeout → one retry (same id) → failed. */
-  private pendingAcks = new Map<
-    string,
-    { command: PlaceOrderCommand; timer: ReturnType<typeof setTimeout>; retried: boolean }
-  >();
+  /** True between publishing risk.lockout.enabled and the hub echoing it back
+   *  into the store — see the comment at its only write site. */
+  private lockoutPublishPending = false;
 
   constructor(
     private readonly store: CockpitStore,
@@ -198,7 +162,6 @@ export class SignalRRealtimeClient implements RealtimeClient {
         this.store.setConnectionState("connected");
         this.store.hydrate({ lastHeartbeatAt: new Date().toISOString() });
         this.startWatchdog();
-        this.startSignalLoop();
         return this.hydrateFromSnapshot();
       })
       .catch(() => {
@@ -226,14 +189,6 @@ export class SignalRRealtimeClient implements RealtimeClient {
       clearTimeout(this.contextTimer);
       this.contextTimer = null;
     }
-    if (this.signalTimer) {
-      clearInterval(this.signalTimer);
-      this.signalTimer = null;
-    }
-    for (const pending of this.pendingAcks.values()) {
-      clearTimeout(pending.timer);
-    }
-    this.pendingAcks.clear();
     if (this.connection) {
       const connection = this.connection;
       this.connection = null;
@@ -391,19 +346,6 @@ export class SignalRRealtimeClient implements RealtimeClient {
         void payload;
         break;
       }
-      // Phase 09: agent/gateway receipt — settle the pending ack timer, then
-      // let the store drive the command/signal lifecycle.
-      case "execution.command.acknowledged":
-      case "execution.command.rejected": {
-        const { ack } = envelope.payload as CommandAckPayload;
-        const pending = this.pendingAcks.get(ack.commandId);
-        if (pending) {
-          clearTimeout(pending.timer);
-          this.pendingAcks.delete(ack.commandId);
-        }
-        this.store.apply(envelope);
-        break;
-      }
       default:
         this.store.apply(envelope);
         break;
@@ -432,7 +374,6 @@ export class SignalRRealtimeClient implements RealtimeClient {
       timeframe: this.timeframe as Candle["timeframe"],
       candles,
     });
-    this.lastContextState = state;
     this.store.hydrate({ marketContext: toMarketContextReadModel(state) });
   }
 
@@ -472,8 +413,20 @@ export class SignalRRealtimeClient implements RealtimeClient {
       now: nowIso,
     });
 
+    // The store only learns about a lockout once the hub echoes the published
+    // event back; until then `activeLockout` is still null and every risk
+    // recomputation in that window (ticks arrive continuously) re-fires the
+    // edge-trigger and writes another ledger row — four rows 73 ms apart,
+    // observed for real on 2026-09-14. detectNewLockout is correctly
+    // edge-triggered on its own input; it's this caller that was feeding it a
+    // stale "not locked yet". The flag clears the moment the echo lands, so it
+    // can never mask a genuinely new lock.
+    if (activeLockout !== null) {
+      this.lockoutPublishPending = false;
+    }
     const newLockout = detectNewLockout(computed, activeLockout);
-    if (newLockout) {
+    if (newLockout && !this.lockoutPublishPending) {
+      this.lockoutPublishPending = true;
       this.publishLockoutEnabled(makeId("lockout"), account.accountId, newLockout.reason);
     }
     const newPause = detectConsecutiveLossPause(
@@ -482,7 +435,8 @@ export class SignalRRealtimeClient implements RealtimeClient {
       this.lastConsecutiveLossAt,
       CONSECUTIVE_LOSS_PAUSE_MINUTES,
     );
-    if (newPause) {
+    if (newPause && !this.lockoutPublishPending) {
+      this.lockoutPublishPending = true;
       this.publishLockoutEnabled(makeId("lockout"), account.accountId, newPause.reason, newPause.until);
     }
     if (
@@ -500,7 +454,6 @@ export class SignalRRealtimeClient implements RealtimeClient {
     }
     const state = applyActiveLockout(computed, activeLockout, nowIso);
 
-    this.lastRisk = { state, policy };
     this.store.hydrate({ risk: toRiskStatusReadModel(state, policy) });
   }
 
@@ -565,95 +518,6 @@ export class SignalRRealtimeClient implements RealtimeClient {
     this.publishLockoutCleared(account.accountId, "kill-switch-ack");
   }
 
-  // --- Phase 09: Signal → RiskDecision → ExecutionCommand (observe loop) ---
-  // Transitional: the strategy stub + risk review run in the browser on REAL
-  // context/risk (engine port to the backend is a later phase, ADR 0010).
-  // Business logic lives in lib/risk and lib/execution.
-
-  private startSignalLoop(): void {
-    if (this.signalTimer) {
-      return;
-    }
-    this.signalTimer = setInterval(() => this.runDecisionLoop(), SIGNAL_INTERVAL_MS);
-  }
-
-  private runDecisionLoop(): void {
-    const { connection, account } = this.store.getSnapshot();
-    if (connection !== "connected" || !account || !this.lastContextState || !this.lastRisk) {
-      return; // only decide on fresh, fully-hydrated real state
-    }
-    if (this.lastBid === null) {
-      return;
-    }
-
-    this.signalCounter += 1;
-    const signal = mockStrategySignal({
-      context: this.lastContextState,
-      account,
-      price: this.lastBid,
-      seq: this.signalCounter,
-      runId: this.runId,
-    });
-    // Signals/decisions are PUBLISHED through the hub, which
-    // persists them and rebroadcasts to every dashboard (multi-tab
-    // consistency + audit). The store applies them when they come back.
-    this.publish(
-      makeEnvelope<SignalCreatedPayload>("strategy.signal.created", "cockpit-strategy-stub", {
-        signal: toStrategySignalReadModel(signal),
-      }),
-    );
-
-    const decision = evaluateSignalRisk({
-      signalId: signal.signalId,
-      accountId: signal.accountId,
-      entryPrice: signal.entryPrice,
-      stopLoss: signal.stopLoss,
-      balance: account.balance,
-      state: this.lastRisk.state,
-      policy: this.lastRisk.policy,
-      now: new Date().toISOString(),
-    });
-    this.publish(
-      makeEnvelope<RiskDecisionMadePayload>("risk.decision.made", "cockpit-risk-engine", {
-        decision: toRiskDecisionView(decision),
-      }, signal.signalId),
-    );
-
-    // Only an approved, sized decision can become a command (builder enforces it).
-    const agentId = this.store.getSnapshot().agents[0]?.agentId ?? "mt5-observer-1";
-    const command = buildPlaceOrderCommand({
-      signal,
-      decision,
-      agentId,
-      now: new Date().toISOString(),
-    });
-    if (command) {
-      this.submitCommand(command, false);
-    }
-  }
-
-  /**
-   * T04: publish a pre-trade ticket. Deliberately does NOT apply locally on
-   * failure (unlike the internal `publish` below) — a ticket the caller
-   * believes is saved but that never reached the hub must stay visibly
-   * unconfirmed, not silently appear to succeed. The caller (TicketPanel)
-   * is the one watching for the echo.
-   */
-  publishTicket(ticket: PreTradeTicket): void {
-    if (!this.connection) {
-      return;
-    }
-    void this.connection
-      .invoke(
-        "PublishEvent",
-        makeEnvelope<TicketCreatedPayload>("journal.ticket.created", "cockpit-journal", { ticket }, ticket.ticketId),
-      )
-      .catch(() => {
-        // Invoke itself failed (e.g. reconnecting) — no local fallback apply:
-        // the caller's confirm-by-echo timeout is what surfaces this.
-      });
-  }
-
   /** Publish a whitelisted envelope through the hub (persist + rebroadcast).
    *  Falls back to a local apply if the invoke fails, so the operator still
    *  sees the fact even when the hub write is lost. */
@@ -665,34 +529,6 @@ export class SignalRRealtimeClient implements RealtimeClient {
     void this.connection.invoke("PublishEvent", envelope).catch(() => {
       this.store.apply(envelope as Envelope);
     });
-  }
-
-  /** Submit to the hub and arm the ack timeout (one idempotent retry, then failed). */
-  private submitCommand(command: PlaceOrderCommand, isRetry: boolean): void {
-    if (!this.connection) {
-      return;
-    }
-    void this.connection.invoke("SubmitCommand", command).catch(() => {
-      // invoke failed outright (e.g. reconnecting) — the timeout path handles it.
-    });
-    const timer = setTimeout(() => this.onAckTimeout(command.commandId), ACK_TIMEOUT_MS);
-    this.pendingAcks.set(command.commandId, { command, timer, retried: isRetry });
-  }
-
-  private onAckTimeout(commandId: string): void {
-    const pending = this.pendingAcks.get(commandId);
-    if (!pending) {
-      return;
-    }
-    this.pendingAcks.delete(commandId);
-    if (!pending.retried) {
-      // Single retry with the SAME commandId — the agent dedupes (DUPLICATE
-      // ack counts as confirmation), which exercises idempotency for real.
-      this.store.markCommandRetried(commandId);
-      this.submitCommand(pending.command, true);
-      return;
-    }
-    this.store.markCommandFailed(commandId, "no ack within timeout (after retry)");
   }
 
   private startWatchdog(): void {

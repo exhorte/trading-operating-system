@@ -6,11 +6,28 @@ Le raisonnement complet de chacun est dans `catalogue.md`. Ce fichier n'en garde
 
 ## Vague 2 — fermer la boucle d'apprentissage
 
-**T06 — Journal auto-alimenté, zéro saisie** · 3–5 j · valeur 5 · dépend de T04, T05
-Les trades viennent de TimescaleDB, le contexte du ticket pré-trade, les images des captures. L'humain n'ajoute rien après coup, sauf s'il en a envie. À construire : modèle de données du journal (schéma inspiré de TradeNote, GPL-3.0 — sans contrainte en usage personnel non distribué), réconciliation trade ↔ ticket ↔ captures, vues calendrier P&L / equity / expectancy / profit factor. Ventilations : setup, session, heure d'entrée, jour de la semaine, **niveau de confiance** — cette dernière apprend le plus vite.
+**T06 — Journal auto-alimenté, zéro saisie** · 3–5 j · valeur 5 · dépend de T05
+**Recadré le 2026-09-14** (T04 retiré, raisonnement complet dans `roadmap.md`) :
+les trades viennent de TimescaleDB (`closed_trades`/`position_opens`), les
+images des captures (T05), et — quand ça coïncide — le contexte machine
+d'EA-02 (`setup_proposals`). Plus de ticket pré-trade à réconcilier : le
+journal enregistre les **faits d'exécution**, plus les **intentions**
+déclarées (setup, biais, confiance, invalidation — perdus avec T04). À
+construire : modèle de données du journal (schéma inspiré de TradeNote,
+GPL-3.0 — sans contrainte en usage personnel non distribué), réconciliation
+trade ↔ capture ↔ proposition EA-02, vues calendrier P&L / equity /
+expectancy / profit factor. Ventilations possibles sans ticket : symbole,
+session, heure d'entrée, jour de la semaine — pas de ventilation par
+confiance déclarée, elle n'existe plus.
 
 **T07 — Tracker d'erreurs et taux de conformité** · 1–2 j · valeur 5 · dépend de T06
-Taxonomie **fermée** : entrée anticipée, stop déplacé, taille hors politique, revenge trade, trade hors plan, sortie prématurée, absence de ticket. Fermée, sinon elle dérive. La plupart sont **détectables automatiquement** (taille > politique, stop modifié après entrée, trade sans ticket, trade hors fenêtre). Sortie : une courbe unique, le taux de conformité hebdomadaire, affiché en haut du cockpit à la place du P&L.
+**Taxonomie à réviser le jour où T07 démarre** (T04 retiré) : *« trade hors
+plan »* et *« absence de ticket »* supposaient un plan déclaré, qui n'existe
+plus. Reste détectable sans déclaration préalable : stop déplacé après
+l'entrée, taille hors politique, trade pendant un lockout actif, trade hors
+fenêtre horaire. Sortie : une courbe unique, le taux de conformité
+hebdomadaire **au Risk Engine** (plus au plan, qui n'est plus une donnée),
+affiché en haut du cockpit à la place du P&L.
 
 **T15 — Serveur MCP « mon trading »** · 1–2 j · valeur 4 · dépend de T06
 Serveur MCP **en lecture seule** exposant trades, tickets, erreurs, statistiques, bougies. Permet de poser les questions en langage naturel sans construire une interface par question. Remplace 80 % de ce que ferait T19 pour 5 % de l'effort. Référence de protocole : `ariadng/metatrader-mcp-server` (MIT) — **sans en brancher la partie exécution** (ADR 0005).

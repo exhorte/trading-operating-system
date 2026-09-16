@@ -12,7 +12,6 @@ export type {
   Bias,
   ExecutionReportStatus,
   Side,
-  SignalStatus,
   TradingSession,
 } from "@/lib/domain";
 

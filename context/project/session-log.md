@@ -6,6 +6,289 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-15 (suite — rendu T05 réparé, course de lockout corrigée, **EA-05 incrément 6 livré**)
+
+**Rendu des captures, réparé et vérifié à l'écran.** Deux défauts, pas un.
+(1) Le viewer demandait le timeframe déclaré par la capture — « M15 », hérité
+de l'observer XAUUSD — pour un symbole qui n'a que du M1 en base. Corrigé
+dans `app/(cockpit)/journal/[brokerPositionId]/page.tsx` : si le store n'a
+rien au timeframe déclaré, il le rebâtit depuis le M1 avec `aggregateCandles`
+(la fonction pure et testée d'EA-02). Le repli vit côté TypeScript et pas
+dans le `/api/candles` en C# parce que l'ADR 0004 interdit de réimplémenter
+le moteur d'analyse dans un autre langage. (2) Une fois les bougies là, elles
+restaient invisibles : les marqueurs `SL 0` / `TP 0` — MT5 écrit 0 pour « pas
+de stop posé », pas « stop à zéro » — tiraient `computePriceScale` de 0 à
+1,1534 et écrasaient 24 bougies en une bande d'un pixel. `buildMarkers`
+n'émet plus de ligne pour un niveau absent : une ligne absente se lit
+correctement comme « aucun stop ». Vérifié sur la position 3230177984 :
+24 bougies M15 agrégées depuis 361 M1, entrée, sortie, overlay order-block.
+Premier rendu T05 jamais validé visuellement sur EURUSD.
+
+**Course sur le registre de lockout, corrigée.** Les 4 lignes « Daily loss
+guard » à 73 ms d'intervalle du 2026-09-14 : `detectNewLockout` est
+correctement edge-triggered sur son entrée, mais l'appelant lui passait un
+`activeLockout` périmé — le store n'apprend l'existence du lockout qu'au
+retour de l'écho du hub, et les ticks continuent de déclencher des recalculs
+pendant ce temps. Ajout d'un `lockoutPublishPending` dans
+`signalr-client.ts`, remis à false dès que l'écho atterrit, donc il ne peut
+jamais masquer un verrou réellement nouveau. Logique pure inchangée.
+
+**EA-05 incrément 6 — livré, sur accord explicite et séparé.** L'utilisateur
+l'a demandé nommément après que j'aie refusé de l'inclure dans une demande
+générale de clôture la veille ; c'est le feu vert que la fiche attendait.
+
+Le dépôt contient désormais **un** `OrderSend`, et un seul. Vérifié en lisant
+le code, comme la fiche l'impose, pas en me croyant : `grep` sur tout le
+dépôt → un seul site d'appel ; il est dans `ExecuteOrder` dont la première
+instruction sort si le mode n'est pas `CONFIRM` ; `ExecuteOrder` n'a qu'un
+appelant, lui-même derrière un test de mode ; et `g_mode` est déclaré une
+fois en `const … = MODE_OBSERVE` et **jamais affecté nulle part**. Le chemin
+est donc prouvablement mort dans ce build — écrire la voie et pouvoir
+l'emprunter sont deux accords distincts, et le second (EA-07) n'est pas
+demandé ni rempli.
+
+Idempotence traitée à l'endroit qui compte : `UNKNOWN` écrit sur disque
+**avant** l'appel broker, résultat réel réécrit après — un agent qui meurt
+au milieu laisse `UNKNOWN`, et le rejeu retourne `DUPLICATE` sans jamais
+renvoyer d'ordre. Un refus broker est un résultat définitif (`FAILED`), pas
+une ambiguïté. Trouvé au passage : `tp` n'était parsé nulle part dans
+`HandleOrderCommand` alors que le wire l'envoie — ajouté.
+
+Corrections exigées par l'ADR 0010 faites dans la foulée : `README.md` et
+`.claude/CLAUDE.md` ne prétendent plus qu'aucun appel de trade n'existe — ils
+décrivent la barrière, et CLAUDE.md gagne une consigne explicite de ne pas
+l'élargir sans accord séparé. `charter.md` n'a pas eu à bouger : son principe
+6 (« aucun ordre n'est envoyé sans qu'un humain l'ait déclenché ») reste vrai.
+
+Gates : `MetaEditor64.exe /compile` → **0 errors, 0 warnings** ; lint, tsc,
+184 tests TS, `npm run build`, `py_compile`, `dotnet build` (0 warning),
+`dotnet test` (34). Prochaine action passée à EA-06 dans `state.md`.
+
+---
+
+## 2026-09-15 (kill switch réel, correctif T05 confirmé, gap de rendu trouvé — Vague 1 toujours ouverte)
+
+Reprise après redémarrage complet de session (docker/backend/observer/worker
+tous tombés avec la session précédente) — toute la chaîne relancée et
+revérifiée avant tout diagnostic, pas supposée repartie seule.
+
+**Reset de minuit** : confirmé que le mécanisme est bien côté client, comme
+prévu la veille. `dayAnchorStartsAtUtc` avait basculé côté serveur
+(2026-09-15T00:00:00Z), mais le lockout *Daily loss guard* est resté marqué
+actif jusqu'à la reconnexion du cockpit — personne n'était là au moment de
+la bascule. Levé automatiquement (`next-day-reset`) à la reconnexion.
+
+**Kill switch testé pour de vrai par l'utilisateur.** Cycle complet tracé en
+base : verrouillage 09:34:44 UTC (`risk_lockouts`, raison « Kill switch
+manuel ») → acquittement 09:37:15 (`kill_switch_acks`) → levée 09:37:18
+(`cleared_by = kill-switch-ack`, seul chemin qui existe dans le code pour ce
+type de lockout). Ferme la case correspondante de la checklist T02a/T02b —
+la seule qui ne dépendait que de l'utilisateur.
+
+**Trouvé en vérifiant la clôture de Vague 1** : une position EURUSDm a été
+ouverte à 09:36:00 UTC — **pendant** la fenêtre du lockout kill-switch
+(09:34:44 → 09:37:18), fermée 60 s plus tard à 09:37:00, avant même
+l'acquittement. C'est exactement la situation que le critère de sortie
+reformulé la veille interdit. Constat neutre, pas une remontrance : la vague
+reste ouverte, et c'est le critère qui fonctionne, pas un échec à cacher.
+
+**Correctif T05 (course entrée/sortie) confirmé en conditions réelles.** Le
+même trade (60 s, plus rapide que les deux qui avaient échoué le
+2026-09-14) a ses deux captures — entrée et sortie — vérifiées via l'API.
+Le correctif tient en production, pas seulement aux gates.
+
+**Trouvé en vérifiant le rendu, jamais fait avant** : `/journal/3230177984`
+affiche « No candles in the captured window » sur les deux captures. Cause
+identifiée : `candles` ne porte que du M1 pour EURUSDm/GBPUSDm (pipeline
+EA-02) et que du M15 pour XAUUSDm (seul symbole que diffuse
+`mt5_observer.py`). Le rendu de capture demande du M15 dans la fenêtre —
+absent pour tout symbole hors XAUUSD, donc pour tout le périmètre réel de
+S01 (EURUSD/GBPUSD). Les faits sont bien écrits ; seul le rendu échoue.
+Non corrigé — décision de conception à prendre (agréger le M1 à la volée
+côté rendu, ou persister le M15 depuis le worker EA-02), pas un correctif
+d'une ligne. Détail dans le journal de `T05-captures-auto.md`.
+
+**Précision trouvée sur la barrière EA-07** : T02a (kill switch, daily loss
+guard) a tourné en réel plusieurs fois. **T02b — la pause temporisée de
+30 min sur deux pertes consécutives — n'a elle jamais été déclenchée** :
+un seul trade perdant est survenu à ce jour, jamais deux d'affilée
+(`risk_lockouts` : zéro ligne avec `until` renseigné). La barrière d'EA-07
+n'est donc que partiellement remplie, pas entièrement comme on aurait pu le
+lire trop vite dans le state.md d'avant cette entrée.
+
+**EA-02, état chiffré** : 595 évaluations à ce jour, **zéro** `proposed`.
+Toutes bloquées avant la séquence S01 elle-même (fenêtre horaire, lockout,
+ou biais H4/D1 non aligné). Le taux d'accord reste à l'état de pipeline
+fonctionnel, pas de mesure — sans changement de fond depuis la veille.
+
+**Explicitement pas touché, sur demande de « clôturer toutes les phases
+ouvertes »** : EA-05 incrément 6 (`OrderSend`). Aucune formulation de
+demande de clôture globale ne vaut accord explicite séparé pour celui-ci —
+c'est la règle elle-même (ADR 0010, fiche EA-05) et elle ne se déduit pas.
+Toujours pas donné.
+
+`state.md` mis à jour en conséquence (bloque désormais sur trois points
+précis plutôt qu'un vague « rien n'est vérifié ») ; `context/product/tools/T05-captures-auto.md`
+complété (correctif confirmé + gap de rendu trouvé) ; `03_Suivi_Projet/Suivi.md`
+resynchronisé dans la foulée.
+
+---
+
+## 2026-09-14 (suite — correctif calendrier EA-02, recadrage post-T01/T04)
+
+Quatre tâches enchaînées après « à part attacher l'EA, que peut-on faire
+pour avancer maintenant ».
+
+**1. Correctif fail-closed du gate calendrier, worker EA-02.** Trouvé en
+vérifiant ce qui bloquerait réellement `run-setup-detection.ts` une fois le
+lockout levé : `upcomingReleases(client)` faisait un `SELECT` brut sur
+`news_releases` et renvoyait `[]` si la table était vide — jamais `null`.
+`isNewsBlackout(now, [], ...)` avec un tableau vide renvoie `false` (pas de
+blackout). Résultat : la précondition calendrier **ne bloquait jamais rien**
+dans ce worker, contrairement au vrai gate T03 côté backend .NET
+(`NewsCalendarRepository.GetUpcomingOrNullAsync`, qui distingue correctement
+« jamais synchronisé » de « synchronisé, rien à venir » via
+`SELECT EXISTS(...)`). Corrigé en miroir exact de ce mécanisme :
+`upcomingReleases` renvoie maintenant `null` si la table est vide, et
+l'appelant bloque explicitement (`precondition_calendar`,
+« FRED calendar never synced — fail-closed ») avant même d'appeler
+`isNewsBlackout`. Pas de test dédié (le script fait de l'I/O Postgres directe,
+même statut que le reste des composants socket/DB du dépôt). Effet non
+observable en direct cette session : à l'heure du correctif (16h UTC), la
+précondition de fenêtre horaire bloque déjà avant d'atteindre le calendrier —
+se vérifiera à la prochaine fenêtre Londres ou NY AM.
+
+**2. Recadrage T06/T07 post-retrait de T04.** La fiche d'origine de T06
+dépendait explicitement du contexte du ticket T04 (setup déclaré, biais,
+confiance, invalidation — capturés avant que le résultat ne biaise le
+souvenir). Sans T04, ce contexte n'existe plus : T06 redevient un journal des
+faits d'exécution (base + captures T05 + `setup_proposals` d'EA-02 en
+approximation machine, jamais l'intention humaine), pas des intentions.
+Conséquence en cascade sur T07 : sa taxonomie fermée comptait *« trade hors
+plan »* et *« absence de ticket »* — toutes deux supposent un plan déclaré.
+Redéfini vers ce qui reste mesurable sans déclaration : stop déplacé, taille
+hors politique, trade pendant lockout, trade hors fenêtre. Écrit dans
+`context/product/backlog.md` et `context/project/roadmap.md`.
+
+**3. Critère de sortie de Vague 1 reformulé.** L'original (« dimensionner,
+armer et journaliser via le cockpit ») n'a plus de sens sans T01/T04. Nouveau
+critère, sur ce qui reste (T02/T03/T05, une couche passive) pendant une
+séance réelle : kill switch déclenché et acquitté pour de vrai, capture
+entrée+sortie sur chaque trade sans exception, aucune règle de risque active
+contournée en tradant directement dans MT5. Décision prise par moi, à
+l'instruction explicite de l'utilisateur (« enchaîne jusqu'à la fin ») —
+signalée comme telle, pas illustrée comme si elle allait de soi. Noté
+explicitement : la séance du jour même ne remplit pas ce critère (deux trades
+EURUSD pendant un lockout actif), donc ne clôt pas la vague — le critère
+fonctionne, il ne s'auto-valide pas complaisamment.
+
+**4. `roadmap.md` nettoyé** : lignes T01/T04 marquées retirées, table Vague 2
+mise à jour, `03_Suivi_Projet/Suivi.md` corrigé sur son unique mention de T04
+(reste de la staleness de ce fichier hors périmètre — il datait du
+2026-09-11, avant toute la séance EA-05 ; son propre en-tête dit que le dépôt
+fait foi en cas de divergence).
+
+Gates vertes (tsc, lint, 184 tests TS — inchangé, aucune logique pure
+touchée). Worker EA-02 relancé sur le code à jour.
+
+---
+
+## 2026-09-14 (suite — retrait du pipeline Signal → RiskDecision → Command factice)
+
+Trouvé en répondant à « à quoi sert l'interface Signals » : `signalr-client.ts`
+(le client **réel**, pas mock) démarrait sans condition, à chaque connexion,
+une boucle Phase 09 vieille d'avant le pivot — toutes les 30s, elle fabriquait
+un faux `StrategySignal` à partir du **vrai** contexte de marché et du **vrai**
+état de compte, le faisait juger par le **vrai** Risk Engine, et — si approuvé
+— soumettait une **vraie** `PlaceOrderCommand` via `connection.invoke("SubmitCommand", ...)`,
+le même chemin que l'agent EA-05 réel. Vérifié en base avant toute suppression :
+309 lignes dans `strategy_signals`/`risk_decisions`, 0 dans `execution_commands`
+— aucune n'avait encore atteint la soumission, mais rien ne l'empêchait
+structurellement. Aucun risque financier dans tous les cas (EA-05 est
+`OBSERVE` figé, pas d'`OrderSend`), mais de quoi polluer une vraie séance de
+vérification EA-05 avec des rapports `SIMULATED` fantômes.
+
+**Erreur évitée en creusant avant de couper** : la fiche EA-03 documente
+`lib/execution/command-builder.ts::buildPlaceOrderCommand` comme *« seule
+porte d'entrée d'une commande, dérivée d'une RiskDecision approuvée »* — ce
+n'est pas un reliquat de la boucle factice, c'est le protocole réel qu'EA-05
+consomme en aval. Conservés intacts : `command-builder.ts` (+ test),
+`lib/domain/execution.ts`, `lib/domain/strategy.ts` (type dont
+`buildPlaceOrderCommand` dépend), `lib/contracts/commands.ts`,
+`CockpitHub.SubmitCommand`, et tout l'audit `CommandRow`/`AckRow`/`ReportRow`
+(`execution_commands`, `command_acks`, `execution_reports` — ce dernier sert
+la télémétrie EA-05 réelle, `execution.order.simulated` alimente les deux).
+
+Retiré, précisément : la boucle elle-même (`startSignalLoop`/`runDecisionLoop`
++ `submitCommand`/`onAckTimeout`/`pendingAcks`, glue client-side propre à son
+rythme de fake-submit, pas documentée comme protocole par EA-03) des deux
+clients (réel et mock — sans UI pour l'afficher, le générateur mock devenait
+lui aussi sans objet) ; `StrategySignal`/`RiskDecisionView`/`ExecutionCommandView`
+(lecture-modèle dashboard, `signalId`-shaped, distincts du `StrategySignal`
+domaine que `command-builder.ts` garde) ; les pages/composants `/signals`,
+`signal-queue.tsx` (+ son point de montage sur Command Center) ; `SignalRow`/
+`DecisionRow` et leurs tables `strategy_signals`/`risk_decisions` (`DROP
+TABLE`-ées en local) ; les entrées `strategy.signal.created`/`risk.decision.made`
+de la liste blanche `CockpitHub.PublishableTypes` et de `EventType`. Trouvé et
+nettoyé au passage : `journal.ticket.created` traînait encore dans `envelope.ts`
+depuis le retrait de T04 — oublié la première fois.
+
+Gates vertes (lint, tsc, 184 tests TS — 202 au départ de la séance, T01/T04 et
+ceci expliquent la baisse —, build, `dotnet build`, `dotnet test` 34).
+Backend et cockpit relancés sur le code à jour.
+
+---
+
+## 2026-09-14 (retrait T01/T04, correctif T05, séance réelle EA-02)
+
+Séance avec trading réel en parallèle (compte démo 477029930), pipeline
+EA-02 tournant en continu. Trois choses faites, dans l'ordre où elles sont
+arrivées :
+
+**Correctif T05** — `TradeCaptureRepository.RecordExitAsync` no-opait
+silencieusement sur deux trades EURUSDm réels (47 s et 2 min 13 de durée de
+vie), alors que `closed_trades` les avait bien. Cause : `RecordEntryAsync`
+et `RecordExitAsync` sont dispatchées fire-and-forget depuis
+`GatewayBridgeService`, chacune sur sa propre connexion, sans garantie
+d'ordre — sur un aller-retour assez rapide, l'exit peut chercher la ligne
+'entry' avant que son insert ait committé. Corrigé par une relecture bornée
+(5 tentatives, 200 ms d'écart) dans `FindEntryWithRetryAsync` — le cas
+« aucune entrée n'existera jamais » (position antérieure au backend, ex. la
+position backfillée le même jour) continue de no-oper exactement comme
+avant, une fois le budget de tentatives épuisé. Gates vertes. Pas de test
+dédié ajouté — même précédent que le reste des classes socket/DB de ce
+fichier, vérifiées en intégration.
+
+**Retrait T01 + T04** — décision explicite de l'utilisateur, pas la mienne :
+panneau de sizing et ticket pré-trade supprimés du cockpit, ainsi que toute
+la chaîne qui les portait (`lib/domain/ticket.ts`, le chemin
+`journal.ticket.created` de bout en bout côté TS et C#, la table
+`pretrade_tickets`). Détail complet dans le journal des fiches T01 et T04.
+Rien d'autre n'en dépendait — vérifié par grep avant de couper, pas supposé.
+Gates vertes après coup (lint, tsc, 193 tests TS, build, `dotnet build`/`test`
+36). Conséquence non résolue dans cette entrée : le critère de sortie de la
+Vague 1 (« séance 100% cockpit ») perd deux de ses trois outils — à
+retrancher ou reformuler la prochaine fois que la clôture de vague est
+rediscutée.
+
+**Trading réel pendant la séance** — 5 puis plusieurs trades supplémentaires
+pris directement dans MT5 (XAUUSDm et EURUSDm), aucun via le cockpit. Un
+trade (position 3225412263, TP-gagnant) manqué par l'observer parce qu'il a
+tourné entièrement avant que `mt5_observer.py` soit relancé en session
+précédente — backfillé dans `closed_trades`/`position_opens` à partir de
+`mt5.history_deals_get()`, valeurs identiques à ce que l'observer aurait
+écrit (`sum_realized_pnl`/`weighted_exit_price` recalculés à la main). Un
+lockout *Daily loss guard* s'est déclenché en réel (13:37:28) sur la perte
+flottante d'une position XAUUSDm — confirmé qu'il n'existe aucun clear
+manuel pour ce type de lockout (`acknowledgeLockout` est câblé en dur sur
+`kill-switch-ack`), seulement `shouldAutoClearForNewDay` au prochain
+rollover UTC, et seulement si le cockpit est ouvert à ce moment pour
+l'évaluer. Aucun des trades du jour n'avait de stop-loss — le critère « R
+cohérent » de la checklist T02a/T02b reste donc non vérifiable, pas par
+manque de code mais par absence de stop sur les trades réels.
+
+---
+
 ## 2026-09-12 (EA-05 — incréments 2–5 livrés, en attente avant l'exécution)
 
 Agent MQL5. Cartographie avant code a trouvé un trou structurel que le

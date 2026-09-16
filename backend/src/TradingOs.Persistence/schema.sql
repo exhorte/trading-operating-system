@@ -40,34 +40,7 @@ CREATE TABLE IF NOT EXISTS ticks (
 SELECT create_hypertable('ticks', 'ts', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_ticks_symbol_ts ON ticks (symbol, ts DESC);
 
--- Signal → Risk Review → Execution audit entities.
-CREATE TABLE IF NOT EXISTS strategy_signals (
-    signal_id   text PRIMARY KEY,
-    strategy_id text NOT NULL,
-    symbol      text NOT NULL,
-    side        text NOT NULL,
-    entry_price double precision NOT NULL,
-    stop_loss   double precision NOT NULL,
-    take_profit double precision NOT NULL,
-    score       integer NOT NULL,
-    max_score   integer NOT NULL,
-    context     text NOT NULL,
-    created_at  timestamptz NOT NULL,
-    expires_at  timestamptz NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS risk_decisions (
-    approval_id     text PRIMARY KEY,
-    signal_id       text NOT NULL,
-    account_id      text NOT NULL,
-    approved        boolean NOT NULL,
-    approved_volume double precision,
-    reason          text NOT NULL,
-    gates           jsonb NOT NULL,
-    decided_at      timestamptz NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_risk_decisions_signal ON risk_decisions (signal_id);
-
+-- RiskDecision → Command → ACK → Report audit entities (ADR 0010).
 CREATE TABLE IF NOT EXISTS execution_commands (
     command_id       text PRIMARY KEY,
     signal_id        text,
@@ -93,29 +66,6 @@ CREATE TABLE IF NOT EXISTS command_acks (
     received_at timestamptz NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_command_acks_command ON command_acks (command_id);
-
--- T04: pre-trade tickets. No commandId exists for a manual trade (this repo
--- has no order-sending path), so matched_position_id/matched_trade_id start
--- NULL and stay NULL until T06 reconciles them against positions/trades —
--- never written by the ticket itself.
-CREATE TABLE IF NOT EXISTS pretrade_tickets (
-    ticket_id           text PRIMARY KEY,
-    account_id          text NOT NULL,
-    symbol              text NOT NULL,
-    setup               text NOT NULL,
-    bias                text NOT NULL,
-    entry_price         double precision NOT NULL,
-    stop_loss           double precision NOT NULL,
-    invalidation        double precision NOT NULL,
-    confidence          smallint NOT NULL CHECK (confidence BETWEEN 1 AND 5),
-    take_profit         double precision,
-    target_volume       double precision,
-    target_risk_usd     double precision,
-    created_at          timestamptz NOT NULL,
-    matched_position_id text,
-    matched_trade_id    text
-);
-CREATE INDEX IF NOT EXISTS idx_pretrade_tickets_created ON pretrade_tickets (created_at DESC);
 
 -- T02a: trading-day anchor, resolved from the MT5 terminal's server-UTC
 -- offset (never 00:00 UTC, never hardcoded — see TradingDayAnchor.cs).

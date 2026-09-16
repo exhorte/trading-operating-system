@@ -1,7 +1,13 @@
 # EA-05 — Agent MQL5
 
-Statut : **en cours** · Vague EA · Effort 3–5 j · Dépend de : EA-03 (protocole,
-machine à états), EA-04 (profils de compte)
+Statut : **livré** (2026-09-15, incrément 6 compris) · Vague EA · Effort 3–5 j ·
+Dépend de : EA-03 (protocole, machine à états), EA-04 (profils de compte)
+
+**Le chemin d'exécution existe mais ne peut pas s'exécuter.** L'`OrderSend` est
+écrit, unique dans le dépôt, et structurellement inatteignable hors `CONFIRM` ;
+le mode est une constante de compilation figée à `OBSERVE`. Rendre `CONFIRM`
+atteignable est EA-07, sous les conditions de sa propre fiche — pas un réglage
+ici. Voir le journal du 2026-09-15.
 
 **La première fois que ce dépôt contient du code capable de passer un ordre
 réel.** Trois contraintes non négociables (ADR 0010) priment sur tout le
@@ -322,3 +328,64 @@ explicite.
   un vrai second compte) et la persistance `commandId → résultat`. Ne
   remplace pas l'accord explicite distinct exigé avant l'incrément 6
   (exécution) — demandé, pas encore donné.
+
+- 2026-09-15 — **incrément 6 livré, sur accord explicite et séparé de
+  l'utilisateur** (demandé nommément : « réalise EA-05 incrément 6 jusqu'à la
+  fin »). C'est la première fois que ce dépôt contient un appel d'exécution.
+
+  **Ce qui a été écrit** : une seule fonction, `ExecuteOrder`, contenant le
+  seul `OrderSend` du dépôt. `MqlTradeRequest` en `TRADE_ACTION_DEAL`,
+  `ORDER_FILLING_IOC`, `deviation` = nouvel input `InpMaxSlippagePoints`,
+  `magic` = `InpMagicNumber`, commentaire d'ordre portant le `commandId`.
+  `SendReport` étendu pour porter un vrai remplissage (`brokerOrderId`,
+  `brokerPositionId`, `filledVolume`, `averagePrice`, `brokerRetcode`) —
+  paramètres par défaut à 0, sérialisés en `null`, donc les appels
+  SIMULATED/REJECTED existants sont inchangés. `tp` était parsé nulle part
+  dans `HandleOrderCommand` alors que le wire l'envoie (`Mt5WireTranslator.FlattenPlaceOrder`) :
+  ajouté.
+
+  **La barrière, vérifiée en lisant le code et pas en me croyant sur
+  parole** — c'est le critère de revue que cette fiche impose :
+  - `grep OrderSend` sur tout le dépôt (`.mq5/.mqh/.ts/.cs/.py`) → **un seul
+    site d'appel**, ligne 483 de `TradingOsAgent.mq5` ; tout le reste est du
+    commentaire ou de la doc.
+  - Ce site est dans `ExecuteOrder`, dont la **première instruction** est
+    `if(g_mode != MODE_CONFIRM) return;`.
+  - `ExecuteOrder` n'a **qu'un seul appelant**, lui-même derrière un test de
+    mode (défense en profondeur ; la barrière reste le test interne).
+  - `g_mode` est déclaré une fois, `const ExecutionMode g_mode = MODE_OBSERVE;`,
+    et **jamais affecté nulle part** — seulement lu (4 sites).
+  - Donc : aucun chemin d'exécution n'atteint `OrderSend` dans ce build.
+    Réponse à la question de revue de cette fiche : **non**.
+
+  **Idempotence (« jamais deux positions »)** : `CommandStoreRecord(commandId,
+  "UNKNOWN", ...)` est écrit sur disque **avant** l'appel broker, puis
+  réécrit avec le résultat réel après. Un agent qui meurt entre les deux
+  laisse `UNKNOWN` ; le rejeu de ce `commandId` retourne `DUPLICATE` depuis
+  le store et n'appelle jamais `OrderSend` une seconde fois. Résoudre un
+  `UNKNOWN` est la réconciliation d'EA-06, jamais une reprise depuis l'agent
+  (EA-03 : `UNKNOWN` ne rejoue jamais). Un refus broker (`retcode` ≠ DONE /
+  DONE_PARTIAL) est un résultat définitif, enregistré `FAILED` — rien n'est
+  ouvert, pas d'ambiguïté à réconcilier.
+
+  **Gate MQL5 réellement exécutée** : `MetaEditor64.exe /compile` →
+  `Result: 0 errors, 0 warnings`. Gates TS/C# vertes par ailleurs (lint, tsc,
+  184 tests, build, `dotnet build`/`test` 34). Corrections exigées par
+  l'ADR 0010 faites dans la foulée : `README.md` et `.claude/CLAUDE.md` ne
+  disent plus « aucun appel de trade n'existe dans ce dépôt » — ils décrivent
+  la barrière à la place. `charter.md` n'avait pas besoin d'être touché : son
+  principe 6 (« aucun ordre n'est envoyé sans qu'un humain l'ait déclenché »)
+  reste vrai.
+
+  **Non fait, volontairement** : rien qui rende `CONFIRM` atteignable. Pas
+  d'input de mode, pas de `control.set_mode` implémenté, pas de seconde voie
+  d'exécution. L'incrément 6 était d'écrire le chemin ; l'ouvrir est EA-07,
+  sous les conditions de sa fiche (T02a/T02b vérifiés en réel — T02b ne l'est
+  toujours pas — et taux d'accord d'EA-02 connu — toujours zéro proposition).
+
+  **Jamais exécuté contre un broker, même en démo** : par construction, le
+  mode ne le permet pas. Le critère de réussite « `ACCOUNT_MISMATCH` testé
+  contre un vrai second compte » et « kill switch local backend éteint »
+  restent hérités des incréments 2–5 ; les critères propres à l'exécution
+  (un vrai fill, un vrai refus, un vrai `UNKNOWN` après crash) ne pourront
+  être vérifiés qu'au moment d'EA-07, jamais avant.

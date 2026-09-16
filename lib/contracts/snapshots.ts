@@ -10,7 +10,6 @@ import type {
   ExecutionReportStatus,
   RiskState,
   Side,
-  SignalStatus,
   TradingSession,
 } from "./enums";
 
@@ -87,62 +86,6 @@ export interface MarketContext {
   maxScore: number;
   scoreBreakdown: ScoreComponent[];
   updatedAt: string;
-}
-
-export interface StrategySignal {
-  signalId: string;
-  symbol: string;
-  strategyId: string;
-  side: Side;
-  status: SignalStatus;
-  /** Proposed levels the risk engine ruled on (never moves them). */
-  entryPrice: number;
-  stopLoss: number;
-  takeProfit: number;
-  score: number;
-  maxScore: number;
-  contextSummary: string;
-  riskDecision: string | null;
-  expiresAt: string;
-  createdAt: string;
-}
-
-export type ExecutionCommandStatus =
-  | "sent"
-  | "retried"
-  | "acknowledged"
-  | "rejected"
-  | "expired"
-  | "failed"
-  | "reported";
-
-/** Lifecycle of one execution command as tracked by the cockpit (audit). */
-export interface ExecutionCommandView {
-  commandId: string;
-  signalId: string | null;
-  riskApprovalId: string;
-  symbol: string;
-  side: Side;
-  volume: number;
-  status: ExecutionCommandStatus;
-  /** Ack/failure reason when not accepted, else null. */
-  reason: string | null;
-  issuedAt: string;
-  updatedAt: string;
-}
-
-/** Audit-grade risk decision for the dashboard (from a domain RiskDecision). */
-export interface RiskDecisionView {
-  approvalId: string;
-  signalId: string;
-  accountId: string;
-  approved: boolean;
-  /** Sized volume (lots) when approved; null when rejected. */
-  approvedVolume: number | null;
-  reason: string;
-  /** Gate results at decision time (for the audit trail). */
-  gates: RiskGate[];
-  decidedAt: string;
 }
 
 export interface AgentStatus {

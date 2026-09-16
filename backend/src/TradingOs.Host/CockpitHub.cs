@@ -26,9 +26,6 @@ public sealed class CockpitHub(
     /// ever produces them.</summary>
     private static readonly HashSet<string> PublishableTypes =
         [
-            "strategy.signal.created",
-            "risk.decision.made",
-            "journal.ticket.created",
             "risk.day_anchor.equity_observed",
             "risk.lockout.enabled",
             "risk.lockout.cleared",

@@ -20,9 +20,7 @@ import type {
   ExecutionReport,
   MarketContext,
   Position,
-  RiskDecisionView,
   RiskStatus,
-  StrategySignal,
 } from "./snapshots";
 import type {
   AlertAcknowledgedPayload,
@@ -41,7 +39,6 @@ import type {
   Candle,
   FairValueGap,
   LiquidityLevel,
-  PreTradeTicket,
   SpreadSample,
   StructureShift,
   SymbolCode,
@@ -96,36 +93,10 @@ export interface BiasUpdatedPayload {
   previousBias: Bias;
 }
 
-// --- strategy ---
-
-export interface SignalCreatedPayload {
-  signal: StrategySignal;
-}
-
-export interface SignalUpdatedPayload {
-  signalId: string;
-  status: StrategySignal["status"];
-  riskDecision: string | null;
-}
-
-export interface SignalCancelledPayload {
-  signalId: string;
-  reason: string;
-}
-
-export interface SetupExpiredPayload {
-  signalId: string;
-}
-
 // --- risk ---
 
 export interface RiskStateUpdatedPayload {
   risk: RiskStatus;
-}
-
-/** Audit-grade verdict of the risk engine on a signal (Signal → Risk Review). */
-export interface RiskDecisionMadePayload {
-  decision: RiskDecisionView;
 }
 
 export interface RiskLockoutEnabledPayload {
@@ -189,12 +160,6 @@ export interface ExecutionReportPayload {
 
 export interface AlertPayload {
   alert: CockpitAlert;
-}
-
-// --- journal (T04) ---
-
-export interface TicketCreatedPayload {
-  ticket: PreTradeTicket;
 }
 
 // --- T02a: trading-day anchor + real trade counting ---
@@ -277,13 +242,7 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "analysis.fvg.detected": FvgDetectedPayload;
   "analysis.structure.shifted": StructureShiftedPayload;
   "analysis.bias.updated": BiasUpdatedPayload;
-  "strategy.signal.created": SignalCreatedPayload;
-  "strategy.signal.cancelled": SignalCancelledPayload;
-  "strategy.setup.expired": SetupExpiredPayload;
   "risk.state.updated": RiskStateUpdatedPayload;
-  "risk.decision.made": RiskDecisionMadePayload;
-  "risk.command.approved": SignalUpdatedPayload;
-  "risk.command.rejected": SignalUpdatedPayload;
   "risk.lockout.enabled": RiskLockoutEnabledPayload;
   "risk.lockout.cleared": RiskLockoutClearedPayload;
   "execution.command.place_order": PlaceOrderCommandPayload;
@@ -311,7 +270,6 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "dashboard.unsubscribe": RealtimeSubscription;
   "dashboard.snapshot.requested": SnapshotRequestPayload;
   "dashboard.alert.acknowledged": AlertAcknowledgedPayload;
-  "journal.ticket.created": TicketCreatedPayload;
   "journal.position.opened": PositionOpenedPayload;
   "risk.day_anchor.resolved": DayAnchorResolvedPayload;
   "risk.day_anchor.equity_observed": DayAnchorEquityObservedPayload;

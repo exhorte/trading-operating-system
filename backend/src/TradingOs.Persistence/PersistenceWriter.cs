@@ -145,20 +145,6 @@ public sealed class PersistenceWriter
                       close = EXCLUDED.close, volume = EXCLUDED.volume, closed = EXCLUDED.closed
                 """,
             TickRow => "INSERT INTO ticks (symbol, ts, bid, ask) VALUES (@Symbol, @Ts, @Bid, @Ask)",
-            SignalRow => """
-                INSERT INTO strategy_signals (signal_id, strategy_id, symbol, side, entry_price, stop_loss,
-                  take_profit, score, max_score, context, created_at, expires_at)
-                VALUES (@SignalId, @StrategyId, @Symbol, @Side, @EntryPrice, @StopLoss,
-                  @TakeProfit, @Score, @MaxScore, @Context, @CreatedAt, @ExpiresAt)
-                ON CONFLICT (signal_id) DO NOTHING
-                """,
-            DecisionRow => """
-                INSERT INTO risk_decisions (approval_id, signal_id, account_id, approved, approved_volume,
-                  reason, gates, decided_at)
-                VALUES (@ApprovalId, @SignalId, @AccountId, @Approved, @ApprovedVolume,
-                  @Reason, @GatesJson::jsonb, @DecidedAt)
-                ON CONFLICT (approval_id) DO NOTHING
-                """,
             CommandRow => """
                 INSERT INTO execution_commands (command_id, signal_id, account_id, agent_id, risk_approval_id,
                   symbol, side, order_type, volume, stop_loss, take_profit, issued_at, expires_at)
@@ -176,13 +162,6 @@ public sealed class PersistenceWriter
                 VALUES (@ReportId, @CommandId, @AccountId, @AgentId, @Symbol, @Side,
                   @Status, @Detail, @ReportedAt)
                 ON CONFLICT (report_id) DO NOTHING
-                """,
-            TicketRow => """
-                INSERT INTO pretrade_tickets (ticket_id, account_id, symbol, setup, bias, entry_price,
-                  stop_loss, invalidation, confidence, take_profit, target_volume, target_risk_usd, created_at)
-                VALUES (@TicketId, @AccountId, @Symbol, @Setup, @Bias, @EntryPrice,
-                  @StopLoss, @Invalidation, @Confidence, @TakeProfit, @TargetVolume, @TargetRiskUsd, @CreatedAt)
-                ON CONFLICT (ticket_id) DO NOTHING
                 """,
             DayAnchorRow => """
                 INSERT INTO trading_day_anchors (account_id, starts_at_utc)

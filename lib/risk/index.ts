@@ -9,7 +9,6 @@
 
 export { evaluateRiskState } from "./evaluate";
 export { evaluateSignalRisk, type SignalRiskInput } from "./sizing";
-export { computeSizingPanel, type SizingPanelInput, type SizingPanelResult } from "./sizing-panel";
 export {
   applyActiveLockout,
   detectConsecutiveLossPause,

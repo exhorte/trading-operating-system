@@ -199,3 +199,43 @@ Plus une seule capture prise à la main.
   toujours vert ; aucun changement côté TS/C#, `brokerPositionId` reste une
   string opaque pour ces couches — seule la valeur produite par l'observer a
   changé. Toujours non vérifié contre un terminal MT5 réel.
+
+- 2026-09-14 — **défaut réel trouvé en séance live** : deux positions
+  EURUSDm (47 s et 2 min 13 de durée de vie) ont leur capture 'entry' mais
+  pas 'exit'. Cause, trouvée en lisant `TradeCaptureRepository.cs` : sur un
+  aller-retour assez rapide, l'événement de clôture (fire-and-forget, sa
+  propre connexion) peut atteindre `RecordExitAsync` avant que l'insert de
+  l'événement d'ouverture (fire-and-forget aussi) ait committé — la ligne
+  'entry' introuvable fait no-oper silencieusement, exactement comme le cas
+  légitime « position jamais vue ouvrir ». Corrigé par une relecture bornée
+  (`FindEntryWithRetryAsync`, 5 tentatives, 200 ms d'écart) — le vrai cas
+  sans entrée continue de no-oper à l'identique une fois le budget épuisé.
+  Détail complet dans le journal de session du 2026-09-14.
+
+  **Les deux positions du 2026-09-14 restent définitivement sans capture de
+  sortie** — le correctif empêche la récidive, il ne répare pas rétroactivement
+  ce qui a déjà été perdu (la fenêtre de rendu de ces captures n'existe plus).
+  Assumé, pas caché.
+
+- 2026-09-15 — **correctif de la course entrée/sortie confirmé en conditions
+  réelles**, pas seulement par les gates : un trade EURUSDm de 60 secondes
+  (09:36:00 → 09:37:00 UTC, position 3230177984 — plus rapide que les deux
+  qui avaient échoué la veille) a ses deux captures, entrée et sortie,
+  vérifié via `GET /api/captures/{id}`. Le point ouvert « non vérifié contre
+  un vrai terminal MT5 » (2026-09-05) est maintenant fermé pour l'écriture
+  des deux lignes.
+
+  **Mais le rendu visuel, vérifié pour la première fois ce jour sur cette
+  même position, ne marche pas** : `/journal/3230177984` affiche « No candles
+  in the captured window » sur les deux captures. Cause trouvée, pas
+  seulement constatée — `candles` ne contient que du M1 pour
+  EURUSDm/GBPUSDm (écrit par le pipeline EA-02) et que du M15 pour XAUUSDm
+  (écrit par `mt5_observer.py`, le seul symbole que l'observer général
+  diffuse). La capture d'un trade EURUSDm demande du M15 dans sa fenêtre —
+  qui n'existe nulle part. **Structurel, pas une histoire de timing** : ça
+  touchera toute capture sur un symbole autre que XAUUSD tant que rien
+  n'écrit du M15 (ou n'agrège à la volée depuis le M1) pour EURUSD/GBPUSD.
+  Pas corrigé cette session — décision de conception (agréger à la volée
+  côté rendu ? persister le M15 depuis le worker EA-02 ?), pas un correctif
+  d'une ligne. Le point « rendu jamais vérifié en live » (ouvert depuis
+  2026-09-05) reste donc ouvert, avec sa cause connue maintenant.

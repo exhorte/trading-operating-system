@@ -179,7 +179,19 @@ async function tradesToday(client: Client, accountId: string): Promise<number> {
   return rows[0].n as number;
 }
 
-async function upcomingReleases(client: Client): Promise<UpcomingRelease[]> {
+/**
+ * T03 fail-closed contract, mirrored from NewsCalendarRepository.GetUpcomingOrNullAsync
+ * (backend/src/TradingOs.Persistence/NewsCalendarRepository.cs): null means
+ * the cache has NEVER been populated (no FRED sync yet) — distinct from a
+ * successful sync that currently has nothing upcoming (empty, non-null list).
+ * A worker that just started, before FRED has ever synced, must not read as
+ * "confirmed no releases soon" — the caller must refuse, not open.
+ */
+async function upcomingReleases(client: Client): Promise<UpcomingRelease[] | null> {
+  const { rows: existsRows } = await client.query(`SELECT EXISTS(SELECT 1 FROM news_releases) AS ever_synced`);
+  if (!existsRows[0].ever_synced) {
+    return null;
+  }
   const { rows } = await client.query(`SELECT release_id, label, scheduled_at FROM news_releases ORDER BY scheduled_at ASC`);
   return rows.map((r) => ({
     releaseId: r.release_id as number,
@@ -261,6 +273,13 @@ async function evaluateSymbol(
   }
   const releases = await upcomingReleases(client);
   const policy = defaultRiskPolicy(ACCOUNT_ID);
+  if (releases === null) {
+    return recordOutcome(client, brokerSymbol, now, {
+      status: "blocked",
+      stage: "precondition_calendar",
+      detail: "FRED calendar never synced — fail-closed",
+    });
+  }
   if (isNewsBlackout(now, releases, policy.newsBlackoutMinutes)) {
     return recordOutcome(client, brokerSymbol, now, {
       status: "blocked",

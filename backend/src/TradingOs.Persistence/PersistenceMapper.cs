@@ -15,12 +15,9 @@ public sealed record PersistedEvent(
 // the writer. Kept as records so the mapping is unit-testable without a DB.
 public sealed record CandleRow(string Symbol, string Timeframe, DateTimeOffset OpenTime, double Open, double High, double Low, double Close, double Volume, bool Closed);
 public sealed record TickRow(string Symbol, DateTimeOffset Ts, double Bid, double Ask);
-public sealed record SignalRow(string SignalId, string StrategyId, string Symbol, string Side, double EntryPrice, double StopLoss, double TakeProfit, int Score, int MaxScore, string Context, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt);
-public sealed record DecisionRow(string ApprovalId, string SignalId, string AccountId, bool Approved, double? ApprovedVolume, string Reason, string GatesJson, DateTimeOffset DecidedAt);
 public sealed record CommandRow(string CommandId, string? SignalId, string AccountId, string AgentId, string RiskApprovalId, string Symbol, string Side, string OrderType, double Volume, double StopLoss, double TakeProfit, DateTimeOffset IssuedAt, DateTimeOffset ExpiresAt);
 public sealed record AckRow(string CommandId, string AgentId, string Status, string? Reason, DateTimeOffset ReceivedAt);
 public sealed record ReportRow(string ReportId, string CommandId, string AccountId, string AgentId, string Symbol, string Side, string Status, string Detail, DateTimeOffset ReportedAt);
-public sealed record TicketRow(string TicketId, string AccountId, string Symbol, string Setup, string Bias, double EntryPrice, double StopLoss, double Invalidation, int Confidence, double? TakeProfit, double? TargetVolume, double? TargetRiskUsd, DateTimeOffset CreatedAt);
 public sealed record DayAnchorRow(string AccountId, DateTimeOffset StartsAtUtc);
 public sealed record DayAnchorEquityRow(string AccountId, DateTimeOffset StartsAtUtc, double Equity);
 public sealed record PositionOpenRow(string AccountId, string BrokerPositionId, DateTimeOffset OpenedAt);
@@ -44,12 +41,9 @@ public static class PersistenceMapper
         {
             "market.candle.closed" => MapCandle(root.GetProperty("candle")),
             "market.tick" => MapTick(root),
-            "strategy.signal.created" => MapSignal(root.GetProperty("signal")),
-            "risk.decision.made" => MapDecision(root.GetProperty("decision")),
             "execution.command.place_order" => MapCommand(root.GetProperty("command")),
             "execution.command.acknowledged" or "execution.command.rejected" => MapAck(root.GetProperty("ack")),
             "execution.order.simulated" => MapReport(root.GetProperty("report")),
-            "journal.ticket.created" => MapTicket(root.GetProperty("ticket")),
             "risk.day_anchor.resolved" => MapDayAnchor(root),
             "risk.day_anchor.equity_observed" => MapDayAnchorEquity(root),
             "journal.position.opened" => MapPositionOpen(root),
@@ -87,20 +81,6 @@ public static class PersistenceMapper
     private static TickRow MapTick(JsonElement t) => new(
         Str(t, "symbol"), DateTimeOffset.UtcNow, Num(t, "bid"), Num(t, "ask"));
 
-    private static SignalRow MapSignal(JsonElement s) => new(
-        Str(s, "signalId"), Str(s, "strategyId"), Str(s, "symbol"), Str(s, "side"),
-        Num(s, "entryPrice"), Num(s, "stopLoss"), Num(s, "takeProfit"),
-        s.GetProperty("score").GetInt32(), s.GetProperty("maxScore").GetInt32(),
-        Str(s, "contextSummary"), Time(s, "createdAt"), Time(s, "expiresAt"));
-
-    private static DecisionRow MapDecision(JsonElement d) => new(
-        Str(d, "approvalId"), Str(d, "signalId"), Str(d, "accountId"),
-        d.GetProperty("approved").GetBoolean(),
-        d.TryGetProperty("approvedVolume", out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null,
-        Str(d, "reason"),
-        d.TryGetProperty("gates", out var g) ? g.GetRawText() : "[]",
-        Time(d, "decidedAt"));
-
     private static CommandRow MapCommand(JsonElement c) => new(
         Str(c, "commandId"), StrOrNull(c, "signalId"), Str(c, "accountId"), Str(c, "agentId"),
         Str(c, "riskApprovalId"), Str(c, "symbol"), Str(c, "side"), Str(c, "orderType"),
@@ -115,12 +95,6 @@ public static class PersistenceMapper
         Str(r, "reportId"), Str(r, "commandId"), Str(r, "accountId"), Str(r, "agentId"),
         Str(r, "symbol"), Str(r, "side"), Str(r, "status"), Str(r, "detail"),
         Time(r, "reportedAt"));
-
-    private static TicketRow MapTicket(JsonElement t) => new(
-        Str(t, "ticketId"), Str(t, "accountId"), Str(t, "symbol"), Str(t, "setup"), Str(t, "bias"),
-        Num(t, "entryPrice"), Num(t, "stopLoss"), Num(t, "invalidation"), t.GetProperty("confidence").GetInt32(),
-        NumOrNull(t, "takeProfit"), NumOrNull(t, "targetVolume"), NumOrNull(t, "targetRiskUsd"),
-        Time(t, "createdAt"));
 
     private static DayAnchorRow MapDayAnchor(JsonElement d) => new(
         Str(d, "accountId"), Time(d, "startsAtUtc"));

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { analyzeMarketContext } from "@/lib/analysis";
+import { aggregateCandles } from "@/lib/analysis/aggregate";
 import { useCockpit } from "@/lib/realtime/provider";
 import { backendHttpBase } from "@/lib/realtime/backend-url";
 import { TradeChart, type TradeChartMarker } from "@/components/journal/trade-chart";
@@ -10,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Candle } from "@/lib/domain/market";
+import type { Timeframe } from "@/lib/domain/primitives";
 import type { MarketContextState } from "@/lib/domain/analysis";
 
 /** Shape of GET /api/captures/:id (TradeCaptureRepository.TradeCaptureFact). */
@@ -31,12 +33,64 @@ interface CaptureSection {
   markers: TradeChartMarker[];
 }
 
+async function fetchCandles(
+  base: string,
+  symbol: string,
+  timeframe: string,
+  fromUtc: string,
+  toUtc: string,
+): Promise<Candle[]> {
+  const res = await fetch(
+    `${base}/api/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}` +
+      `&from=${encodeURIComponent(fromUtc)}&to=${encodeURIComponent(toUtc)}`,
+  );
+  return res.ok ? ((await res.json()) as Candle[]) : [];
+}
+
+/**
+ * The capture's declared timeframe is whatever the general observer was
+ * streaming when the fact was written (XAUUSDm M15 today) — it is NOT a
+ * promise that this symbol has candles stored at that timeframe. Only
+ * XAUUSDm has M15; EURUSDm/GBPUSDm only have M1, written by EA-02's worker.
+ * So: ask for the declared timeframe, and when the store has nothing there,
+ * rebuild it from M1 with the same aggregation EA-02 uses
+ * (lib/analysis/aggregate.ts — pure, tested, and the canonical engine per
+ * ADR 0004, which is also why this fallback lives here in TypeScript rather
+ * than in the C# /api/candles endpoint).
+ */
+async function loadCaptureCandles(base: string, fact: CaptureFact): Promise<Candle[]> {
+  const declared = await fetchCandles(
+    base,
+    fact.symbol,
+    fact.timeframe,
+    fact.windowStartUtc,
+    fact.windowEndUtc,
+  );
+  if (declared.length > 0 || fact.timeframe === "M1") {
+    return declared;
+  }
+  const m1 = await fetchCandles(base, fact.symbol, "M1", fact.windowStartUtc, fact.windowEndUtc);
+  if (m1.length === 0) {
+    return [];
+  }
+  return aggregateCandles(m1, "M1", fact.timeframe as Timeframe);
+}
+
+/**
+ * MT5 reports 0 for a stop-loss / take-profit that was never attached — it is
+ * "unset", not "a level at zero". Drawing it as a line would be a lie about
+ * the trade, and worse, it drags computePriceScale's range down to zero and
+ * flattens every real candle into a one-pixel band (seen for real on position
+ * 3230177984, 2026-09-15). An absent line reads correctly as "no stop was set".
+ */
 function buildMarkers(fact: CaptureFact): TradeChartMarker[] {
-  const markers: TradeChartMarker[] = [
-    { price: fact.entryPrice, label: "Entry", tone: "entry" },
-    { price: fact.stopLoss, label: "SL", tone: "stop" },
-    { price: fact.takeProfit, label: "TP", tone: "target" },
-  ];
+  const markers: TradeChartMarker[] = [{ price: fact.entryPrice, label: "Entry", tone: "entry" }];
+  if (fact.stopLoss > 0) {
+    markers.push({ price: fact.stopLoss, label: "SL", tone: "stop" });
+  }
+  if (fact.takeProfit > 0) {
+    markers.push({ price: fact.takeProfit, label: "TP", tone: "target" });
+  }
   if (fact.exitPrice !== null) {
     markers.push({ price: fact.exitPrice, label: "Exit", tone: "exit" });
   }
@@ -91,11 +145,7 @@ export default function TradeCapturePage() {
 
         const built: CaptureSection[] = [];
         for (const { title, fact } of facts) {
-          const candlesRes = await fetch(
-            `${base}/api/candles?symbol=${encodeURIComponent(fact.symbol)}&timeframe=${encodeURIComponent(fact.timeframe)}` +
-              `&from=${encodeURIComponent(fact.windowStartUtc)}&to=${encodeURIComponent(fact.windowEndUtc)}`,
-          );
-          const rows = candlesRes.ok ? ((await candlesRes.json()) as Candle[]) : [];
+          const rows = await loadCaptureCandles(base, fact);
           const context =
             rows.length > 0
               ? analyzeMarketContext({

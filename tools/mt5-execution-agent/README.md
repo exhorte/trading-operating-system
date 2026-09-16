@@ -9,22 +9,35 @@ code.
 
 ## Safety (read this)
 
-- **No `OrderSend` call exists in this file.** Grep it — there is none. This
-  build only ever reports `SIMULATED`, exactly like the read-only Python
-  observer's own stub command loop. Adding execution is EA-05 increment 6,
-  a separate, explicit approval.
-- **Mode is fixed at `OBSERVE`** for the whole lifetime of this build — not
-  an input, not settable by any message this agent handles. `control.set_mode`
-  is logged and ignored (EA-07's job).
+- **Exactly one `OrderSend` call exists**, added 2026-09-15 as EA-05
+  increment 6 on a separate explicit approval (ADR 0010). Grep it: one call
+  site, inside `ExecuteOrder`, whose first statement returns unless the mode
+  is `CONFIRM`. No execution path reaches a broker without passing that test.
+- **Mode is fixed at `OBSERVE`** for the whole lifetime of this build — a
+  compile-time `const`, not an input, not settable by any message this agent
+  handles (`control.set_mode` is logged and ignored, EA-07's job). So the
+  guard above can never pass and the execution body is provably dead code:
+  every accepted command still reports `SIMULATED` today.
+- **Writing that path and being allowed to run it are two separate
+  approvals.** Making `CONFIRM` reachable is EA-07, under the conditions in
+  its own fiche — not a config change here.
 - **Local barriers are a last line of defense, never a decision** (ADR 0007).
   The Risk Engine, upstream, is what actually decides.
 
 ## What this build does
 
 `connect` → `heartbeat` → `receive` → idempotency check → account check →
-expiry check → `validate` (local barriers) → `acknowledge` → `report`
-(always `SIMULATED` for an accepted command). No `reconcile` yet (EA-06);
-no `execute` yet (increment 6).
+expiry check → `validate` (local barriers) → `acknowledge` → then the mode
+fork: `execute` in `CONFIRM` (unreachable here, see Safety) or `report`
+`SIMULATED` in every other mode — which is every run of this build. No
+`reconcile` yet (EA-06).
+
+On the execution path, the command is written to disk as `UNKNOWN` *before*
+the broker call and rewritten with the real outcome after, so an agent that
+dies mid-call leaves `UNKNOWN` behind and a replay of that `commandId`
+returns `DUPLICATE` without ever sending a second order (ADR 0010, "jamais
+deux positions"). Resolving an `UNKNOWN` is EA-06's reconciliation, never a
+retry from the agent.
 
 ## Prerequisites
 
@@ -61,6 +74,7 @@ no `execute` yet (increment 6).
 | `InpMaxOpenPositions` | Local barrier — counts **all** positions on this terminal; excluding externally-opened ones is EA-06. |
 | `InpMaxSpreadPoints` | Local barrier — re-checked at validation time, not just when a setup was proposed. |
 | `InpAllowedSymbolsCsv` | Local whitelist, **broker-side** names (e.g. `EURUSDm,GBPUSDm` — see `context/domain/symbols-broker.md`). |
+| `InpMaxSlippagePoints` | `MqlTradeRequest.deviation` on the execution path (increment 6) — a bound on an acceptable fill, never a decision. Unused while the mode is `OBSERVE`. |
 
 ## Verification procedure (do this before moving to the next increment)
 

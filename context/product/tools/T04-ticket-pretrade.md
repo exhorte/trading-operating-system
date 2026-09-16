@@ -1,6 +1,6 @@
 # T04 — Ticket pré-trade
 
-Statut : **livré** · Vague 1 · Effort 1 j · Valeur 5 · Dépend de : rien
+Statut : **retiré** (2026-09-14) · Vague 1 · Effort 1 j · Valeur 5 · Dépend de : rien
 
 ## Problème
 
@@ -104,3 +104,21 @@ Au bout de 30 trades, l'expectancy par niveau de confiance est calculable. Atten
   pas été observée dans un navigateur. À valider à l'ouverture réelle du
   cockpit, idéalement en coupant volontairement le backend une fois pour
   vérifier que le ticket reste "non confirmé" plutôt que de sembler enregistré.
+
+- 2026-09-14 — **retiré, par décision explicite de l'utilisateur**, en même
+  temps que T01 (les deux partageaient `trade-draft-context.tsx`). Supprimés :
+  `components/cockpit/ticket-panel.tsx`, `lib/domain/ticket.ts`
+  (`PreTradeTicket`/`SetupType`/`TradeBias`/`Confidence`), et le chemin
+  `journal.ticket.created` de bout en bout — `publishTicket` (client.ts,
+  provider.tsx, signalr-client.ts, mock-client.ts), `confirmedTicketIds`
+  (store.ts), `TicketCreatedPayload` (lib/contracts/events.ts),
+  `TicketRow`/`MapTicket` (`PersistenceMapper.cs`), l'écriture
+  `pretrade_tickets` (`PersistenceWriter.cs`), et le type dans la liste
+  blanche du hub (`CockpitHub.cs`). Table `pretrade_tickets` retirée de
+  `schema.sql` et `DROP TABLE`-ée en local (le seul écrit dedans était le
+  chemin qui vient d'être supprimé — sans risque, comme le nettoyage
+  équivalent du pivot 2026-09-04). Rien d'autre ne consommait ce vocabulaire
+  ni cette table — `lib/execution/command-builder.ts` (le seul composant
+  qui aurait pu partager `SetupType`) a son propre vocabulaire de domaine,
+  jamais réutilisé par le ticket. Gates vertes après retrait. Récupérable
+  via l'historique git.

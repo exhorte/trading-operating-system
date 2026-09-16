@@ -13,7 +13,6 @@ import type {
   PnlCalendarDay,
   Position,
   RiskStatus,
-  StrategySignal,
 } from "@/lib/contracts/snapshots";
 import type { RiskPolicy, RiskState } from "@/lib/domain/risk";
 import type { UpcomingRelease } from "@/lib/risk/news-calendar";
@@ -154,59 +153,6 @@ export function mockMarketContext(): MarketContext {
     candles: mockCandles(),
   });
   return toMarketContextReadModel(state);
-}
-
-export function mockSignals(): StrategySignal[] {
-  return [
-    {
-      signalId: "sig-014",
-      symbol: "XAUUSD",
-      strategyId: "ict-silver-bullet-v1",
-      side: "buy",
-      status: "reported",
-      entryPrice: 3308.4,
-      stopLoss: 3303.4,
-      takeProfit: 3318.4,
-      score: 8,
-      maxScore: 10,
-      contextSummary: "Sweep + MSS + M5 FVG retrace in NY AM window",
-      riskDecision: "Approved: 0.05 lot at 1% risk",
-      expiresAt: isoMinutesAgo(1),
-      createdAt: isoMinutesAgo(2),
-    },
-    {
-      signalId: "sig-013",
-      symbol: "XAUUSD",
-      strategyId: "ict-fvg-continuation-v1",
-      side: "buy",
-      status: "reported",
-      entryPrice: 3310.9,
-      stopLoss: 3305.9,
-      takeProfit: 3320.9,
-      score: 7,
-      maxScore: 10,
-      contextSummary: "H1 continuation from OB, aligned bias",
-      riskDecision: "approved (risk-approval-021)",
-      expiresAt: isoMinutesAgo(10),
-      createdAt: isoMinutesAgo(18),
-    },
-    {
-      signalId: "sig-012",
-      symbol: "XAUUSD",
-      strategyId: "ict-silver-bullet-v1",
-      side: "sell",
-      status: "rejected",
-      entryPrice: 3316.2,
-      stopLoss: 3321.2,
-      takeProfit: 3306.2,
-      score: 5,
-      maxScore: 10,
-      contextSummary: "Counter-bias sweep, low score",
-      riskDecision: "rejected: score below threshold",
-      expiresAt: isoMinutesAgo(30),
-      createdAt: isoMinutesAgo(35),
-    },
-  ];
 }
 
 export function mockAgents(): AgentStatus[] {
