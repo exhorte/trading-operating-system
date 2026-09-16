@@ -69,6 +69,44 @@ public sealed record CommandAckPayload(CommandAck Ack);
 
 public sealed record ExecutionReportPayload(ExecutionReportView Report);
 
+/// <summary>EA-06 dashboard read model for a resolved (or still-unresolved)
+/// UNKNOWN commandId. Distinct from ExecutionReportView on purpose — see
+/// Mt5ReconciledMessage's doc comment (mt5-wire.ts): a fill pieced together
+/// after the fact must never be presented as one watched live.</summary>
+public sealed record ReconciledView(
+    string CommandId,
+    string AccountId,
+    string AgentId,
+    string Outcome,
+    string? Symbol,
+    string? Side,
+    string? BrokerOrderId,
+    string? BrokerPositionId,
+    double? FilledVolume,
+    double? AveragePrice,
+    string? BrokerRetcode,
+    int Attempts,
+    string Detail,
+    string ReconciledAt);
+
+public sealed record ReconciledPayload(ReconciledView Reconciled);
+
+/// <summary>EA-06 dashboard read model for one open position exactly as the
+/// terminal reports it right now (a PositionsTotal() scan).</summary>
+public sealed record PositionScannedView(
+    string AccountId,
+    string AgentId,
+    string BrokerPositionId,
+    string Symbol,
+    string Side,
+    double Volume,
+    int MagicNumber,
+    bool IsExternal,
+    string? KnownCommandId,
+    string ScannedAt);
+
+public sealed record PositionScannedPayload(PositionScannedView PositionScanned);
+
 // --- lean wire (gateway → agent), mirrors Mt5OrderCommand in mt5-wire.ts ---
 
 public sealed record Mt5OrderCommand(
@@ -103,4 +141,26 @@ public sealed record Mt5ReportMessage(
     string CommandId, string Status, string Symbol, string Side,
     string? BrokerOrderId, string? BrokerPositionId,
     double? FilledVolume, double? AveragePrice, string? BrokerRetcode, string Detail)
+    : Mt5Message(Version, Type, AccountId, Time);
+
+// --- EA-06 reconciliation (agent → gateway), mirrors mt5-wire.ts ---
+
+/// <summary>Terminal resolution of a commandId left UNKNOWN — the state
+/// machine's only legal exit from UNKNOWN is RECONCILED, so this is kept
+/// distinct from Mt5ReportMessage rather than reusing its Status vocabulary.</summary>
+public sealed record Mt5ReconciledMessage(
+    int Version, string Type, string AccountId, long Time,
+    string CommandId, string Outcome, string? Symbol, string? Side,
+    string? BrokerOrderId, string? BrokerPositionId,
+    double? FilledVolume, double? AveragePrice, string? BrokerRetcode,
+    int Attempts, string Detail)
+    : Mt5Message(Version, Type, AccountId, Time);
+
+/// <summary>One open position observed directly from the terminal, sent one
+/// per position (never batched — JsonLite.mqh parses flat objects only).
+/// BrokerPositionId must come from POSITION_IDENTIFIER, never the ticket.</summary>
+public sealed record Mt5PositionScannedMessage(
+    int Version, string Type, string AccountId, long Time,
+    string BrokerPositionId, string Symbol, string Side, double Volume,
+    int MagicNumber, bool IsExternal, string? KnownCommandId)
     : Mt5Message(Version, Type, AccountId, Time);

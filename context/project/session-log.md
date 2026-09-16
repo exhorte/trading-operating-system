@@ -6,6 +6,177 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-16 (suite — **T07 livré**, tracker d'erreurs et taux de conformité)
+
+Choisi explicitement après T06 (question ouverte : T07/T15/T08, tous
+débloqués par T06). Fiche écrite en vérifiant chaque violation de la
+taxonomie réduite (déjà posée par une session antérieure après le retrait
+de T04) une par une plutôt qu'en bloc :
+
+- Lockout actif, fenêtre de session : détectables proprement, données déjà
+  là (`risk_lockouts`, `DEFAULT_SESSION_WINDOWS`).
+- Taille hors politique : détectable, mais **pas** avec
+  `evaluateSignalRisk` (`lib/risk/sizing.ts`) — cette fonction code en dur
+  le facteur XAUUSD (« 1.00 price move on 1.0 lot ≈ 100 USD ») et aurait
+  donné un faux verdict sur la majorité des trades réels, tous
+  EURUSD/GBPUSD. La bonne formule passe par `symbolMetadata`
+  (`lib/market/symbols/registry.ts`, tick size/value).
+- Stop déplacé après l'entrée : pas détectable du tout — rien ne trace les
+  modifications de position (`execution.modify` existe dans le protocole
+  wire, jamais câblé).
+
+Trois décisions soumises et validées (« valide les trois, enchaîne sur les
+incréments ») : deux violations ce tour (lockout, session) ; taille
+construite quand même avec la balance courante comme approximation de la
+balance au moment du trade (pas de suivi historique de `account.snapshot`,
+séparable plus tard si besoin) ; stop déplacé reporté, hors périmètre.
+
+Quatre incréments, gates vertes à chaque étape (tsc, lint, `dotnet build`
+0 warning, `dotnet test` 34, vitest 206 — 22 nouveaux, `next build`) :
+
+1. `lib/compliance/violations.ts` — trois détecteurs purs, testés contre le
+   **vrai** lockout kill-switch du 2026-09-15 (`lockout-mu2h6tvb-8qosw0`,
+   requêté en base pour construire le fixture) : le trade EURUSDm de
+   09:36:00 ressort bien en violation.
+2. `lib/compliance/evaluate.ts` + `GET /api/risk/lockouts`
+   (`RiskLockoutHistoryRepository`, nouveau — `RiskTodayRepository` ne
+   couvre que « maintenant ») + colonne Violations sur `/journal`. Bug
+   trouvé en écrivant l'intégration : `closed_trades.symbol` est le nom
+   broker (`EURUSDm`), pas le canonique qu'attend `symbolMetadata` — le
+   type `ComplianceTradeInput.symbol` est `SymbolCode | null`, et seul le
+   contrôle de taille se désactive sur un symbole non résolu, jamais
+   lockout/session avec lui.
+3. `ComplianceBadge` dans `TopCommandBar` — fenêtre glissante de 7 jours,
+   indépendante du filtre de `/journal`, même détecteurs.
+4. Taille hors politique : déjà branchée depuis l'incrément 2 (conçue avec
+   dès le départ) — rien à ajouter, seulement vérifié.
+
+**Vérifié contre de vraies données.** `GET /api/risk/lockouts` appelé
+directement contre la base réelle : retrouve le lockout kill-switch, et au
+passage les 4 lignes « Daily loss guard » dupliquées à 73 ms d'intervalle du
+2026-09-14 (artefact historique de l'ancien bug de course, corrigé le
+2026-09-15 — sans conséquence ici). `ComplianceBadge` chargé dans le
+navigateur intégré : rendu correct de son état « Conformité — » (aucun
+compte connecté), aucune erreur console nouvelle. Même limite que T06 :
+jamais vu rendu avec de vraies données à l'écran.
+
+---
+
+## 2026-09-16 (suite — **T06 livré**, journal auto-alimenté)
+
+Choisi explicitement par l'utilisateur (« phase suivante » posée en question
+ouverte après EA-06 : Vague 2/T06 préféré à EA-07 ou à la clôture de
+Vague 1). Fiche écrite, trois décisions soumises et validées (« valide les
+trois, enchaîne sur les incréments ») :
+
+1. P&L réalisé par trade + calendrier P&L : oui, ce sont des faits sur des
+   trades déjà pris. Expectancy/profit factor/taux de réussite/courbe
+   d'équité : non dans ce tour — exactement le vocabulaire qu'[ADR 0011](../adr/0011-banc-de-replay.md)
+   bannit pour le banc de replay, et ce que le charter écarte déjà comme KPI.
+2. Aucune nouvelle table — vue de lecture pure sur `closed_trades`/
+   `position_opens`/`trade_captures`/`setup_proposals` : ce que backlog.md
+   décrivait comme « nouveau modèle de données à construire » existait déjà,
+   éclaté sur quatre tables.
+3. Lien Capture uniquement quand une ligne `trade_captures` existe —
+   jamais un lien mort (deux trades du 2026-09-14 ont perdu leur capture de
+   sortie pour de bon, voir le journal T05).
+
+Quatre incréments, gates vertes à chaque étape (tsc, lint, `dotnet build`
+0 warning, `dotnet test` 34, vitest 184, `next build`) :
+
+1. `JournalRepository.GetTradesAsync` + `GET /api/journal/trades` —
+   `LEFT JOIN` partout, pas l'`INNER JOIN` du précédent le plus proche
+   (`SetupProposalRepository.GetClosedTradesAsync`) : un trade reste visible
+   même sans `position_opens` ou sans capture.
+2. `/journal` : table filtrable (dates, symbole côté client), lien Capture
+   conditionnel.
+3. Calendrier + ventilations (symbole, session, heure d'entrée, jour de la
+   semaine), agrégées côté TypeScript depuis la même liste — aucun nouvel
+   endpoint par vue.
+4. Enrichissement EA-02 — trouvaille en cours de route : une fonction pure
+   de rapprochement existait déjà, `lib/setup/reconciliation.ts::reconcile`
+   (tolérance 5 min), déjà utilisée par `/setups`. Réutilisée telle quelle
+   après avoir commencé à en écrire une seconde à 30 min — jetée avant
+   d'aller plus loin.
+
+**Vérifié contre de vraies données, au-delà des gates.** TimescaleDB
+redémarrée (arrêtée depuis 6 h), backend relancé, `GET /api/journal/trades`
+appelé directement contre les trades réels du 2026-09-14/15 (accountId
+477029930) : jointures correctes, `entryPrice`/`stopLoss` bien `null` sur le
+seul trade sans capture, et — trouvaille en vérifiant — **tous les autres
+trades réels ont `stopLoss: 0`** (jamais posé pendant cette période
+OBSERVE), donc la colonne R multiple est vide sur les données actuelles :
+honnête, pas une régression. `GET /api/setup-proposals` ne renvoie que des
+`blocked` (cohérent avec le taux d'accord EA-02 toujours à 0/595) : rien à
+accrocher pour l'incrément 4 aujourd'hui, vérifié comme vide plutôt que
+supposé.
+
+**Non vérifié : le rendu dans un navigateur.** `/journal` chargé dans le
+navigateur intégré — aucune erreur console, l'état de chargement s'affiche
+correctement — mais aucun agent MT5 n'est connecté à ce backend fraîchement
+relancé, donc `useCockpit().account` reste `null` indéfiniment (même
+comportement que toute autre page du cockpit sans connexion live). Table,
+calendrier et ventilations jamais vus rendus à l'écran avec des données
+réelles.
+
+---
+
+## 2026-09-16 (**EA-06 livré** — résolution `UNKNOWN`, positions externes, surface cockpit)
+
+Fiche écrite et deux décisions soumises la veille (« lance EA-06
+maintenant ») ; validées telles que proposées ce jour (« valide les deux,
+enchaîne sur les incréments ») : comportement par défaut `WARN` sur une
+position externe (l'exposition est déjà comptée sans distinction via
+`PositionsTotal()`, ce qui manque est l'attribution, pas une barrière de
+plus), et logique de réconciliation dans l'agent MQL5 (seul endroit avec un
+accès direct à `HistoryDealsGet`/`PositionsGet`, même raisonnement que
+l'observer Python pour `scan_missed_round_trips`).
+
+Quatre incréments, gates vertes à chaque étape :
+
+1. **Wire** — `Mt5ReconciledMessage`/`Mt5PositionScannedMessage` dans
+   `mt5-wire.ts` + miroirs C#. Un message par position, jamais un tableau
+   (`JsonLite.mqh` ne lit que du plat).
+2. **Résolution `UNKNOWN`** — `CommandStore.mqh` gagne
+   `CommandStoreFindUnknown` (énumération, n'existait pas). L'agent cherche
+   par `InpMagicNumber` + `"TradingOS "+commandId` dans le commentaire du
+   deal/ordre, lit toujours `DEAL_POSITION_ID`, jamais un ticket — le piège
+   du 2026-09-05 revérifié à la main. Déclenché sur le heartbeat et sur
+   toute connexion. Écart assumé par rapport au brouillon de la fiche :
+   `not_found` n'abandonne jamais (pas de plafond à 3 tentatives, pas de
+   `RECONCILIATION_PENDING`) — détail dans le journal de la fiche.
+3. **Positions externes** — `ScanOpenPositions`, `isExternal` sur magic
+   number seul, `POSITION_IDENTIFIER` jamais un ticket. Corrigé au passage
+   un commentaire d'EA-05 qui annonçait à tort qu'EA-06 exclurait les
+   positions externes du compte `PositionsTotal()` — c'est l'inverse de la
+   décision validée ; le compte n'a pas bougé.
+4. **Persistance + cockpit** — `command_reconciliations`/`position_scans`
+   (upsert, pas d'accumulation — `envelopes` porte déjà l'historique
+   complet) ; `GET /api/execution/divergence` ; `/positions` sort de son
+   placeholder (il réservait déjà ce texte à « reconciliation state »).
+   Nommé « divergence », pas « réconciliation », pour ne pas percuter le
+   sens qu'EA-02 donne déjà à ce mot (`SetupProposalRepository`).
+
+Gates : MetaEditor 0/0 à chaque incrément MQL5, tsc, lint, `dotnet build`
+(0 warning), `dotnet test` (34), vitest (184), `next build`.
+
+**Deux limites assumées, pas cachées** (détail : journal de la fiche EA-06) :
+la propagation du commentaire de commande jusqu'au deal MT5 est une
+hypothèse jamais vérifiée en réel — `OrderSend` n'a encore jamais tourné ;
+et le scénario « mort de l'agent entre `OrderSend` et l'accusé » n'a été
+vérifié que par lecture du code (même méthode que l'incrément 6 d'EA-05),
+jamais par un test exécuté — aucun harnais MQL5 n'existe dans ce dépôt.
+
+Seul l'incrément 3 produit du trafic réel dès aujourd'hui (`PositionsTotal()`
+ne dépend pas du mode) ; l'incrément 2 reste sans trafic tant qu'`OrderSend`
+est inatteignable. `OrderSend` lui-même : vérifié inchangé après les 4
+incréments (un seul site d'appel, `g_mode` toujours `const MODE_OBSERVE`).
+`state.md` : plus de « prochaine action » construite — le projet passe en
+observation jusqu'à ce que les préconditions d'EA-07 se remplissent par de
+vrais trades.
+
+---
+
 ## 2026-09-15 (suite — rendu T05 réparé, course de lockout corrigée, **EA-05 incrément 6 livré**)
 
 **Rendu des captures, réparé et vérifié à l'écran.** Deux défauts, pas un.

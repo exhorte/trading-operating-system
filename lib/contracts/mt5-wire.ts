@@ -47,6 +47,8 @@ export type Mt5MessageType =
   | "position.closed"
   | "execution.ack"
   | "execution.report"
+  | "execution.reconciled"
+  | "execution.position.scan"
   // gateway → agent (control / commands)
   | "execution.order"
   | "execution.modify"
@@ -229,6 +231,65 @@ export interface Mt5ReportMessage extends Mt5Message {
   detail: string;
 }
 
+/**
+ * EA-06: terminal resolution of a commandId that was left `UNKNOWN` — written
+ * when ExecuteOrder's outcome could not be observed live (e.g. the agent or
+ * terminal died between OrderSend and the ACCEPTED/FAILED result). Sent once
+ * the agent has searched MT5 history by magic number + the commandId traced
+ * in the position/order comment (never by ticket — see brokerPositionId's
+ * note on Mt5PositionScannedMessage; the same rule applies here). The 12-state
+ * command lifecycle only allows UNKNOWN to exit to RECONCILED
+ * (context/execution/state-machine.md) — this message IS that exit, kept
+ * distinct from execution.report so a fill pieced together after the fact is
+ * never presented as one watched live.
+ */
+export interface Mt5ReconciledMessage extends Mt5Message {
+  type: "execution.reconciled";
+  /** Echoes the original command `id`. */
+  commandId: string;
+  outcome: "executed" | "rejected" | "not_found";
+  /** Null when outcome is "not_found" — nothing was located to describe. */
+  symbol: SymbolCode | null;
+  side: Mt5Side | null;
+  brokerOrderId: string | null;
+  brokerPositionId: string | null;
+  filledVolume: number | null;
+  averagePrice: number | null;
+  brokerRetcode: string | null;
+  /** Resolution attempts made as of this message. "not_found" may still be
+   *  retried on a later heartbeat/reconnect; "executed"/"rejected" are
+   *  terminal and stop retrying — that policy lives agent-side, not here. */
+  attempts: number;
+  detail: string;
+}
+
+/**
+ * EA-06: one currently-open position as seen directly from the terminal
+ * (a `PositionsTotal()` scan), sent one message per position — never
+ * batched, unlike the Python observer's positions.snapshot array, because
+ * JsonLite.mqh (this agent's hand-written parser) only reads flat objects.
+ * `isExternal` flags a position whose magic number doesn't match this
+ * agent's own (ADR 0010 isolation); that is a WARN, not a block — the
+ * position is already counted in PositionsTotal()-based exposure, this
+ * message only attributes it.
+ */
+export interface Mt5PositionScannedMessage extends Mt5Message {
+  type: "execution.position.scan";
+  /** From PositionGetInteger(POSITION_IDENTIFIER), NEVER PositionGetTicket()
+   *  — the two diverge on broker service operations (see the 2026-09-05
+   *  incident note in session-log.md). Same rule as every other
+   *  brokerPositionId on this wire. */
+  brokerPositionId: string;
+  symbol: SymbolCode;
+  side: Mt5Side;
+  volume: number;
+  magicNumber: number;
+  isExternal: boolean;
+  /** commandId traced from the position's comment when this agent opened
+   *  it. Null when isExternal, or when no comment/trace is present. */
+  knownCommandId: string | null;
+}
+
 // --- gateway → agent ---
 
 /** Fields shared by every command the gateway sends down. */
@@ -301,7 +362,9 @@ export type Mt5InboundMessage =
   | Mt5PositionOpenedMessage
   | Mt5PositionClosedMessage
   | Mt5AckMessage
-  | Mt5ReportMessage;
+  | Mt5ReportMessage
+  | Mt5ReconciledMessage
+  | Mt5PositionScannedMessage;
 
 export type Mt5OutboundMessage =
   | Mt5OrderCommand

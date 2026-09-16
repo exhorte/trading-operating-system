@@ -87,4 +87,75 @@ void CommandStoreRecord(const string commandId, const string status, const strin
    FileClose(handle);
 }
 
+//--- EA-06: returns every commandId whose most recent recorded status is
+//    exactly "UNKNOWN" — last write wins, same rule as CommandStoreLookup.
+//    Lets reconciliation discover what needs resolving without knowing any
+//    commandId in advance. Same linear-scan-of-a-small-file approach as the
+//    rest of this store: a personal system leaves at most a handful of
+//    UNKNOWN entries ever, not a stream to index.
+int CommandStoreFindUnknown(string &commandIds[])
+{
+   ArrayResize(commandIds, 0);
+
+   int handle = FileOpen(g_command_store_file, FILE_READ | FILE_TXT | FILE_ANSI);
+   if(handle == INVALID_HANDLE)
+   {
+      return 0; // no store file yet: nothing has ever been recorded
+   }
+
+   string ids[];
+   string statuses[];
+   int count = 0;
+
+   while(!FileIsEnding(handle))
+   {
+      string line = FileReadString(handle);
+      if(StringLen(line) == 0)
+      {
+         continue;
+      }
+      string parts[];
+      int n = StringSplit(line, '\t', parts);
+      if(n < 2)
+      {
+         continue;
+      }
+
+      int existingIndex = -1;
+      for(int i = 0; i < count; i++)
+      {
+         if(ids[i] == parts[0])
+         {
+            existingIndex = i;
+            break;
+         }
+      }
+      if(existingIndex >= 0)
+      {
+         statuses[existingIndex] = parts[1]; // last write wins
+      }
+      else
+      {
+         ArrayResize(ids, count + 1);
+         ArrayResize(statuses, count + 1);
+         ids[count] = parts[0];
+         statuses[count] = parts[1];
+         count++;
+      }
+   }
+   FileClose(handle);
+
+   int found = 0;
+   for(int i = 0; i < count; i++)
+   {
+      if(statuses[i] == "UNKNOWN")
+      {
+         ArrayResize(commandIds, found + 1);
+         commandIds[found] = ids[i];
+         found++;
+      }
+   }
+   return found;
+}
+
 #endif // TRADINGOS_COMMAND_STORE_MQH

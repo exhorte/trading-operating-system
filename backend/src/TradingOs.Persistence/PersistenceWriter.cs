@@ -204,6 +204,32 @@ public sealed class PersistenceWriter
                 VALUES (@AccountId, @LockoutId, @AcknowledgedAt)
                 ON CONFLICT (account_id, lockout_id) DO NOTHING
                 """,
+            // EA-06: upserts, not appends — command_reconciliations/position_scans
+            // are current-state projections; schema.sql explains why.
+            ReconciledRow => """
+                INSERT INTO command_reconciliations (command_id, account_id, outcome, symbol, side,
+                  broker_order_id, broker_position_id, filled_volume, average_price, broker_retcode,
+                  attempts, detail, reconciled_at)
+                VALUES (@CommandId, @AccountId, @Outcome, @Symbol, @Side,
+                  @BrokerOrderId, @BrokerPositionId, @FilledVolume, @AveragePrice, @BrokerRetcode,
+                  @Attempts, @Detail, @ReconciledAt)
+                ON CONFLICT (command_id) DO UPDATE
+                  SET outcome = EXCLUDED.outcome, symbol = EXCLUDED.symbol, side = EXCLUDED.side,
+                      broker_order_id = EXCLUDED.broker_order_id, broker_position_id = EXCLUDED.broker_position_id,
+                      filled_volume = EXCLUDED.filled_volume, average_price = EXCLUDED.average_price,
+                      broker_retcode = EXCLUDED.broker_retcode, attempts = EXCLUDED.attempts,
+                      detail = EXCLUDED.detail, reconciled_at = EXCLUDED.reconciled_at
+                """,
+            PositionScanRow => """
+                INSERT INTO position_scans (account_id, broker_position_id, symbol, side, volume,
+                  magic_number, is_external, known_command_id, scanned_at)
+                VALUES (@AccountId, @BrokerPositionId, @Symbol, @Side, @Volume,
+                  @MagicNumber, @IsExternal, @KnownCommandId, @ScannedAt)
+                ON CONFLICT (account_id, broker_position_id) DO UPDATE
+                  SET symbol = EXCLUDED.symbol, side = EXCLUDED.side, volume = EXCLUDED.volume,
+                      magic_number = EXCLUDED.magic_number, is_external = EXCLUDED.is_external,
+                      known_command_id = EXCLUDED.known_command_id, scanned_at = EXCLUDED.scanned_at
+                """,
             _ => null,
         };
         if (sql is not null)

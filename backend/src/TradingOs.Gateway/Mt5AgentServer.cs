@@ -215,6 +215,20 @@ public sealed class Mt5AgentServer(int port)
                 EnvelopeReady?.Invoke(type, new ExecutionReportPayload(mapped));
                 return null;
             }
+            case Mt5ReconciledMessage reconciled:
+            {
+                var agentId = Hello?.AgentId ?? "mt5-execution-agent";
+                var mapped = Mt5WireTranslator.ToReconciled(reconciled, agentId);
+                EnvelopeReady?.Invoke(EventTypes.ExecutionReconciled, new ReconciledPayload(mapped));
+                return null;
+            }
+            case Mt5PositionScannedMessage scanned:
+            {
+                var agentId = Hello?.AgentId ?? "mt5-execution-agent";
+                var mapped = Mt5WireTranslator.ToPositionScanned(scanned, agentId);
+                EnvelopeReady?.Invoke(EventTypes.ExecutionPositionScan, new PositionScannedPayload(mapped));
+                return null;
+            }
             default:
                 return null; // unknown/unused types are ignored in this slice
         }

@@ -25,6 +25,12 @@ public sealed record ClosedTradeRow(string AccountId, string BrokerPositionId, s
 public sealed record LockoutEnabledRow(string LockoutId, string AccountId, string Reason, DateTimeOffset Since, DateTimeOffset? Until);
 public sealed record LockoutClearedRow(string AccountId, string ClearedBy);
 public sealed record KillSwitchAckRow(string AccountId, string LockoutId, DateTimeOffset AcknowledgedAt);
+/// <summary>EA-06 — upserted per commandId, not appended; see schema.sql's
+/// comment on command_reconciliations for why.</summary>
+public sealed record ReconciledRow(string CommandId, string AccountId, string Outcome, string? Symbol, string? Side, string? BrokerOrderId, string? BrokerPositionId, double? FilledVolume, double? AveragePrice, string? BrokerRetcode, int Attempts, string Detail, DateTimeOffset ReconciledAt);
+/// <summary>EA-06 — upserted per (account, position), not appended; see
+/// schema.sql's comment on position_scans for why.</summary>
+public sealed record PositionScanRow(string AccountId, string BrokerPositionId, string Symbol, string Side, double Volume, int MagicNumber, bool IsExternal, string? KnownCommandId, DateTimeOffset ScannedAt);
 
 /// <summary>
 /// Pure extraction: envelope payload JSON → typed row (null when the event
@@ -51,6 +57,8 @@ public static class PersistenceMapper
             "risk.lockout.enabled" => MapLockoutEnabled(root),
             "risk.lockout.cleared" => MapLockoutCleared(root),
             "risk.lockout.acknowledged" => MapKillSwitchAck(root),
+            "execution.reconciled" => MapReconciled(root.GetProperty("reconciled")),
+            "execution.position.scan" => MapPositionScanned(root.GetProperty("positionScanned")),
             _ => null,
         };
     }
@@ -117,4 +125,16 @@ public static class PersistenceMapper
 
     private static KillSwitchAckRow MapKillSwitchAck(JsonElement a) => new(
         Str(a, "accountId"), Str(a, "lockoutId"), Time(a, "acknowledgedAt"));
+
+    private static ReconciledRow MapReconciled(JsonElement r) => new(
+        Str(r, "commandId"), Str(r, "accountId"), Str(r, "outcome"),
+        StrOrNull(r, "symbol"), StrOrNull(r, "side"),
+        StrOrNull(r, "brokerOrderId"), StrOrNull(r, "brokerPositionId"),
+        NumOrNull(r, "filledVolume"), NumOrNull(r, "averagePrice"), StrOrNull(r, "brokerRetcode"),
+        (int)Num(r, "attempts"), Str(r, "detail"), Time(r, "reconciledAt"));
+
+    private static PositionScanRow MapPositionScanned(JsonElement p) => new(
+        Str(p, "accountId"), Str(p, "brokerPositionId"), Str(p, "symbol"), Str(p, "side"),
+        Num(p, "volume"), (int)Num(p, "magicNumber"), p.GetProperty("isExternal").GetBoolean(),
+        StrOrNull(p, "knownCommandId"), Time(p, "scannedAt"));
 }

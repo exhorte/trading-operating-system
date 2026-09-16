@@ -91,6 +91,9 @@ public static class Mt5WireParser
             // Phase 09: command receipts and SIMULATED outcomes from the agent.
             "execution.ack" => doc.RootElement.Deserialize<Mt5AckMessage>(Options),
             "execution.report" => doc.RootElement.Deserialize<Mt5ReportMessage>(Options),
+            // EA-06: UNKNOWN resolution and terminal position scans.
+            "execution.reconciled" => doc.RootElement.Deserialize<Mt5ReconciledMessage>(Options),
+            "execution.position.scan" => doc.RootElement.Deserialize<Mt5PositionScannedMessage>(Options),
             _ => null,
         };
     }

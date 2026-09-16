@@ -60,4 +60,10 @@ public static class EventTypes
     /// broadcast on every refresh cycle regardless of whether the list
     /// changed (same idempotent-recheck pattern as RiskDayAnchorResolved).</summary>
     public const string MarketCalendarUpdated = "market.calendar.updated";
+    /// <summary>EA-06: the state machine's UNKNOWN state resolving to
+    /// RECONCILED — see Mt5ReconciledMessage's doc comment.</summary>
+    public const string ExecutionReconciled = "execution.reconciled";
+    /// <summary>EA-06: one open position as the terminal reports it right now
+    /// (PositionsTotal() scan), agent-originated on the heartbeat cadence.</summary>
+    public const string ExecutionPositionScan = "execution.position.scan";
 }

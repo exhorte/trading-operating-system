@@ -229,3 +229,53 @@ CREATE TABLE IF NOT EXISTS execution_reports (
     reported_at timestamptz NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_execution_reports_command ON execution_reports (command_id);
+
+-- EA-06: what the agent currently knows about a commandId it once left
+-- UNKNOWN (the 12-state machine's UNKNOWN may only exit to RECONCILED —
+-- context/execution/state-machine.md). One row per commandId, upserted on
+-- every attempt, not appended: the complete history of every attempt
+-- (including repeated 'not_found' pings, sent on every heartbeat while
+-- still unresolved) already lives in the envelopes audit table above; this
+-- table is the current-state projection the cockpit's divergence surface
+-- reads. Not the same "reconciliation" as EA-02's setup-vs-trade view
+-- (SetupProposalRepository) — unrelated feature, same English word.
+CREATE TABLE IF NOT EXISTS command_reconciliations (
+    command_id          text PRIMARY KEY,
+    account_id          text NOT NULL,
+    outcome             text NOT NULL CHECK (outcome IN ('executed', 'rejected', 'not_found')),
+    symbol              text,
+    side                text,
+    broker_order_id     text,
+    broker_position_id  text,
+    filled_volume       double precision,
+    average_price       double precision,
+    broker_retcode      text,
+    attempts            integer NOT NULL,
+    detail              text NOT NULL,
+    reconciled_at       timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_command_reconciliations_account
+    ON command_reconciliations (account_id, reconciled_at DESC);
+
+-- EA-06: latest terminal-observed state of each currently open position,
+-- refreshed on every scan (heartbeat cadence + every connect). One row per
+-- (account, position), upserted — current state, not a log; position_opens/
+-- closed_trades above already carry the open/close lifecycle history.
+-- is_external flags a magic number that isn't this agent's own (ADR 0010
+-- isolation): a WARN, not a block — PositionsTotal() in the agent's local
+-- max-open-positions barrier already counts it regardless (EA-06 fiche
+-- decision: attribute, never loosen that count); this table only attributes.
+CREATE TABLE IF NOT EXISTS position_scans (
+    account_id          text NOT NULL,
+    broker_position_id  text NOT NULL,
+    symbol              text NOT NULL,
+    side                text NOT NULL,
+    volume              double precision NOT NULL,
+    magic_number        integer NOT NULL,
+    is_external         boolean NOT NULL,
+    known_command_id    text,
+    scanned_at          timestamptz NOT NULL,
+    PRIMARY KEY (account_id, broker_position_id)
+);
+CREATE INDEX IF NOT EXISTS idx_position_scans_external
+    ON position_scans (account_id) WHERE is_external;

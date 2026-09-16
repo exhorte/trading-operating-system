@@ -170,4 +170,42 @@ public static class Mt5WireTranslator
             Detail: report.Detail,
             ReportedAt: Iso(report.Time));
     }
+
+    /// <summary>EA-06: lean execution.reconciled → dashboard view. Outcome and
+    /// broker* fields pass through as-is (already lowercase / already string on
+    /// the wire) — nothing here re-derives a fill from scratch.</summary>
+    public static ReconciledView ToReconciled(Mt5ReconciledMessage msg, string agentId)
+    {
+        return new ReconciledView(
+            CommandId: msg.CommandId,
+            AccountId: msg.AccountId,
+            AgentId: agentId,
+            Outcome: msg.Outcome,
+            Symbol: msg.Symbol,
+            Side: msg.Side is null ? null : LowercaseSide(msg.Side),
+            BrokerOrderId: msg.BrokerOrderId,
+            BrokerPositionId: msg.BrokerPositionId,
+            FilledVolume: msg.FilledVolume,
+            AveragePrice: msg.AveragePrice,
+            BrokerRetcode: msg.BrokerRetcode,
+            Attempts: msg.Attempts,
+            Detail: msg.Detail,
+            ReconciledAt: Iso(msg.Time));
+    }
+
+    /// <summary>EA-06: lean execution.position.scan → dashboard view.</summary>
+    public static PositionScannedView ToPositionScanned(Mt5PositionScannedMessage msg, string agentId)
+    {
+        return new PositionScannedView(
+            AccountId: msg.AccountId,
+            AgentId: agentId,
+            BrokerPositionId: msg.BrokerPositionId,
+            Symbol: msg.Symbol,
+            Side: LowercaseSide(msg.Side),
+            Volume: msg.Volume,
+            MagicNumber: msg.MagicNumber,
+            IsExternal: msg.IsExternal,
+            KnownCommandId: msg.KnownCommandId,
+            ScannedAt: Iso(msg.Time));
+    }
 }

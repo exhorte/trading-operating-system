@@ -7,6 +7,7 @@ import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 import { ConnectionBadge } from "./connection-badge";
 import { NewsCalendarBadge } from "./news-calendar-badge";
 import { PersistenceHealthBadge } from "./persistence-health-badge";
+import { ComplianceBadge } from "./compliance-badge";
 import { pageTitleFor } from "./nav";
 
 const ENV_BADGE: Record<Environment, { label: string; tone: PillTone }> = {
@@ -41,6 +42,9 @@ export function TopCommandBar({ onToggleSidebar }: { onToggleSidebar: () => void
         <span className="hidden rounded border border-border bg-surface-elevated px-2 py-1 text-xs text-muted sm:inline">
           {marketContext?.symbol ?? "XAUUSD"}
         </span>
+        {/* T07: the KPI charter.md asks for (principe 2 — compliance, not
+            P&L), placed first among the status pills for that reason. */}
+        <ComplianceBadge />
         <NewsCalendarBadge />
         <StatusPill tone={env.tone} pulse>
           {env.label}

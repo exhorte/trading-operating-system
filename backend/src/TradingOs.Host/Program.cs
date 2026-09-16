@@ -30,6 +30,9 @@ builder.Services.AddSingleton(new NewsCalendarRepository(connectionString));
 builder.Services.AddSingleton(new TradeCaptureRepository(connectionString));
 builder.Services.AddSingleton(new CandleRepository(connectionString));
 builder.Services.AddSingleton(new SetupProposalRepository(connectionString));
+builder.Services.AddSingleton(new ExecutionDivergenceRepository(connectionString));
+builder.Services.AddSingleton(new JournalRepository(connectionString));
+builder.Services.AddSingleton(new RiskLockoutHistoryRepository(connectionString));
 builder.Services.AddHttpClient("fred");
 builder.Services.AddHostedService<GatewayBridgeService>();
 builder.Services.AddHostedService<NewsCalendarService>();
@@ -170,6 +173,59 @@ app.MapGet("/api/trades/closed", async (
     catch (Exception ex)
     {
         logger.LogError(ex, "/api/trades/closed failed");
+        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
+    }
+});
+app.MapGet("/api/journal/trades", async (
+    JournalRepository repository,
+    ILogger<Program> logger,
+    CancellationToken ct,
+    string accountId,
+    DateTime from,
+    DateTime to) =>
+{
+    try
+    {
+        return Results.Ok(await repository.GetTradesAsync(accountId, from, to, ct));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "/api/journal/trades failed");
+        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
+    }
+});
+app.MapGet("/api/risk/lockouts", async (
+    RiskLockoutHistoryRepository repository,
+    ILogger<Program> logger,
+    CancellationToken ct,
+    string accountId,
+    DateTime to) =>
+{
+    try
+    {
+        return Results.Ok(await repository.GetUpToAsync(accountId, to, ct));
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "/api/risk/lockouts failed");
+        return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
+    }
+});
+app.MapGet("/api/execution/divergence", async (
+    ExecutionDivergenceRepository repository,
+    ILogger<Program> logger,
+    CancellationToken ct,
+    string accountId) =>
+{
+    try
+    {
+        var externalPositions = await repository.GetExternalPositionsAsync(accountId, ct);
+        var reconciliations = await repository.GetReconciliationsAsync(accountId, ct);
+        return Results.Ok(new { externalPositions, reconciliations });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "/api/execution/divergence failed");
         return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
     }
 });
