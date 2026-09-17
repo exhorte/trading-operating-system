@@ -58,3 +58,7 @@ tools/mt5-execution-agent/tradingos_commands*.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# T08 — generated weekly review documents (personal trading data, not
+# source; regenerate with `npm run weekly-review`)
+/weekly-reviews/

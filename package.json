@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "mcp": "tsx tools/mcp-server/index.ts"
+    "mcp": "tsx tools/mcp-server/index.ts",
+    "weekly-review": "tsx tools/weekly-review/index.ts"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.0",

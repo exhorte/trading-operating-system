@@ -6,6 +6,47 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-17 (suite — **T08 livré**, revue hebdomadaire ; **Vague 2 complète**)
+
+Choisi par défaut sur « phase suivante » (dernier des quatre outils de
+Vague 2 identifiés ; le second incident de lockout signalé juste avant est
+resté sans réponse de l'utilisateur, noté comme toujours ouvert dans
+`state.md` plutôt que relancé). Fiche écrite en corrigeant deux formulations
+T04 de catalogue.md : « ticket pré-trade » en regard des pires trades →
+lien vers la capture T05 ; « comparaison plan/exécution » → abandonnée,
+pas remplacée (la donnée qu'elle comparait n'existe plus).
+
+Quatre décisions validées (« valide les quatre, enchaîne sur les
+incréments ») : sortie Markdown, pas une page cockpit ni un PDF ;
+génération à la demande (aucune planification n'existe dans ce dépôt,
+catalogue.md accepte explicitement « CLI ») ; pires trades par P&L le plus
+négatif ; comparaison plan/exécution abandonnée.
+
+Trois incréments, gates vertes (tsc, lint, vitest 206/206, `next build`) :
+calcul pur (`tools/weekly-review/stats.ts`) ; rendu Markdown pur
+(`render.ts`) ; script + `npm run weekly-review` + `weekly-reviews/`
+ignoré par git (données personnelles générées, pas du code). Au passage :
+`tools/mcp-server/backend-client.ts` déplacé vers
+`tools/shared/backend-client.ts`, réutilisé à l'identique par T15 et T08 —
+T15 revérifié après coup (même handshake MCP qu'à sa livraison, toujours
+vert).
+
+**Vérifié contre de vraies données, document généré relu.**
+`TRADING_OS_ACCOUNT_ID=477029930 npm run weekly-review -- --from=2026-09-14 --to=2026-09-16`
+contre le backend réel : 9 trades, P&L net +$25,27, 6 violations
+`LOCKOUT_ACTIVE` — exactement la somme des deux incidents connus (5 + 1).
+Fichier Markdown relu ligne par ligne : ventilation par symbole, taux de
+conformité (33 %), 3 pires trades avec liens de capture, tout correct.
+
+**Vague 2 est maintenant complète** : T06, T07, T15, T08 tous livrés. Son
+critère de sortie (roadmap.md — taux de conformité affiché automatiquement
+en haut du cockpit) est rempli par `ComplianceBadge` (T07). `state.md`
+reconsolidé au passage (la section « En une phrase » avait accumulé le
+détail de quatre livraisons consécutives — recentrée sur l'instantané,
+l'historique reste dans ce journal et dans chaque fiche).
+
+---
+
 ## 2026-09-17 (**T15 livré** — serveur MCP ; second incident de lockout découvert en testant)
 
 Session redémarrée (Docker/backend retombés, rien perdu — le commit

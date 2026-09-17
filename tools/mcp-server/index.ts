@@ -16,7 +16,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { fetchJson, requiredAccountId } from "./backend-client.js";
+import { fetchJson, requiredAccountId } from "../shared/backend-client.js";
 import { evaluateTrade, complianceRate, type ComplianceTradeInput } from "@/lib/compliance/evaluate";
 import type { LockoutWindow } from "@/lib/compliance/violations";
 import { defaultRiskPolicy } from "@/lib/risk/policy";

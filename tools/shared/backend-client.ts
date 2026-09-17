@@ -1,10 +1,15 @@
 /**
- * T15 — thin HTTP client over the existing TradingOs.Host REST API. Every
- * tool in this server is a passthrough to an endpoint the cockpit already
- * calls — no direct Postgres or MT5 access from this process (fiche
- * Décision 2). backendHttpBase() is the same function the cockpit itself
- * uses; nothing browser-specific in it (plain process.env + string
- * manipulation), so it works unchanged in this Node process.
+ * Thin HTTP client over the existing TradingOs.Host REST API, shared by the
+ * standalone tsx scripts under tools/ (T15's MCP server, T08's weekly
+ * review) that need to read backend data without a browser. Not lib/:
+ * requiredAccountId() reads a plain (non-NEXT_PUBLIC_) env var, so it would
+ * silently resolve to undefined if ever imported into browser-rendered
+ * code — this file is standalone-script-only by construction, never a
+ * candidate for reuse from app/ or components/.
+ *
+ * backendHttpBase() itself IS the same function the cockpit uses
+ * (lib/realtime/backend-url.ts) — nothing browser-specific in it (plain
+ * process.env + string manipulation), so it works unchanged here.
  */
 
 import { backendHttpBase } from "@/lib/realtime/backend-url";
@@ -45,13 +50,14 @@ export async function fetchJson<T>(
   return (await res.json()) as T;
 }
 
-/** Configured once per fiche Décision — never asked per tool call
- *  (« usage strictement personnel », charter.md). */
+/** Configured once per environment — never asked per call (« usage
+ *  strictement personnel », charter.md). Every standalone script under
+ *  tools/ that needs an accountId reads it from here, not its own copy. */
 export function requiredAccountId(): string {
   const accountId = process.env.TRADING_OS_ACCOUNT_ID;
   if (!accountId) {
     throw new Error(
-      "TRADING_OS_ACCOUNT_ID is not set. Configure it in this MCP server's environment — see tools/mcp-server/README.md.",
+      "TRADING_OS_ACCOUNT_ID is not set. Configure it in this script's environment.",
     );
   }
   return accountId;

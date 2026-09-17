@@ -8,30 +8,19 @@ dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
 Poste de travail personnel pour trader intraday, sorti de la recherche
 d'edge (ADR 0002). T01 et T04 ont été retirés le 2026-09-14 (décision
 explicite) ; le critère de sortie de Vague 1 a été reformulé le même jour et
-**n'est toujours pas rempli, et son ampleur réelle vient de doubler** — un
-second incident de lockout contourné (5 trades, 2026-09-14) a été découvert
-le 2026-09-17 en testant T15, s'ajoutant au trade isolé du 2026-09-15 déjà
-connu. Voir « Ce qui bloque ». La priorité reste
-l'**agent d'exécution MT5** (ADR 0010), construit jusqu'au mode CONFIRM
-uniquement. Phase 0 et EA-01 à **EA-06 sont livrés**. EA-05 incrément 6
-(2026-09-15, sur accord explicite séparé) : le dépôt contient désormais **un**
-`OrderSend`, unique, **structurellement inatteignable hors `CONFIRM`** — et le
-mode est une constante de compilation figée à `OBSERVE`, jamais affectée. Il
-n'a donc jamais tourné contre un broker, même en démo. EA-06 (2026-09-16, sur
-« valide les deux, enchaîne sur les incréments ») ajoute la résolution
-d'`UNKNOWN` et le signalement `EXTERNAL_POSITION` — la seconde tourne déjà en
-réel (`PositionsTotal()` ne dépend pas du mode), la première reste sans
-trafic tant qu'`OrderSend` est inatteignable. Ouvrir `CONFIRM` est EA-07.
-**T06 livré le 2026-09-16** (Vague 2, choisi explicitement par l'utilisateur
-plutôt qu'EA-07 ou la clôture de Vague 1) : `/journal` est maintenant une
-vraie liste filtrable, plus le stub — vérifié contre les vrais trades du
-2026-09-14/15 en appelant l'endpoint directement, jamais vu rendu dans un
-navigateur (aucun agent MT5 connecté à cette session). **T07 livré le
-2026-09-16** : taux de conformité hebdomadaire (`ComplianceBadge`, lockout +
-fenêtre de session + taille). **T15 livré le 2026-09-17** : serveur MCP en
-lecture seule (`tools/mcp-server/`), vérifié par un vrai handshake MCP
-contre des données réelles — c'est ce test qui a révélé le second incident
-de lockout ci-dessus.
+**n'est toujours pas rempli, et son ampleur réelle vient de doubler**
+(2026-09-17, voir « Ce qui bloque ») — priorité au-dessus de tout ce qui
+suit. L'**agent d'exécution MT5** (ADR 0010) est construit jusqu'au mode
+CONFIRM uniquement : Phase 0 et EA-01 à **EA-06 sont livrés**, un seul
+`OrderSend` existe (EA-05 incrément 6), **structurellement inatteignable
+hors `CONFIRM`** (`g_mode` figé à `OBSERVE`, jamais affecté) — il n'a donc
+jamais tourné contre un broker. Ouvrir `CONFIRM` est EA-07, non démarré,
+non demandé, et ses propres préconditions ne sont pas remplies. **Vague 2
+est livrée** (T06 journal, T07 conformité, T15 serveur MCP, T08 revue
+hebdomadaire) — son propre critère de sortie (taux de conformité affiché
+en haut du cockpit) est rempli. Détail de chaque brique dans sa propre
+fiche (`context/product/tools/`) et dans `session-log.md`, pas ici — ce
+fichier reste un instantané.
 
 ## Ce qui existe et fonctionne
 
@@ -52,6 +41,7 @@ jamais tourné contre un vrai terminal** — voir « Ce qui bloque ».
 | Persistance | `backend/src/TradingOs.Persistence/`, `docker-compose.yml` | TimescaleDB port 5433, écriture non bloquante, audit JSONB. |
 | Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; T01 (sizing) et T04 (ticket) retirés le 2026-09-14 (décision explicite), bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03, viewer de capture T05 (`/journal/[brokerPositionId]`). `/journal` (T06, 2026-09-16) : table filtrable + calendrier P&L + ventilations symbole/session/heure/jour, zéro nouvelle table (vue pure sur `closed_trades`/`position_opens`/`trade_captures`/`setup_proposals`) + colonne Violations (T07). `TopCommandBar` porte désormais `ComplianceBadge` (T07, taux de conformité hebdomadaire — la vraie tête de cockpit, charter.md principe 2), à la place où le P&L irait. `/positions` (EA-06) : divergence — positions externes, `UNKNOWN` résolus. |
 | Captures de trade | `lib/journal/`, `components/journal/`, `trade_captures` | T05 : faits immuables écrits par le Gateway (fenêtre, prix), rendu à la demande côté cockpit via `analyzeMarketContext` — jamais une image pré-rendue (ADR 0009). Écriture fiable même sur aller-retour rapide depuis le correctif du 2026-09-15. **Rendu cassé pour tout symbole hors XAUUSDm** (pas de M15 en base pour EURUSD/GBPUSD) — voir « Ce qui bloque ». |
+| Outils standalone | `tools/mcp-server/`, `tools/weekly-review/`, `tools/shared/` | T15 (serveur MCP lecture seule, `npm run mcp`) et T08 (revue hebdomadaire Markdown, `npm run weekly-review`) : deux scripts `tsx` autonomes, toujours via l'API REST existante (`tools/shared/backend-client.ts`, jamais Postgres/MT5 en direct), important `lib/compliance/` plutôt que de le réécrire. |
 
 ## Ce qui a été supprimé le 2026-09-04
 
@@ -105,31 +95,26 @@ une collecte longue. Piste si ça revient : `gmag11/MetaTrader5-Docker`.
 
 ## Prochaine action
 
-**Aucun outil en construction.** La priorité immédiate n'est plus de coder :
-c'est que l'utilisateur prenne connaissance du second incident de lockout
-contourné découvert le 2026-09-17 (voir « Ce qui bloque ») — 5 trades de
-plus que ce qui était documenté, sur le 2026-09-14. Rien à corriger côté
-outillage pour ça ; c'est un fait sur des séances réelles, pas un défaut de
-gate.
+**Vague 2 livrée le 2026-09-17 — les quatre outils identifiés
+(T06/T07/T15/T08) sont tous délivrés**, y compris son propre critère de
+sortie (roadmap.md) : le taux de conformité hebdomadaire se calcule
+automatiquement et s'affiche en haut du cockpit (`ComplianceBadge`, T07).
+Détail de chaque outil dans sa fiche (`context/product/tools/T0{6,7,8}-*.md`,
+`T15-serveur-mcp.md`). **Même limite pour les quatre** : jamais vus rendus
+à l'écran avec de vraies données — vérifiés contre le backend et la base
+réels (appels directs, un vrai handshake MCP pour T15, un document généré
+et relu pour T08), jamais dans un navigateur avec un agent MT5 connecté.
 
-T15 (Vague 2) livré le 2026-09-17 — voir sa fiche pour le détail des 4
-incréments et des quatre décisions validées (Node/TS via `tsx`, jamais
-Python ni un service C# séparé ; toujours via l'API REST existante, jamais
-Postgres/MT5 en direct ; expose des faits, jamais une métrique de
-performance pré-calculée ; taille hors politique hors périmètre — balance
-courante indisponible en REST). Vérifié par un vrai handshake MCP contre
-des données réelles, pas seulement les gates.
+**Plus urgent que la prochaine phase : l'utilisateur n'a toujours pas réagi
+au second incident de lockout contourné**, découvert le 2026-09-17 en
+testant T15 (voir « Ce qui bloque ») — 5 trades de plus que ce qui était
+documenté, sur le 2026-09-14, en plus du trade du 2026-09-15 déjà connu.
+Rien à corriger côté outillage ; c'est un fait sur des séances réelles.
 
-T07 (Vague 2) livré le 2026-09-16 — voir sa fiche pour le détail des 4
-incréments. Trois violations détectées automatiquement (lockout actif,
-fenêtre de session, taille hors politique — approximée sur la balance
-courante) ; une, stop déplacé après l'entrée, reste hors périmètre. Le taux
-de conformité hebdomadaire s'affiche dans `TopCommandBar`
-(`ComplianceBadge`). **Même limite que T06** : jamais vu rendu à l'écran
-avec de vraies données, aucun agent MT5 connecté à cette session.
-
-Vague 2 continue avec T08 (dépend de T06, livré) quand il sera choisi
-explicitement.
+Aucun nouvel outil de roadmap identifié au-delà de Vague 2 pour l'instant —
+la suite (Vague 3, T09+) dépend de T11/T12 (multi-compte, hors périmètre
+tant qu'un deuxième compte prop firm n'existe pas) ou d'un choix explicite
+de l'utilisateur.
 
 T06 (Vague 2) livré le 2026-09-16 — voir sa fiche pour le détail des 4
 incréments et des trois décisions validées (P&L par trade oui,
