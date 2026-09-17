@@ -6,6 +6,56 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-17 (**T15 livré** — serveur MCP ; second incident de lockout découvert en testant)
+
+Session redémarrée (Docker/backend retombés, rien perdu — le commit
+`1299753` était déjà poussé). Choix explicite après reprise : T15 plutôt que
+T08. Fiche écrite en cartographiant d'abord ce qui existe déjà : aucune
+nouvelle donnée nécessaire, tout passe déjà par du REST
+(`/api/journal/trades`, `/api/risk/lockouts`, `/api/candles`,
+`/api/setup-proposals`, `/api/execution/divergence`) — la seule vraie
+question était où vit la logique de conformité T07, puisqu'elle n'est
+persistée nulle part (calculée côté navigateur, à la demande).
+
+Quatre décisions validées (« valide les quatre, enchaîne sur les
+incréments ») : Node/TS via `tsx` (déjà une dépendance,
+`scripts/run-setup-detection.ts` en est le patron), jamais Python (réservé
+à MT5, ADR 0010) ni un service C# séparé — pour pouvoir **importer**
+`lib/compliance/` directement plutôt que la réécrire dans un troisième
+langage ; toujours via l'API REST existante, jamais Postgres/MT5 en
+direct ; le serveur expose des faits, jamais une métrique de performance
+pré-calculée (même ligne qu'ADR 0011) ; taille hors politique hors
+périmètre (balance courante absente du REST).
+
+Quatre incréments, gates vertes (tsc, lint, vitest 206/206, `next build`) :
+squelette + `get_trades`/`get_lockouts`/`get_candles` ;
+`get_setup_proposals`/`get_execution_divergence` ; `get_compliance_violations`
+(import direct de `lib/compliance/evaluate.ts`) ; `tools/mcp-server/README.md`
++ `npm run mcp`.
+
+**Vérifié par un vrai handshake MCP**, pas seulement les gates : messages
+JSON-RPC construits à la main (`initialize`, `tools/call`), backend et
+TimescaleDB relancés après le redémarrage de session, les 6 outils appelés
+contre le vrai compte (477029930) et leurs réponses inspectées.
+
+**En testant `get_compliance_violations` sur toute la plage 2026-09-14/15
+plutôt que sur un seul trade, 5 positions EURUSDm de plus ressortent
+ouvertes pendant un lockout actif** — la gate « Daily loss guard » du
+2026-09-14 (`lockout-mu1af4l7-8lbceb`, verrouillée 13:37:28, jamais
+acquittée avant le lendemain 08:54:25) : 3225706315, 3225729956, 3225966706,
+3226050174, 3226089957. Jamais documenté avant ce jour — le seul incident
+connu jusqu'ici était le trade isolé du 2026-09-15. Vérifié à la main
+contre les horodatages bruts avant d'être retenu comme un fait, pas une
+suspicion : une position XAUUSDm ouverte une seconde avant le
+déclenchement du lockout (3225577967) n'est, à raison, pas comptée —
+signe que la détection ne sur-déclenche pas. Ni un bug de T15 ni de T07 :
+un fait réel, resté invisible parce que personne n'avait encore posé cette
+question précise sur toute la plage. `state.md` mis à jour en conséquence
+(« Ce qui bloque » — l'ampleur du problème double, pas la conclusion :
+Vague 1 était déjà ouverte).
+
+---
+
 ## 2026-09-16 (suite — **T07 livré**, tracker d'erreurs et taux de conformité)
 
 Choisi explicitement après T06 (question ouverte : T07/T15/T08, tous

@@ -1,6 +1,6 @@
 # État du projet
 
-Dernière mise à jour : 2026-09-16. Instantané seulement — l'historique vit
+Dernière mise à jour : 2026-09-17. Instantané seulement — l'historique vit
 dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
 
 ## En une phrase
@@ -8,7 +8,10 @@ dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
 Poste de travail personnel pour trader intraday, sorti de la recherche
 d'edge (ADR 0002). T01 et T04 ont été retirés le 2026-09-14 (décision
 explicite) ; le critère de sortie de Vague 1 a été reformulé le même jour et
-**n'est toujours pas rempli** — voir « Ce qui bloque ». La priorité reste
+**n'est toujours pas rempli, et son ampleur réelle vient de doubler** — un
+second incident de lockout contourné (5 trades, 2026-09-14) a été découvert
+le 2026-09-17 en testant T15, s'ajoutant au trade isolé du 2026-09-15 déjà
+connu. Voir « Ce qui bloque ». La priorité reste
 l'**agent d'exécution MT5** (ADR 0010), construit jusqu'au mode CONFIRM
 uniquement. Phase 0 et EA-01 à **EA-06 sont livrés**. EA-05 incrément 6
 (2026-09-15, sur accord explicite séparé) : le dépôt contient désormais **un**
@@ -23,7 +26,12 @@ trafic tant qu'`OrderSend` est inatteignable. Ouvrir `CONFIRM` est EA-07.
 plutôt qu'EA-07 ou la clôture de Vague 1) : `/journal` est maintenant une
 vraie liste filtrable, plus le stub — vérifié contre les vrais trades du
 2026-09-14/15 en appelant l'endpoint directement, jamais vu rendu dans un
-navigateur (aucun agent MT5 connecté à cette session).
+navigateur (aucun agent MT5 connecté à cette session). **T07 livré le
+2026-09-16** : taux de conformité hebdomadaire (`ComplianceBadge`, lockout +
+fenêtre de session + taille). **T15 livré le 2026-09-17** : serveur MCP en
+lecture seule (`tools/mcp-server/`), vérifié par un vrai handshake MCP
+contre des données réelles — c'est ce test qui a révélé le second incident
+de lockout ci-dessus.
 
 ## Ce qui existe et fonctionne
 
@@ -53,13 +61,31 @@ et raisons : `context/project/pivot-2026-09-04.md`.
 ## Ce qui bloque
 
 **Le critère de sortie de Vague 1 (reformulé le 2026-09-14) n'est pas
-rempli.** Sur ses trois points : le kill switch a été déclenché et acquitté
-pour de vrai (2026-09-15, cycle complet vérifié dans `risk_lockouts` +
-`kill_switch_acks`) ; les captures tiennent sur un aller-retour de 60 s
-(2026-09-15, voir T05) ; mais **une position EURUSDm a été ouverte à
-09:36:00 UTC pendant que le lockout kill-switch était actif (09:34:44 →
-09:37:18)** — exactement ce que le critère existe pour détecter. La vague
-reste ouverte.
+rempli — et c'est plus large qu'on ne le pensait.** Sur ses trois points :
+le kill switch a été déclenché et acquitté pour de vrai (2026-09-15, cycle
+complet vérifié dans `risk_lockouts` + `kill_switch_acks`) ; les captures
+tiennent sur un aller-retour de 60 s (2026-09-15, voir T05) ; mais une
+position EURUSDm a été ouverte à 09:36:00 UTC le 2026-09-15 pendant que le
+lockout kill-switch était actif (09:34:44 → 09:37:18) — exactement ce que
+le critère existe pour détecter. La vague reste ouverte.
+
+**Second incident, découvert le 2026-09-17 en testant T15 — jamais
+documenté avant ce jour.** `get_compliance_violations` (T15, réutilise T07)
+interrogé sur toute la plage 2026-09-14/15 fait remonter **5 trades EURUSDm
+ouverts pendant que la gate « Daily loss guard » était active**, du
+2026-09-14 (`lockout-mu1af4l7-8lbceb`, verrouillé 13:37:28, jamais acquitté
+— levée seulement le lendemain matin 08:54:25) : positions 3225706315
+(13:49:49), 3225729956 (13:52:36), 3225966706 (14:19:50), 3226050174
+(14:29:21), 3226089957 (14:35:04) — toutes après le déclenchement, toutes
+avant la levée du lendemain. Vérifié à la main contre les horodatages bruts
+avant d'être retenu (détail dans le journal de T15) : une position
+XAUUSDm ouverte une seconde **avant** le déclenchement (3225577967,
+13:36:35.861) n'est, à raison, pas comptée. Ni bug de T15 ni de T07 — un
+fait réel sur des données réelles, invisible jusqu'ici parce que personne
+n'avait encore posé cette question précise sur toute la plage plutôt que
+sur un seul trade isolé. Le critère de sortie de Vague 1 était déjà non
+rempli ; ceci ne change pas la conclusion, mais en révèle l'ampleur réelle
+— six trades sur deux jours, pas un.
 
 **T02a/T02b, précision utile pour EA-07** : le kill switch et la gate
 « Daily loss guard » ont tous deux tourné en réel plusieurs fois (verrouillage
@@ -79,25 +105,31 @@ une collecte longue. Piste si ça revient : `gmag11/MetaTrader5-Docker`.
 
 ## Prochaine action
 
-**Aucun outil en construction.** T07 (Vague 2) livré le 2026-09-16 — voir sa
-fiche pour le détail des 4 incréments. Trois violations détectées
-automatiquement (lockout actif, fenêtre de session, taille hors politique —
-approximée sur la balance courante) ; une, stop déplacé après l'entrée,
-reste hors périmètre : rien ne trace les modifications de position
-aujourd'hui, ce n'est pas un sous-produit de T07. Trouvaille de cartographie
-retenue en évitant un bug plutôt qu'en le corrigeant après coup :
-`evaluateSignalRisk` (`lib/risk/sizing.ts`) code en dur le facteur XAUUSD et
-aurait donné un faux verdict sur la majorité des trades réels
-(EURUSD/GBPUSD) si réutilisée telle quelle — remplacée par une formule
-générique par symbole (`symbolMetadata`). Le taux de conformité hebdomadaire
-s'affiche désormais dans `TopCommandBar` (`ComplianceBadge`), vérifié contre
-le vrai lockout kill-switch du 2026-09-15 par un test unitaire construit sur
-les données réelles de `risk_lockouts`. **Même limite que T06** : jamais vu
-rendu à l'écran avec de vraies données, aucun agent MT5 connecté à cette
-session.
+**Aucun outil en construction.** La priorité immédiate n'est plus de coder :
+c'est que l'utilisateur prenne connaissance du second incident de lockout
+contourné découvert le 2026-09-17 (voir « Ce qui bloque ») — 5 trades de
+plus que ce qui était documenté, sur le 2026-09-14. Rien à corriger côté
+outillage pour ça ; c'est un fait sur des séances réelles, pas un défaut de
+gate.
 
-Vague 2 continue avec T15 ou T08 (tous deux dépendent de T06, livré) quand
-l'un sera choisi explicitement.
+T15 (Vague 2) livré le 2026-09-17 — voir sa fiche pour le détail des 4
+incréments et des quatre décisions validées (Node/TS via `tsx`, jamais
+Python ni un service C# séparé ; toujours via l'API REST existante, jamais
+Postgres/MT5 en direct ; expose des faits, jamais une métrique de
+performance pré-calculée ; taille hors politique hors périmètre — balance
+courante indisponible en REST). Vérifié par un vrai handshake MCP contre
+des données réelles, pas seulement les gates.
+
+T07 (Vague 2) livré le 2026-09-16 — voir sa fiche pour le détail des 4
+incréments. Trois violations détectées automatiquement (lockout actif,
+fenêtre de session, taille hors politique — approximée sur la balance
+courante) ; une, stop déplacé après l'entrée, reste hors périmètre. Le taux
+de conformité hebdomadaire s'affiche dans `TopCommandBar`
+(`ComplianceBadge`). **Même limite que T06** : jamais vu rendu à l'écran
+avec de vraies données, aucun agent MT5 connecté à cette session.
+
+Vague 2 continue avec T08 (dépend de T06, livré) quand il sera choisi
+explicitement.
 
 T06 (Vague 2) livré le 2026-09-16 — voir sa fiche pour le détail des 4
 incréments et des trois décisions validées (P&L par trade oui,
