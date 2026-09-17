@@ -90,6 +90,26 @@ export function consecutiveLossGate(
   );
 }
 
+/**
+ * T09 — an execution agent must be reachable before an order is approved.
+ * Until this gate existed, the Risk Engine approved orders without ever
+ * checking that anything could carry them: CockpitHub only discovered it at
+ * send time (AGENT_UNREACHABLE), after approval.
+ *
+ * Deliberately NOT nullable, unlike every other input in this file: the
+ * connection is always knowable (an agent is registered with the Gateway or
+ * it is not), so there is no honest "unknown" third state to report as
+ * "n/a". An absent agent is a definite no, not missing data.
+ */
+export function connectionGate(agentConnected: boolean): RiskGateResult {
+  return result(
+    "gate-connection",
+    "Execution agent",
+    !agentConnected,
+    agentConnected ? "connected" : "no agent connected",
+  );
+}
+
 export function spreadGate(spreadPoints: number | null, policy: RiskPolicy): RiskGateResult {
   if (spreadPoints === null) {
     return result("gate-spread", "Spread gate", false, "n/a (no tick)");

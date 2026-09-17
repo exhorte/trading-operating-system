@@ -12,6 +12,7 @@ import type { RiskMode, RiskState } from "@/lib/domain/risk";
 import { openRiskPercent } from "./open-risk";
 import { WARNING_THRESHOLD } from "./policy";
 import {
+  connectionGate,
   consecutiveLossGate,
   dailyLossGate,
   maxDrawdownGate,
@@ -38,6 +39,7 @@ export function evaluateRiskState(input: RiskEvaluationInput): RiskState {
     tradesToday,
     consecutiveLosses,
     spreadPoints,
+    agentConnected,
     session,
     sessionTradingEnabled,
     upcomingReleases,
@@ -62,6 +64,7 @@ export function evaluateRiskState(input: RiskEvaluationInput): RiskState {
     spreadGate(spreadPoints, policy),
     sessionGate(session, sessionTradingEnabled),
     newsGate(upcomingReleases, now, policy),
+    connectionGate(agentConnected),
   ];
 
   // Account-level lockouts (not the entry-only gates).

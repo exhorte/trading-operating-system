@@ -39,7 +39,7 @@ jamais tourné contre un vrai terminal** — voir « Ce qui bloque ».
 | Comptes et symboles | `lib/accounts/`, `lib/market/symbols/` | EA-04 : `defaultRiskPolicy` résout par compte (registre vide à ce jour — aucun compte FTMO/réel confirmé), registre canonique↔broker EURUSD/GBPUSD/XAUUSD. |
 | Agent d'exécution MT5 | `tools/mt5-execution-agent/`, `backend/src/TradingOs.Gateway/Mt5AgentServer.cs` | EA-05 : connexion, heartbeat, réception, validation locale, persistance `commandId → résultat` sur disque — **vérifiés par l'utilisateur contre un vrai terminal** (2026-09-12). Mode figé à `OBSERVE` par construction. |
 | Persistance | `backend/src/TradingOs.Persistence/`, `docker-compose.yml` | TimescaleDB port 5433, écriture non bloquante, audit JSONB. |
-| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; T01 (sizing) et T04 (ticket) retirés le 2026-09-14 (décision explicite), bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03, viewer de capture T05 (`/journal/[brokerPositionId]`). `/journal` (T06, 2026-09-16) : table filtrable + calendrier P&L + ventilations symbole/session/heure/jour, zéro nouvelle table (vue pure sur `closed_trades`/`position_opens`/`trade_captures`/`setup_proposals`) + colonne Violations (T07). `TopCommandBar` porte désormais `ComplianceBadge` (T07, taux de conformité hebdomadaire — la vraie tête de cockpit, charter.md principe 2), à la place où le P&L irait. `/positions` (EA-06) : divergence — positions externes, `UNKNOWN` résolus. |
+| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; T01 (sizing) et T04 (ticket) retirés le 2026-09-14 (décision explicite), bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03, viewer de capture T05 (`/journal/[brokerPositionId]`). `/journal` (T06, 2026-09-16) : table filtrable + calendrier P&L + ventilations symbole/session/heure/jour, zéro nouvelle table (vue pure sur `closed_trades`/`position_opens`/`trade_captures`/`setup_proposals`) + colonne Violations (T07). `TopCommandBar` porte désormais `ComplianceBadge` (T07, taux de conformité hebdomadaire — la vraie tête de cockpit, charter.md principe 2), à la place où le P&L irait. `/positions` (EA-06) : divergence — positions externes, `UNKNOWN` résolus. `/preflight` (T09) : verdict `Armé`/`Pas armé` sur les 9 gates du Risk Engine, dont le gate de connexion ajouté par T09. |
 | Captures de trade | `lib/journal/`, `components/journal/`, `trade_captures` | T05 : faits immuables écrits par le Gateway (fenêtre, prix), rendu à la demande côté cockpit via `analyzeMarketContext` — jamais une image pré-rendue (ADR 0009). Écriture fiable même sur aller-retour rapide depuis le correctif du 2026-09-15. **Rendu cassé pour tout symbole hors XAUUSDm** (pas de M15 en base pour EURUSD/GBPUSD) — voir « Ce qui bloque ». |
 | Outils standalone | `tools/mcp-server/`, `tools/weekly-review/`, `tools/shared/` | T15 (serveur MCP lecture seule, `npm run mcp`) et T08 (revue hebdomadaire Markdown, `npm run weekly-review`) : deux scripts `tsx` autonomes, toujours via l'API REST existante (`tools/shared/backend-client.ts`, jamais Postgres/MT5 en direct), important `lib/compliance/` plutôt que de le réécrire. |
 
@@ -94,6 +94,24 @@ Friction héritée du 28 juillet 2026 : l'observer a calé une fois (14:03) sur
 une collecte longue. Piste si ça revient : `gmag11/MetaTrader5-Docker`.
 
 ## Prochaine action
+
+**T10 — brief pré-séance automatique (Vague 3)**, suite pré-autorisée
+(« Vague 3 — T09/T10, puis T19 »). Pas encore commencé.
+
+T09 livré le 2026-09-17 : `/preflight` (verdict `Armé` / `Pas armé` +
+points vérifiés) et un **vrai trou bouché au passage** — `connectionGate` :
+jusqu'ici le Risk Engine approuvait un ordre sans jamais vérifier qu'un
+agent d'exécution était joignable, la découverte n'arrivant qu'à l'envoi
+(`AGENT_UNREACHABLE`). Périmètre réduit après cartographie : l'auto-
+vérification, l'affichage par gate et le refus du Risk Engine existaient
+déjà tous les trois.
+
+**Déblocage méthodologique à retenir** : le mode `mock`
+(`NEXT_PUBLIC_REALTIME_SOURCE=mock`, sur un port séparé) permet de voir
+les pages du cockpit rendues **sans backend ni agent MT5**. C'est ce qui
+bloquait la vérification visuelle depuis T05 (`useCockpit().account` reste
+null sans flux live). **T06 et T07, jamais vus à l'écran, peuvent être
+vérifiés de cette façon** — à faire.
 
 **Vague 2 livrée le 2026-09-17 — les quatre outils identifiés
 (T06/T07/T15/T08) sont tous délivrés**, y compris son propre critère de

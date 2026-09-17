@@ -125,6 +125,7 @@ export function mockRiskContext(
     consecutiveLosses: 1,
     // wide_spread: above the 40-pt policy limit → spread gate blocks entries.
     spreadPoints: scenario === "wide_spread" ? 55 : 21,
+    agentConnected: true,
     // closed_session: NY PM disabled → session gate blocks entries.
     session: scenario === "closed_session" ? "new_york_pm" : "new_york_am",
     sessionTradingEnabled: scenario !== "closed_session",

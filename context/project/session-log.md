@@ -6,6 +6,56 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-17 (suite — **T09 livré** ; premier rendu vérifié à l'écran depuis T05)
+
+Choisi avec sa suite pré-autorisée (« Vague 3 — T09/T10, puis T19 »).
+
+**La cartographie a réduit l'outil avant d'écrire une ligne.** Trois des
+promesses de la fiche d'origine existaient déjà : `evaluateRiskState`
+exécute 8 gates tout seul, `RiskStatusPanel` les affiche déjà un par un, et
+`evaluateSignalRisk` refuse déjà sur le premier gate bloqué — « tant que
+tout n'est pas vert, le Risk Engine refuse » était **déjà vrai**. Restaient
+un gate manquant, un verdict agrégé et une page.
+
+**Le gate manquant était un vrai trou** : jusqu'ici le Risk Engine
+approuvait un ordre sans jamais vérifier qu'un agent d'exécution était
+joignable — `CockpitHub` ne le découvrait qu'à l'envoi
+(`AGENT_UNREACHABLE`), après approbation. `connectionGate` comble ça, en
+gate d'entrée (pas un lockout de compte). Champ `agentConnected` **non
+nullable** à dessein, contre la convention des voisins : la connexion est
+toujours connue, il n'y a pas de « n/a » honnête à rapporter. Le rendre
+requis a fait remonter ses 6 sites d'appel par le typage.
+
+Deux items de la fiche d'origine retirés ou reformulés (« plan écrit » —
+T04, mort ; « verrous armés » → « aucun lockout actif »), un reporté
+(normes de spread par heure : n'existent que dans `analyze_spread.py`,
+explicitement marqué throwaway Phase 0), un seuil non dupliqué (blackout
+news gardé à 30 min, celui de la policy, plutôt que les 60 de la fiche —
+deux chiffres pour une règle, c'est deux vérités).
+
+**Limite énoncée dans l'UI, pas seulement dans la fiche** : le verdict ne
+porte que sur ce qui passe par ce système ; un ordre saisi directement dans
+MT5 n'est contraint par aucun de ces points. Les 6 trades des 2026-09-14/15
+sont exactement ce cas — « Armé » ne doit pas laisser croire davantage.
+
+**Déblocage méthodologique, qui vaut au-delà de T09.** Premier rendu
+réellement vérifié à l'écran depuis T05 : un serveur de dev lancé en mode
+`mock` sur un port séparé (`.env.local` de l'utilisateur laissé intact)
+affiche les pages **sans backend ni agent MT5**. C'est exactement ce qui
+bloquait depuis T06 (`useCockpit().account` reste null sans flux live, donc
+squelette perpétuel). Les deux états de `/preflight` vus pour de vrai :
+`Armé` (9 gates au vert, dont `Execution agent — connected`) puis, en
+basculant temporairement le mock, `Pas armé` (pastille rouge, point
+bloquant listé) — puis reverté. **T06 et T07, jamais vus, peuvent être
+vérifiés de la même façon.**
+
+Trouvaille d'environnement au passage, sans rapport avec le code : 404 sur
+`/preflight` *et* `/journal` (route pourtant livrée et vue plus tôt) alors
+que `/` répondait 200 — un `.next` périmé, laissé par des `npm run build`
+de production intercalés entre des serveurs de dev. `rm -rf .next` répare.
+
+---
+
 ## 2026-09-17 (suite — **T08 livré**, revue hebdomadaire ; **Vague 2 complète**)
 
 Choisi par défaut sur « phase suivante » (dernier des quatre outils de

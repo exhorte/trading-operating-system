@@ -1,12 +1,21 @@
 # Backlog — T06 à T19 et outils standalone
 
-Ces outils n'ont pas encore de fiche. Une fiche s'écrit au moment de démarrer l'outil, pas avant : une fiche rédigée trois mois trop tôt décrit un problème qui a changé.
+Une fiche s'écrit au moment de démarrer l'outil, pas avant : une fiche
+rédigée trois mois trop tôt décrit un problème qui a changé.
+
+**Cinq ont depuis été démarrés et livrés** — T06, T07, T08, T09, T15 — et
+leur fiche fait foi désormais (`tools/T0{6,7,8,9}-*.md`, `T15-serveur-mcp.md`).
+Les descriptions ci-dessous sont **celles d'avant construction** : là où
+elles divergent de ce qui existe, c'est la fiche qui est à jour, pas ce
+fichier. Les écarts ont tous été notés dans les fiches concernées (le plus
+fréquent : du vocabulaire hérité de T04, retiré le 2026-09-14, qui supposait
+un plan déclaré).
 
 Le raisonnement complet de chacun est dans `catalogue.md`. Ce fichier n'en garde que l'essentiel et le statut.
 
 ## Vague 2 — fermer la boucle d'apprentissage
 
-**T06 — Journal auto-alimenté, zéro saisie** · 3–5 j · valeur 5 · dépend de T05
+**T06 — Journal auto-alimenté, zéro saisie** · 3–5 j · valeur 5 · dépend de T05 · **livré le 2026-09-16**
 **Recadré le 2026-09-14** (T04 retiré, raisonnement complet dans `roadmap.md`) :
 les trades viennent de TimescaleDB (`closed_trades`/`position_opens`), les
 images des captures (T05), et — quand ça coïncide — le contexte machine
@@ -20,7 +29,7 @@ expectancy / profit factor. Ventilations possibles sans ticket : symbole,
 session, heure d'entrée, jour de la semaine — pas de ventilation par
 confiance déclarée, elle n'existe plus.
 
-**T07 — Tracker d'erreurs et taux de conformité** · 1–2 j · valeur 5 · dépend de T06
+**T07 — Tracker d'erreurs et taux de conformité** · 1–2 j · valeur 5 · dépend de T06 · **livré le 2026-09-16**
 **Taxonomie à réviser le jour où T07 démarre** (T04 retiré) : *« trade hors
 plan »* et *« absence de ticket »* supposaient un plan déclaré, qui n'existe
 plus. Reste détectable sans déclaration préalable : stop déplacé après
@@ -29,15 +38,15 @@ fenêtre horaire. Sortie : une courbe unique, le taux de conformité
 hebdomadaire **au Risk Engine** (plus au plan, qui n'est plus une donnée),
 affiché en haut du cockpit à la place du P&L.
 
-**T15 — Serveur MCP « mon trading »** · 1–2 j · valeur 4 · dépend de T06
+**T15 — Serveur MCP « mon trading »** · 1–2 j · valeur 4 · dépend de T06 · **livré le 2026-09-17**
 Serveur MCP **en lecture seule** exposant trades, tickets, erreurs, statistiques, bougies. Permet de poser les questions en langage naturel sans construire une interface par question. Remplace 80 % de ce que ferait T19 pour 5 % de l'effort. Référence de protocole : `ariadng/metatrader-mcp-server` (MIT) — **sans en brancher la partie exécution** (ADR 0005).
 
-**T08 — Revue hebdomadaire générée** · 1–2 j · valeur 4 · dépend de T06
+**T08 — Revue hebdomadaire générée** · 1–2 j · valeur 4 · dépend de T06 · **livré le 2026-09-17**
 Générée le vendredi soir : statistiques, taux de conformité, les trois pires trades avec leur ticket en regard du résultat, les trois erreurs les plus fréquentes. Un document qui se lit une fois et se garde, pas un tableau de bord.
 
 ## Vague 3 — poste de travail complet
 
-**T09 — Checklist de pré-vol exécutable** · 1–2 j · valeur 4 · dépend de T03
+**T09 — Checklist de pré-vol exécutable** · 1–2 j · valeur 4 · dépend de T03 · **livré le 2026-09-17**
 Pas un document à cocher : une checklist dont le système vérifie lui-même les items (compte connecté, spread dans la norme, DD restant suffisant, pas de blackout dans les 60 min, plan écrit, verrous armés). Tant que tout n'est pas vert, la séance n'est pas « armée » et le Risk Engine refuse.
 
 **T10 — Brief pré-séance automatique** · 2–3 j · valeur 4 · dépend de T03

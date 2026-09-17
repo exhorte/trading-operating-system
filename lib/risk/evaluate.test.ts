@@ -13,6 +13,7 @@ const base: RiskEvaluationInput = {
   tradesToday: 0,
   consecutiveLosses: 0,
   spreadPoints: 20,
+  agentConnected: true,
   session: "london",
   sessionTradingEnabled: true,
   upcomingReleases: [],
@@ -80,5 +81,23 @@ describe("evaluateRiskState", () => {
   it("stays open outside the window with a known, empty-near-term calendar", () => {
     const state = evaluateRiskState({ ...base, upcomingReleases: [] });
     expect(state.gates.find((g) => g.gateId === "gate-news")?.state).toBe("open");
+  });
+
+  // T09 — until this gate existed, the engine approved orders without ever
+  // checking that anything could carry them.
+  it("blocks entries when no execution agent is connected", () => {
+    const state = evaluateRiskState({ ...base, agentConnected: false });
+    expect(state.gates.find((g) => g.gateId === "gate-connection")?.state).toBe("blocked");
+  });
+
+  it("treats a missing agent as an entry gate, not an account lockout", () => {
+    const state = evaluateRiskState({ ...base, agentConnected: false });
+    expect(state.mode).toBe("normal");
+    expect(state.lockoutReason).toBeNull();
+  });
+
+  it("opens the connection gate when an agent is connected", () => {
+    const state = evaluateRiskState({ ...base, agentConnected: true });
+    expect(state.gates.find((g) => g.gateId === "gate-connection")?.state).toBe("open");
   });
 });

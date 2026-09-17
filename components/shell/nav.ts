@@ -18,6 +18,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { label: "Command Center", href: "/", icon: "grid", section: "operate" },
+  { label: "Pré-vol", href: "/preflight", icon: "shield", section: "operate" },
   { label: "Market Context", href: "/market-context", icon: "chart", section: "operate" },
   { label: "Positions", href: "/positions", icon: "layers", section: "operate" },
   { label: "Risk Monitor", href: "/risk", icon: "shield", section: "operate" },

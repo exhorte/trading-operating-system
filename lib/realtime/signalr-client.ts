@@ -381,7 +381,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
    *  consecutive-loss streak (T02b). The lockout ledger — not this
    *  computation — decides "locked right now" (see applyActiveLockout). */
   private recomputeRisk(): void {
-    const { account, positions, activeLockout, upcomingReleases } = this.store.getSnapshot();
+    const { account, positions, activeLockout, upcomingReleases, agents } = this.store.getSnapshot();
     if (!account || this.baselineBalance === null || this.baselineEquity === null) {
       return;
     }
@@ -392,6 +392,9 @@ export class SignalRRealtimeClient implements RealtimeClient {
         : null;
     const nowIso = new Date().toISOString();
     const session = sessionForTimestamp(nowIso, DEFAULT_SESSION_WINDOWS);
+    // T09: an empty agent list is "no agent connected", not "unknown" — the
+    // hub tells us about every agent it knows, so nothing here is a guess.
+    const agentConnected = agents.some((agent) => agent.state === "connected");
     const computed = evaluateRiskState({
       policy,
       initialBalance: this.baselineBalance,
@@ -407,6 +410,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
       tradesToday: this.tradesToday,
       consecutiveLosses: this.consecutiveLosses,
       spreadPoints,
+      agentConnected,
       session,
       sessionTradingEnabled: sessionEnabled(session, DEFAULT_SESSION_WINDOWS),
       upcomingReleases,

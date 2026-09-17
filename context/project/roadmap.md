@@ -37,16 +37,18 @@ trades EURUSD pris pendant un lockout actif — et ne clôt donc pas la vague.
 Ce n'est pas un échec caché : c'est exactement ce que ce critère existe pour
 détecter.
 
-## Vague 2 — fermer la boucle d'apprentissage
+## Vague 2 — fermer la boucle d'apprentissage · **livrée le 2026-09-17**
 
-| Outil | Effort | Valeur | Dépend de |
-|---|---|---|---|
-| T06 — Journal auto-alimenté, zéro saisie | 3–5 j | 5 | T05 (T04 retiré, voir note) |
-| T07 — Tracker d'erreurs et taux de conformité | 1–2 j | 5 | T06 (portée réduite, voir note) |
-| T15 — Serveur MCP « mon trading » (lecture seule) | 1–2 j | 4 | T06 |
-| T08 — Revue hebdomadaire générée | 1–2 j | 4 | T06 |
+| Outil | Effort | Valeur | Dépend de | Statut |
+|---|---|---|---|---|
+| T06 — Journal auto-alimenté, zéro saisie | 3–5 j | 5 | T05 (T04 retiré, voir note) | livré 2026-09-16 |
+| T07 — Tracker d'erreurs et taux de conformité | 1–2 j | 5 | T06 (portée réduite, voir note) | livré 2026-09-16 |
+| T15 — Serveur MCP « mon trading » (lecture seule) | 1–2 j | 4 | T06 | livré 2026-09-17 |
+| T08 — Revue hebdomadaire générée | 1–2 j | 4 | T06 | livré 2026-09-17 |
 
-**Total : 6 à 11 jours.**
+**Total estimé : 6 à 11 jours.** Le détail de ce qui a réellement été
+construit, et des écarts avec ce qui est décrit ici, vit dans les quatre
+fiches (`product/tools/`) — pas dans ce fichier, qui reste le plan.
 
 **T06 recadré le 2026-09-14, suite au retrait de T04.** La fiche d'origine
 disait *« les trades viennent de TimescaleDB, le contexte du ticket pré-trade,
@@ -78,22 +80,43 @@ trade**, qui n'existe plus comme donnée.
 
 **Critère de sortie** : le taux de conformité hebdomadaire — dans sa version
 réduite ci-dessus — est calculé automatiquement et affiché en haut du
-cockpit.
+cockpit. **Rempli le 2026-09-16** (`ComplianceBadge`, T07).
 
-## Vague 3 — poste de travail complet
+**Correction au passage, la prédiction ci-dessus était trop optimiste sur un
+point** : « respect du stop (jamais élargi après l'entrée) » a été trouvé
+**non détectable** en construisant T07 — rien ne trace les modifications de
+stop-loss après l'ouverture d'une position (`execution.modify` existe dans
+le protocole wire mais n'a jamais été câblé, et l'observer ne compare pas
+les stops entre deux sondages). T07 livre donc trois violations, pas
+quatre : lockout actif, fenêtre de session, taille hors politique. Le stop
+déplacé reste hors périmètre tant qu'un suivi des modifications de position
+n'existe pas.
 
-| Outil | Effort | Valeur | Dépend de |
-|---|---|---|---|
-| T09 — Checklist de pré-vol exécutable | 1–2 j | 4 | T03 |
-| T10 — Brief pré-séance automatique | 2–3 j | 4 | T03 |
-| T11 — Multi-compte natif | 1–2 sem | 3 | — |
-| T12 — Prop Firm Control Center | 1–2 sem | 5 | T11 |
-| T13 — Simulateur de règles pré-trade | 1–2 j | 4 | T12 |
-| T14 — Alertes en lecture seule | 1 j | 3 | T12 (partiel) |
+## Vague 3 — poste de travail complet · **commencée le 2026-09-17**
+
+| Outil | Effort | Valeur | Dépend de | Statut |
+|---|---|---|---|---|
+| T09 — Checklist de pré-vol exécutable | 1–2 j | 4 | T03 | livré 2026-09-17 |
+| T10 — Brief pré-séance automatique | 2–3 j | 4 | T03 | à faire |
+| T11 — Multi-compte natif | 1–2 sem | 3 | — | à faire |
+| T12 — Prop Firm Control Center | 1–2 sem | 5 | T11 | à faire |
+| T13 — Simulateur de règles pré-trade | 1–2 j | 4 | T12 | à faire |
+| T14 — Alertes en lecture seule | 1 j | 3 | T12 (partiel) | à faire |
 
 **Total : 3 à 5 semaines.** T11 a une valeur propre faible mais débloque T12, qui vaut 5.
 
-**Déclencheur d'anticipation** : si un deuxième compte prop firm est ouvert avant la fin de la Vague 2, T11 et T12 remontent immédiatement en tête.
+**Déclencheur d'anticipation** : si un deuxième compte prop firm est ouvert,
+T11 et T12 remontent immédiatement en tête. (Formulé à l'origine comme
+« avant la fin de la Vague 2 » — celle-ci étant close depuis le 2026-09-17,
+le déclencheur reste valable, sans la borne de temps.)
+
+**T09, note de périmètre** : la fiche d'origine promettait plus que ce que
+l'outil peut tenir. « Tant que tout n'est pas vert, le Risk Engine refuse
+les ordres » était **déjà vrai** avant T09 (chaque gate bloqué refuse déjà),
+et ne contraint de toute façon que ce qui passe par ce système — un ordre
+saisi à la main dans MT5 échappe à tout. T09 a livré la valeur qui restait :
+le rituel (une page, un verdict) et un vrai trou bouché — le gate de
+connexion, absent jusque-là.
 
 ## Vague 4 — intelligence de marché
 

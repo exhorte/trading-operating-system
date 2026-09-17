@@ -33,6 +33,9 @@ export interface RiskEvaluationInput {
   consecutiveLosses: number | null;
   /** Current spread in points; null when unknown. */
   spreadPoints: number | null;
+  /** T09: is an execution agent reachable right now? Not nullable on
+   *  purpose — see connectionGate. */
+  agentConnected: boolean;
   session: TradingSession;
   sessionTradingEnabled: boolean;
   /** T03: null means the FRED calendar cache is absent/stale — the news gate

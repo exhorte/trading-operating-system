@@ -20,6 +20,7 @@ volontaire comme un échec.
 | T07 | Tracker d'erreurs et taux de conformité | 2 | livré (4 incréments, 2026-09-16 — lockout + fenêtre de session + taille, stop déplacé reporté ; rendu navigateur jamais vu, aucun agent MT5 connecté à cette session) |
 | T15 | Serveur MCP « mon trading » (lecture seule) | 2 | livré (4 incréments, 2026-09-17 — vérifié par un vrai handshake MCP contre des données réelles ; a révélé un second incident de lockout contourné, voir `state.md`) |
 | T08 | Revue hebdomadaire générée | 2 | livré (3 incréments, 2026-09-17 — vérifié contre les vraies données du 2026-09-14/15, document Markdown inspecté) |
+| T09 | Checklist de pré-vol exécutable | 3 | livré (3 incréments, 2026-09-17 — `/preflight`, gate de connexion ajouté ; **premier rendu vérifié à l'écran depuis T05**, via le mode `mock`) |
 | S01 | Stratégie « Sweep aligné » | EA | à faire |
 | EA-01 | Détection S01, en TypeScript pur | EA | livré |
 | EA-02 | Mode OBSERVE et taux d'accord | EA | livré (code) |

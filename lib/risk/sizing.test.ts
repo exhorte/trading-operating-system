@@ -15,6 +15,7 @@ const baseState: RiskEvaluationInput = {
   tradesToday: 0,
   consecutiveLosses: 0,
   spreadPoints: 20,
+  agentConnected: true,
   session: "london",
   sessionTradingEnabled: true,
   upcomingReleases: [],
@@ -74,5 +75,25 @@ describe("evaluateSignalRisk", () => {
     });
     expect(decision.approved).toBe(false);
     expect(decision.reason).toContain("Session filter");
+  });
+
+  // T09 — the fiche's load-bearing claim: an order is refused while no agent
+  // is reachable, rather than approved and only failing later at send time
+  // with AGENT_UNREACHABLE.
+  it("rejects when no execution agent is connected", () => {
+    const state = evaluateRiskState({ ...baseState, agentConnected: false });
+    const decision = evaluateSignalRisk({
+      signalId: "sig-4",
+      accountId: "acc-1",
+      entryPrice: 3300,
+      stopLoss: 3290,
+      balance: 1000,
+      state,
+      policy,
+      now: "t",
+    });
+    expect(decision.approved).toBe(false);
+    expect(decision.approvedVolume).toBeNull();
+    expect(decision.reason).toContain("Execution agent");
   });
 });
