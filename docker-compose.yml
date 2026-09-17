@@ -1,8 +1,8 @@
-# Local infrastructure (TimescaleDB persistence).
+# Local infrastructure (TimescaleDB persistence + the .NET backend).
 # TimescaleDB = PostgreSQL + the timescaledb extension, one container.
-#   docker compose up -d      start
-#   docker compose down       stop (data survives in the volume)
-# Runbook: context/backend/persistence.md
+#   docker compose up -d      start both
+#   docker compose down       stop (TimescaleDB's data survives in the volume)
+# Runbook: context/backend/persistence.md, context/infrastructure/runbook.md
 services:
   timescaledb:
     image: timescale/timescaledb:latest-pg17
@@ -23,5 +23,44 @@ services:
       timeout: 3s
       retries: 10
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: src/TradingOs.Host/Dockerfile
+    container_name: tradingos-backend
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    ports:
+      # Host side stays loopback-only — same personal/single-machine posture
+      # as the native `dotnet run` path (Mt5AgentServer's doc comment). The
+      # container binds all interfaces internally (env below) only because
+      # a container's own loopback isn't reachable through Docker's port
+      # mapping; nothing outside 127.0.0.1 on this host can reach either port.
+      - "127.0.0.1:5080:5080"
+      - "127.0.0.1:9765:9765"
+    environment:
+      # Container port 5432 (compose network), not the host-mapped 5433 above.
+      ConnectionStrings__TradingOs: "Host=timescaledb;Port=5432;Database=tradingos;Username=tradingos;Password=tradingos_dev"
+      Cockpit__DashboardOrigin: "http://localhost:3000"
+      # The Python observer + MT5 terminal stay on the Windows host, never
+      # containerized — host.docker.internal is Docker Desktop's built-in
+      # route back to the host (nothing extra to configure on Windows).
+      Cockpit__ObserverUrl: "ws://host.docker.internal:8765"
+      Cockpit__AgentPort: "9765"
+      Cockpit__ListenUrl: "http://0.0.0.0:5080"
+      Cockpit__AgentBindAny: "true"
+
 volumes:
   tradingos-pgdata:
+
+networks:
+  # timescaledb already exists on this network (created before this file
+  # declared a backend service, under a compose project name that predates
+  # the current directory-derived one — checked live via `docker inspect`,
+  # not guessed). Pinning `default` to it, rather than letting compose mint
+  # a fresh `04_code_default`, is what lets `backend` resolve `timescaledb`
+  # by name without recreating the running container or its data volume.
+  default:
+    name: trading_operating_system_algorithmique_default
+    external: true

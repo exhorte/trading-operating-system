@@ -41,13 +41,52 @@ Sans risque : plus aucun code ne les lit. À faire une fois la vérification de 
 
 ## 2. Backend
 
+**Option recommandée depuis le 2026-09-17 — Docker**, dans le même
+`docker compose` que TimescaleDB :
+
+```bash
+docker compose up -d --no-deps --build backend    # première fois / après un changement de code
+docker compose up -d --no-deps backend            # relance simple
+docker logs -f tradingos-backend                  # logs
+```
+
+Pourquoi `--no-deps` : `timescaledb` tourne déjà sous un nom de projet
+compose distinct (`trading_operating_system_algorithmique_default`, vérifié
+via `docker inspect`, pas deviné) — `docker-compose.yml` pointe `default`
+dessus en réseau externe pour que `backend` puisse résoudre `timescaledb`
+par son nom, mais laisser compose gérer aussi `timescaledb` provoquerait un
+conflit de nom de conteneur à chaque fois. `--no-deps` évite d'y toucher.
+
+**Pourquoi Docker plutôt que `dotnet run` sur cette machine** : Smart App
+Control (Windows) bloque le chargement de tout binaire .NET fraîchement
+recompilé — `dotnet build` reste propre, mais `dotnet test`/`dotnet run`/le
+`.exe` refusent de démarrer (`Microsoft-Windows-CodeIntegrity/Operational`,
+« did not meet the Enterprise signing level requirements », refus
+déterministe, pas une vérification en cours). Un conteneur Linux n'est pas
+soumis à cette politique Windows.
+
+**Option native** (fonctionne tant que Smart App Control ne bloque pas) :
+
 ```bash
 cd backend
 dotnet run --project src/TradingOs.Host
 ```
 
-Écoute sur `http://localhost:5080`. Surface HTTP : `/health` et `/api/audit/recent`. Hub SignalR : `/hub/cockpit`.
-(L'endpoint `/api/backtests` a été retiré le 2026-09-04.)
+Les deux écoutent sur `http://localhost:5080`. Surface HTTP : `/health` et
+`/api/audit/recent`. Hub SignalR : `/hub/cockpit`. (L'endpoint
+`/api/backtests` a été retiré le 2026-09-04.)
+
+**Différences de configuration entre les deux chemins** (voir
+`docker-compose.yml` pour le détail complet) : le conteneur écoute en
+interne sur `0.0.0.0` (`Cockpit__ListenUrl`) et l'agent EA-05 aussi
+(`Cockpit__AgentBindAny=true`) — un conteneur ne peut pas router ses ports
+publiés vers son propre loopback interne, contrairement à un process
+natif. Le port publié côté hôte reste restreint à `127.0.0.1` dans les deux
+cas (même posture « personnel, une seule machine » que le process natif).
+`Cockpit__ObserverUrl` pointe `host.docker.internal` plutôt que `localhost`
+— l'observer Python et MT5 restent natifs sur Windows, jamais
+conteneurisés. `ConnectionStrings__TradingOs` utilise le port interne 5432
+du réseau compose, pas le 5433 publié côté hôte.
 
 ## 3. Observer MT5 — Windows uniquement
 
@@ -84,13 +123,13 @@ Variables :
 ## Ordre de démarrage complet
 
 ```
-docker compose up -d
-  → dotnet run --project backend/src/TradingOs.Host
-    → python tools/mt5-observer/mt5_observer.py      (Windows, MT5 ouvert)
-      → npm run dev  avec NEXT_PUBLIC_REALTIME_SOURCE=backend
+docker compose up -d --no-deps timescaledb backend   (ou dotnet run pour le backend, si Smart App Control le permet)
+  → python tools/mt5-observer/mt5_observer.py         (Windows, MT5 ouvert)
+    → npm run dev  avec NEXT_PUBLIC_REALTIME_SOURCE=backend
 ```
 
 ## Points de fragilité connus
 
+- **Smart App Control (Windows) bloque `dotnet run`/`dotnet test`** sur cette machine depuis le 2026-09-17 — voir section 2 ci-dessus. Docker contourne le problème plutôt que de le résoudre (la politique reste active pour tout binaire .NET natif) ; `dotnet build` reste toujours utilisable pour vérifier la compilation.
 - **Stall de l'observer** — observé une fois le 2026-07-28 à 14:03 sur une collecte longue. Si le problème revient, la piste retenue est la conteneurisation via `gmag11/MetaTrader5-Docker` (MIT), éventuellement avec `lucas-campagna/mt5linux`.
 - **Fins de ligne** — le dépôt a été cloné avec des fins de ligne CRLF alors que l'index git est en LF, ce qui faisait apparaître 267 fichiers comme modifiés. Corrigé par `git config core.autocrlf true` dans ce clone. Si un `git status` affiche à nouveau tout le dépôt comme modifié, c'est ce réglage qu'il faut vérifier en premier — **surtout ne pas commiter la différence**.

@@ -6,6 +6,62 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-17 (suite — **backend conteneurisé**, contourne le blocage Smart App Control)
+
+Demande explicite (« mets le backend dans Docker ») après le backend resté
+down à la fin de l'entrée précédente. Périmètre confirmé avant de coder :
+« le backend » = `TradingOs.Host` (+ Gateway/Persistence/Contracts, ses
+dépendances de projet) — l'observer Python et MT5 restent natifs sur
+Windows, jamais conteneurisés (MT5 ne tourne pas dans un conteneur Linux).
+
+Deux pièges réseau trouvés en lisant le code avant d'écrire le Dockerfile,
+tous deux corrigés avant le premier `docker compose up` :
+
+1. **`Mt5AgentServer` liait `IPAddress.Loopback` en dur** et `Program.cs`
+   appelait `app.Run("http://localhost:5080")` en dur — dans un conteneur,
+   le loopback interne n'est joignable par aucun port publié (Docker route
+   vers l'interface du conteneur, pas vers son 127.0.0.1). Nouveau
+   paramètre optionnel sur `Mt5AgentServer` (`bindAddress`, défaut
+   `IPAddress.Loopback` — inchangé pour le run natif) et `Cockpit:ListenUrl`
+   / `Cockpit:AgentBindAny` (nouvelles clés de config, défauts identiques au
+   comportement natif). Seul `docker-compose.yml` les bascule à `0.0.0.0` /
+   `true` ; le port publié côté hôte reste restreint à `127.0.0.1` dans les
+   deux cas, même posture qu'avant.
+2. **Conflit de réseau Docker** : `tradingos-timescaledb` tournait déjà sous
+   un nom de projet compose différent
+   (`trading_operating_system_algorithmique_default`, confirmé par
+   `docker inspect`, pas deviné), pas celui que ce dossier (`04_code`)
+   aurait produit par défaut. `docker-compose.yml` pointe désormais
+   `networks.default` dessus en réseau externe — `backend` peut résoudre
+   `timescaledb` par son nom sans recréer le conteneur existant ni toucher
+   à son volume de données. `docker compose up -d --no-deps backend` évite
+   par ailleurs tout conflit de nom de conteneur à chaque démarrage.
+
+Nettoyage additionnel : l'image runtime (`aspnet:10.0`, Debian slim)
+n'embarque pas `libgssapi-krb5-2` — Npgsql le sonde par défaut avant de
+retomber sur l'authentification par mot de passe réellement configurée ; la
+connexion marchait déjà mais loggait une fausse alerte (« cannot open
+shared object file ») à chaque tentative. Ajouté au Dockerfile, logs
+propres depuis.
+
+**Vérifié en direct, de bout en bout, avec de vraies données** — pas
+seulement les gates : `docker compose up -d --no-deps --build backend` →
+`/health` répond `db: "ok"` → observer Python lancé (MT5 déjà ouvert,
+compte 477029930) → `docker logs` : « MT5 observer connected » →
+`persisted` passe de 3 à 186 → cockpit natif (`NEXT_PUBLIC_REALTIME_SOURCE
+=backend`, `.env.local` intact) : compte réel affiché (Exness Technologies
+Ltd, XAUUSDm), 33 % conformité (7j), `WS connected`, `Persistance OK`,
+9 gates du Risk Engine rendus avec les vraies valeurs. Négociation SignalR
+(`/hub/cockpit/negotiate`) et endpoints REST tous 200. `dotnet build`
+natif toujours vert (0 erreur/warning) — seule l'exécution native reste
+bloquée par Smart App Control, sans rapport avec ce changement.
+
+`context/infrastructure/runbook.md` mis à jour (section 2 restructurée,
+point de fragilité ajouté). Le blocage backend noté dans l'entrée
+précédente est résolu par ce chemin, pas par un changement côté Windows.
+
+---
+
 ## 2026-09-17 (suite — **T02c livré**, durcissement du lockout ; backend réel resté down)
 
 « Phase suivante » relancé après T09 : l'incident de lockout du 2026-09-17

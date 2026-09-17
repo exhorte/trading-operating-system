@@ -1,3 +1,4 @@
+using System.Net;
 using TradingOs.Contracts;
 using TradingOs.Gateway;
 using TradingOs.Host;
@@ -14,6 +15,15 @@ var observerUrl = builder.Configuration["Cockpit:ObserverUrl"] ?? "ws://localhos
 var agentPort = builder.Configuration.GetValue<int?>("Cockpit:AgentPort") ?? 9765;
 var connectionString = builder.Configuration.GetConnectionString("TradingOs")
     ?? "Host=localhost;Port=5433;Database=tradingos;Username=tradingos;Password=tradingos_dev";
+// Native run stays loopback-only by default (see Mt5AgentServer's doc
+// comment); the Docker image is the one caller that sets both of these,
+// since a container's own loopback isn't reachable through its published
+// ports — the process inside must bind all interfaces for Docker's port
+// mapping to reach it. Host-side publishing is still restricted to
+// 127.0.0.1 (docker-compose.yml), so the personal/single-machine posture
+// doesn't change from outside the container.
+var listenUrl = builder.Configuration["Cockpit:ListenUrl"] ?? "http://localhost:5080";
+var agentBindAny = builder.Configuration.GetValue<bool>("Cockpit:AgentBindAny");
 
 builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
@@ -22,7 +32,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddSingleton<GatewayState>();
 builder.Services.AddSingleton(sp => new Mt5ObserverClient(sp.GetRequiredService<GatewayState>(), observerUrl));
-builder.Services.AddSingleton(new Mt5AgentServer(agentPort));
+builder.Services.AddSingleton(new Mt5AgentServer(agentPort, agentBindAny ? IPAddress.Any : IPAddress.Loopback));
 builder.Services.AddSingleton(new PersistenceWriter(connectionString));
 builder.Services.AddSingleton(new AuditRepository(connectionString));
 builder.Services.AddSingleton(new RiskTodayRepository(connectionString));
@@ -231,4 +241,4 @@ app.MapGet("/api/execution/divergence", async (
 });
 app.MapHub<CockpitHub>("/hub/cockpit");
 
-app.Run("http://localhost:5080");
+app.Run(listenUrl);

@@ -98,19 +98,19 @@ mode mock (nouvelle config `cockpit-dev-mock`, port 3001) ; **`dotnet test`
 et le backend réel non vérifiés cette session** — voir blocage
 environnemental ci-dessous.
 
-**Nouveau blocage environnemental (2026-09-17), sans rapport avec le
-code** : Smart App Control (Windows) est activé sur cette machine et
-refuse de charger tout binaire .NET fraîchement recompilé — confirmé par le
-journal Code Integrity (« did not meet the Enterprise signing level
-requirements », refus déterministe, pas une vérification en cours).
-`dotnet build` reste propre ; `dotnet test` et `dotnet run` (donc le
-backend réel) ne le sont plus. L'ancien process backend a été arrêté
-pendant cette session pour débloquer `dotnet build` (piège DLL verrouillée,
-voir `reference_local_environment`) et n'a pas pu être relancé depuis — **le
-backend est resté down à la fin de la session**. Aucun impact sur MT5 ni le
-trading manuel. En attente d'une décision utilisateur : ajuster Smart App
-Control, signer les builds de dev, ou faire tourner le backend en
-conteneur (Docker/WSL2 — déjà en place pour TimescaleDB).
+**Blocage environnemental du 2026-09-17, résolu le même jour par
+conteneurisation.** Smart App Control (Windows) est activé sur cette
+machine et refuse de charger tout binaire .NET fraîchement recompilé —
+confirmé par le journal Code Integrity (« did not meet the Enterprise
+signing level requirements », refus déterministe). `dotnet build` reste
+propre ; `dotnet run`/`dotnet test` natifs restent bloqués — mais **le
+backend tourne maintenant en conteneur** (`docker compose up -d --no-deps
+backend`, `context/infrastructure/runbook.md` section 2), ce qui contourne
+le problème plutôt que de le résoudre côté Windows. Vérifié en direct de
+bout en bout avec de vraies données (compte 477029930, observer connecté,
+cockpit natif affichant les vraies valeurs) — détail dans `session-log.md`.
+`dotnet test` reste le seul gate non vérifiable sur cette machine tant que
+la politique Smart App Control n'est pas ajustée par l'utilisateur.
 
 **T02a/T02b, précision utile pour EA-07** : le kill switch et la gate
 « Daily loss guard » ont tous deux tourné en réel plusieurs fois (verrouillage
@@ -160,10 +160,14 @@ et relu pour T08), jamais dans un navigateur avec un agent MT5 connecté.
 
 **Traité le 2026-09-17 : le second incident de lockout contourné a eu une
 réponse — T02c** (durcissement du lockout, détail dans « Ce qui bloque » et
-`T02-lockout.md`). T10 redevient la suite sans réserve en attente ; seul
-point encore ouvert côté environnement : le backend réel est down (Smart
-App Control, voir « Ce qui bloque ») et devra être relancé — décision
-utilisateur — avant toute vérification live du prochain outil.
+`T02-lockout.md`). T10 redevient la suite sans réserve en attente.
+
+**Backend réel de nouveau up le 2026-09-17, en conteneur** (voir « Ce qui
+bloque ») — vérifié en direct avec de vraies données. Occasion pas encore
+saisie : T06/T07/T08/T15, listés juste au-dessus comme « jamais vus rendus
+à l'écran avec de vraies données », peuvent maintenant l'être — le backend
+tourne, l'observer aussi, il suffit d'ouvrir `/journal` et les pages
+associées dans un navigateur.
 
 Aucun nouvel outil de roadmap identifié au-delà de Vague 2 pour l'instant —
 la suite (Vague 3, T09+) dépend de T11/T12 (multi-compte, hors périmètre

@@ -13,8 +13,14 @@ namespace TradingOs.Gateway;
 /// this inversion was always the intended shape for the real agent.
 ///
 /// Plain TCP, newline-delimited lean JSON — not WSS. The connection is
-/// loopback-only, between two processes on the same personal machine
-/// (ADR 0003: "usage strictement personnel"); the existing Gateway&lt;-&gt;observer
+/// loopback-only by default, between two processes on the same personal
+/// machine (ADR 0003: "usage strictement personnel") — <paramref name="bindAddress"/>
+/// exists only so the Docker image can bind all interfaces internally
+/// (a container's own loopback isn't reachable through its published
+/// ports); docker-compose.yml still restricts the host-side publish to
+/// 127.0.0.1, so the personal/single-machine posture is unchanged from
+/// outside the container. Native runs never pass this, so they keep
+/// binding loopback-only exactly as before. The existing Gateway&lt;-&gt;observer
 /// link already runs unencrypted `ws://`, so WSS buys nothing real here,
 /// and hand-rolling the HTTP-Upgrade handshake plus RFC 6455 frame masking
 /// in pure MQL5 would be a needless source of bugs for that zero benefit
@@ -34,7 +40,7 @@ namespace TradingOs.Gateway;
 /// sets for socket-handling classes (Mt5WireTranslator carries the tested
 /// pure logic both classes call into).
 /// </summary>
-public sealed class Mt5AgentServer(int port)
+public sealed class Mt5AgentServer(int port, IPAddress? bindAddress = null)
 {
     private readonly object _lock = new();
     private readonly Dictionary<string, StreamWriter> _writersByAccountId = new();
@@ -90,7 +96,7 @@ public sealed class Mt5AgentServer(int port)
 
     public async Task RunAsync(CancellationToken ct)
     {
-        _listener = new TcpListener(IPAddress.Loopback, port);
+        _listener = new TcpListener(bindAddress ?? IPAddress.Loopback, port);
         _listener.Start();
         try
         {
