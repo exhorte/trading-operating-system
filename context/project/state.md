@@ -1,16 +1,22 @@
 # État du projet
 
-Dernière mise à jour : 2026-09-17. Instantané seulement — l'historique vit
-dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
+Dernière mise à jour : 2026-09-17 (suite). Instantané seulement —
+l'historique vit dans `session-log.md` (ADR 0008) et dans le journal de
+chaque fiche d'outil.
 
 ## En une phrase
 
 Poste de travail personnel pour trader intraday, sorti de la recherche
 d'edge (ADR 0002). T01 et T04 ont été retirés le 2026-09-14 (décision
 explicite) ; le critère de sortie de Vague 1 a été reformulé le même jour et
-**n'est toujours pas rempli, et son ampleur réelle vient de doubler**
-(2026-09-17, voir « Ce qui bloque ») — priorité au-dessus de tout ce qui
-suit. L'**agent d'exécution MT5** (ADR 0010) est construit jusqu'au mode
+**n'est toujours pas rempli** — deux incidents réels de lockout contourné,
+2026-09-15 puis 2026-09-14 (découvert seulement le 2026-09-17, voir « Ce qui
+bloque »). Le lockout a été durci en réponse le 2026-09-17 (T02c) : alerte
+temps réel dès qu'une position s'ouvre pendant un verrou actif, et accusé de
+réception désormais obligatoire pour lever n'importe quel verrou non
+chronométré (plus de levée silencieuse au lendemain) — ça prévient une
+récidive, ça ne referme pas ce qui s'est déjà passé ; Vague 1 reste ouverte.
+L'**agent d'exécution MT5** (ADR 0010) est construit jusqu'au mode
 CONFIRM uniquement : Phase 0 et EA-01 à **EA-06 sont livrés**, un seul
 `OrderSend` existe (EA-05 incrément 6), **structurellement inatteignable
 hors `CONFIRM`** (`g_mode` figé à `OBSERVE`, jamais affecté) — il n'a donc
@@ -77,6 +83,35 @@ sur un seul trade isolé. Le critère de sortie de Vague 1 était déjà non
 rempli ; ceci ne change pas la conclusion, mais en révèle l'ampleur réelle
 — six trades sur deux jours, pas un.
 
+**Traité le 2026-09-17 (T02c)** : l'utilisateur a réagi à cet incident —
+« On durcit le verrou, pas juste un ralentisseur », puis « Durcir sans
+exécuter » face au choix réel entre renforcer la détection/friction ou
+ouvrir EA-07 (refusé : préconditions non remplies, et circulaire — Vague 1
+n'est pas close à cause de cet incident précis). Livré : alerte temps réel
+(`journal.lockout_violated`, Gateway-direct) et accusé de réception
+obligatoire pour tout verrou non chronométré (`shouldAutoClearForNewDay`
+supprimée). Détail complet dans `T02-lockout.md`. **Ça ne ferme pas
+Vague 1** — les six trades ont déjà eu lieu, le durcissement empêche
+seulement une récidive du même genre. Vérifié : gates vertes (tsc, lint,
+vitest 210/210, `dotnet build`, `next build`, `python -m py_compile`) et
+mode mock (nouvelle config `cockpit-dev-mock`, port 3001) ; **`dotnet test`
+et le backend réel non vérifiés cette session** — voir blocage
+environnemental ci-dessous.
+
+**Nouveau blocage environnemental (2026-09-17), sans rapport avec le
+code** : Smart App Control (Windows) est activé sur cette machine et
+refuse de charger tout binaire .NET fraîchement recompilé — confirmé par le
+journal Code Integrity (« did not meet the Enterprise signing level
+requirements », refus déterministe, pas une vérification en cours).
+`dotnet build` reste propre ; `dotnet test` et `dotnet run` (donc le
+backend réel) ne le sont plus. L'ancien process backend a été arrêté
+pendant cette session pour débloquer `dotnet build` (piège DLL verrouillée,
+voir `reference_local_environment`) et n'a pas pu être relancé depuis — **le
+backend est resté down à la fin de la session**. Aucun impact sur MT5 ni le
+trading manuel. En attente d'une décision utilisateur : ajuster Smart App
+Control, signer les builds de dev, ou faire tourner le backend en
+conteneur (Docker/WSL2 — déjà en place pour TimescaleDB).
+
 **T02a/T02b, précision utile pour EA-07** : le kill switch et la gate
 « Daily loss guard » ont tous deux tourné en réel plusieurs fois (verrouillage
 → acquittement/reset → levée, tracé en base). **La pause de 30 min sur deux
@@ -123,11 +158,12 @@ Détail de chaque outil dans sa fiche (`context/product/tools/T0{6,7,8}-*.md`,
 réels (appels directs, un vrai handshake MCP pour T15, un document généré
 et relu pour T08), jamais dans un navigateur avec un agent MT5 connecté.
 
-**Plus urgent que la prochaine phase : l'utilisateur n'a toujours pas réagi
-au second incident de lockout contourné**, découvert le 2026-09-17 en
-testant T15 (voir « Ce qui bloque ») — 5 trades de plus que ce qui était
-documenté, sur le 2026-09-14, en plus du trade du 2026-09-15 déjà connu.
-Rien à corriger côté outillage ; c'est un fait sur des séances réelles.
+**Traité le 2026-09-17 : le second incident de lockout contourné a eu une
+réponse — T02c** (durcissement du lockout, détail dans « Ce qui bloque » et
+`T02-lockout.md`). T10 redevient la suite sans réserve en attente ; seul
+point encore ouvert côté environnement : le backend réel est down (Smart
+App Control, voir « Ce qui bloque ») et devra être relancé — décision
+utilisateur — avant toute vérification live du prochain outil.
 
 Aucun nouvel outil de roadmap identifié au-delà de Vague 2 pour l'instant —
 la suite (Vague 3, T09+) dépend de T11/T12 (multi-compte, hors périmètre

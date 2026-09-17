@@ -87,6 +87,13 @@ export function useAcknowledgeLockout(): (lockoutId: string) => void {
   return useRealtimeActions().acknowledgeLockout;
 }
 
+/** T02c: dismiss a live lockout-violation notice — local to this tab, not a
+ *  server round-trip (the fact itself is already durably persisted). */
+export function useDismissLockoutViolation(): (brokerPositionId: string) => void {
+  const store = useCockpitStore();
+  return (brokerPositionId) => store.dismissLockoutViolation(brokerPositionId);
+}
+
 function useCockpitStore(): CockpitStore {
   const store = useContext(CockpitStoreContext);
   if (!store) {

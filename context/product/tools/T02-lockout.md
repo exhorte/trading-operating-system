@@ -1,6 +1,6 @@
 # T02 — Lockout comportemental
 
-Statut : **livré** (T02a et T02b livrés le 2026-09-05) · Vague 1 · Effort 1–2 j · Dépend de : rien
+Statut : **livré** (T02a et T02b livrés le 2026-09-05 ; T02c livré le 2026-09-17) · Vague 1 · Effort 1–2 j · Dépend de : rien
 
 Découpé en deux incréments en cours de route — le plan initial (7 incréments,
 4 à 6 jours) mélangeait quatre verrous qui ne demandent rien à l'observer
@@ -36,6 +36,8 @@ L'état de verrouillage **persiste** : recharger la page ne déverrouille rien. 
 ## Limite assumée
 
 Tant que MT5 est ouvert à côté, le verrou est un ralentisseur, pas un mur. C'est suffisant : la friction de vingt secondes est exactement ce qui manque au revenge trade. Une version « mur » (déverrouillage différé de 24 h) est possible plus tard — ne pas la construire d'emblée.
+
+**Mise à jour T02c (2026-09-17)** : cette limite s'est vérifiée en réel, deux fois en trois jours (voir journal T02c) — le ralentisseur a fait exactement ce qu'il était censé faire. Ce qui a changé : il ne peut plus être contourné *sans s'en apercevoir* (alerte temps réel) ni se lever *par inattention* (accusé de réception obligatoire). Il reste un ralentisseur, pas un mur — un vrai mur exigerait `OrderSend` pour refermer une position, donc EA-07, hors périmètre ici et volontairement pas ouvert pour ça (voir journal).
 
 ## T02b — plan d'implémentation
 
@@ -266,3 +268,78 @@ Le nombre de trades pris hors fenêtre autorisée tombe à zéro sans effort de 
   à chaque étage ; gates `npm run lint`, `npx tsc --noEmit`, `npm test`,
   `npm run build`, `dotnet build`, `dotnet test`, `python -m py_compile`
   tous verts au moment de la clôture.
+
+- 2026-09-17 — **T02c livré** : durcissement décidé après un second incident
+  de lockout contourné, découvert le même jour en testant T15 (5 trades
+  EURUSDm de plus le 2026-09-14, en plus du trade du 2026-09-15 déjà connu —
+  détail dans `state.md`, « Ce qui bloque »). Décision explicite de
+  l'utilisateur : *« On durcit le verrou, pas juste un ralentisseur »*, puis
+  *« Durcir sans exécuter »* face au choix réel — un vrai mur (refermer une
+  position automatiquement) exige `OrderSend`, donc EA-07 ; ses préconditions
+  ne sont de toute façon pas remplies, et s'en servir pour ce cas précis
+  aurait été circulaire (Vague 1 n'est pas close *à cause de* cet incident).
+
+  Deux durcissements, tous deux côté détection/friction, aucun changement
+  d'exécution :
+
+  1. **Alerte temps réel.** Nouvel événement Gateway-direct
+     `journal.lockout_violated` (`lib/contracts/envelope.ts`,
+     `EventTypes.JournalLockoutViolated`), émis par
+     `GatewayBridgeService.CheckLockoutViolationAsync` au moment exact où
+     `journal.position.opened` arrive, si `risk_lockouts` montre un verrou
+     actif pour le compte (requête extraite dans
+     `RiskTodayRepository.GetActiveLockoutAsync`, réutilisée par
+     `GetAsync`). Tourne côté Gateway, donc fonctionne sans onglet cockpit
+     ouvert — contrairement à `recomputeRisk()` qui ne tourne que si un
+     onglet est connecté. Aucune nouvelle table : le fait est déjà
+     reconstructible depuis `position_opens` + `risk_lockouts` (T07 le fait
+     déjà a posteriori) ; c'est un signal live, pas un registre d'audit de
+     plus. Best-effort assumé : si l'écriture du lockout n'a pas encore
+     atteint la base au moment exact de l'ouverture de position, l'alerte
+     live peut manquer — T07 reste la source d'audit faisant autorité.
+     Cockpit : `LockoutViolationBanner` (nouveau), dismiss local uniquement
+     (le fait est déjà tracé ailleurs, ce n'est pas un clear de ledger).
+
+  2. **Accusé de réception obligatoire pour tout verrou non chronométré.**
+     `shouldAutoClearForNewDay` supprimée (et son unique site d'appel dans
+     `recomputeRisk()`) — plus aucun verrou avec `until === null` ne se lève
+     tout seul au lendemain, kill switch, Daily loss guard et max-trades
+     traités identiquement désormais. Décision de portée validée
+     explicitement (« Étendre aux deux ») : au départ envisagé pour Daily
+     loss guard seul, étendu à max-trades qui partageait exactement le même
+     angle mort. `kill_switch_acks` + l'événement `risk.lockout.acknowledged`
+     étaient déjà génériques (aucune colonne kill-switch-spécifique) — pas de
+     nouvelle table, juste `clearedByForAck(reason)` (nouveau, `lockout.ts`)
+     qui dérive `"kill-switch-ack"` vs `"manual"` (valeur déjà documentée
+     dans `schema.sql` en commentaire, jamais utilisée jusqu'ici). Bannière
+     `KillSwitchBanner` renommée `LockoutAckBanner` et généralisée sur
+     `until === null` plutôt que sur la raison — copie conditionnelle,
+     inchangée pour le kill switch.
+
+  **Vérifié visuellement en mode mock**, méthode T09 (serveur de dev séparé,
+  `NEXT_PUBLIC_REALTIME_SOURCE=mock`, `.env.local` de l'utilisateur laissé
+  intact) — nouvelle config `cockpit-dev-mock` (port 3001) ajoutée à
+  `.claude/launch.json`, réutilisable pour la suite. Scénario temporaire
+  injecté puis retiré : les deux bannières s'affichent correctement
+  (`LockoutAckBanner` avec la copie générique « Daily loss guard »,
+  `LockoutViolationBanner` avec la position/symbole/raison), le bouton
+  « Vu » dissocie la violation sans toucher au lockout, « J'en ai pris
+  connaissance » lève le verrou (`RISK STATE` repasse à `NORMAL`, bouton
+  kill switch réactivé). Le vrai bouton kill switch retesté ensuite : copie
+  et comportement d'origine inchangés.
+
+  Gates : `npx tsc --noEmit`, `npm run lint`, `npm test` (210/210),
+  `dotnet build` (0 erreur, 0 warning), `npm run build`, `python -m
+  py_compile` tous verts. **`dotnet test` et le backend réel n'ont pas pu
+  être vérifiés cette session** — Smart App Control (Windows, activé sur
+  cette machine) bloque le chargement de tout `TradingOs.Persistence.dll`
+  fraîchement recompilé, confirmé par le journal Code Integrity
+  (`Microsoft-Windows-CodeIntegrity/Operational`, « did not meet the
+  Enterprise signing level requirements »). Pas un défaut de ce code — un
+  binaire de dev reconstruit, quel qu'il soit, buterait pareil sur cette
+  machine tant que la politique n'est pas ajustée. En arrêtant l'ancien
+  process pour débloquer `dotnet build` (piège DLL verrouillée connu), j'ai
+  aussi perdu la capacité de le relancer : le backend réel est resté down à
+  la fin de cette session. Aucune régression du côté de mon changement
+  (`dotnet build` compile proprement, 0 erreur) — seule l'exécution du
+  binaire recompilé est bloquée.

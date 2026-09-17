@@ -6,6 +6,54 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-17 (suite — **T02c livré**, durcissement du lockout ; backend réel resté down)
+
+« Phase suivante » relancé après T09 : l'incident de lockout du 2026-09-17
+(voir entrée T15 ci-dessous et `state.md`) était resté sans réponse deux
+choix de suite d'affilée — signalé cette fois plutôt que réavancé par
+défaut. Traité avant toute nouvelle phase, sur demande explicite (« On
+durcit le verrou, pas juste un ralentisseur »).
+
+Vérifié en direct contre la base avant de proposer quoi que ce soit (pas
+seulement relayé depuis `state.md`) : les 6 trades EURUSDm pendant lockout
+confirmés exacts (`risk_lockouts`, `position_opens`, `closed_trades`) —
+P&L cumulé +$0,30, donc pas une question d'argent. Un point relevé en plus,
+jamais documenté avant : sur le lot du 14, plusieurs trades s'enchaînent en
+moins d'une minute (47 s, 67 s) juste après le déclenchement — un rythme
+proche du mode d'échec que T02 cible, sans martingale (taille constante).
+
+Un vrai mur (refermer une position automatiquement) exigerait `OrderSend`
+donc EA-07 — refusé explicitement comme option : préconditions non remplies
+et circularité (Vague 1 n'est pas close à cause de cet incident précis,
+s'en servir pour ouvrir la barrière aurait été l'inverse de la logique
+voulue). Décision retenue : « Durcir sans exécuter » — détail complet
+(conception, décisions validées, incréments, vérification) dans
+`T02-lockout.md`, section T02c.
+
+**Découverte d'environnement, sans rapport avec le code** : Smart App
+Control (Windows) bloque le chargement de tout binaire .NET fraîchement
+recompilé sur cette machine — confirmé par le journal Code Integrity
+(« did not meet the Enterprise signing level requirements »), pas une
+vérification en cours, un refus déterministe. `dotnet build` reste propre
+(0 erreur) ; `dotnet test` et le backend réel (`dotnet run`) ne le sont pas.
+En arrêtant l'ancien process pour débloquer le build (piège DLL verrouillée
+connu, voir `reference_local_environment`), j'ai perdu la capacité de le
+relancer — le backend est resté down à la fin de la session, en attente
+d'une décision de l'utilisateur (ajuster Smart App Control, signer les
+builds de dev, ou faire tourner le backend en conteneur). Aucun impact sur
+MT5 ni le trading manuel — uniquement le pont cockpit ↔ MT5.
+
+Gates vertes : tsc, lint, vitest (210/210), `dotnet build`, `next build`,
+`python -m py_compile`. Vérifié visuellement en mode mock (nouvelle config
+`cockpit-dev-mock` dans `.claude/launch.json`, port 3001, `.env.local` de
+l'utilisateur intact) : les deux nouvelles bannières et le kill switch
+d'origine se comportent comme prévu.
+
+Ne change pas la conclusion sur Vague 1 : toujours ouverte, le durcissement
+prévient une récidive mais ne referme pas ce qui s'est déjà passé.
+
+---
+
 ## 2026-09-17 (suite — **T09 livré** ; premier rendu vérifié à l'écran depuis T05)
 
 Choisi avec sa suite pré-autorisée (« Vague 3 — T09/T10, puis T19 »).

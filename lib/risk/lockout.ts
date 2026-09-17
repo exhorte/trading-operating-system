@@ -97,18 +97,16 @@ export function detectConsecutiveLossPause(
 }
 
 /**
- * Daily-loss and max-trades lockouts are pure calendar locks: a new trading
- * day releases them automatically. The kill switch is deliberately not —
- * it requires an explicit acknowledgment (RiskLockoutAcknowledgedPayload),
- * never a day rollover, because the entire point is the trader certifying
- * "I actually closed my positions," not a timer doing it for them.
+ * T02c: every untimed lockout (until === null — daily loss, max trades, kill
+ * switch alike) now requires this explicit ack to clear; none of them auto-
+ * clear at the next day anchor any more (shouldAutoClearForNewDay, removed).
+ * Two real incidents motivated this (state.md, 2026-09-15 and 2026-09-14):
+ * a "Daily loss guard" lock that sat unacknowledged overnight and released
+ * itself the next morning, silently, while five trades had already gone
+ * through it. `clearedBy` only distinguishes the kill switch (its own
+ * long-standing audit value) from everything else — not a union the reader
+ * needs to exhaust, see RiskLockoutClearedPayload.
  */
-export function shouldAutoClearForNewDay(
-  activeLockout: ActiveLockout,
-  dayAnchorStartsAtUtc: UtcTimestamp,
-): boolean {
-  return (
-    activeLockout.reason !== KILL_SWITCH_REASON &&
-    Date.parse(activeLockout.since) < Date.parse(dayAnchorStartsAtUtc)
-  );
+export function clearedByForAck(reason: string): string {
+  return reason === KILL_SWITCH_REASON ? "kill-switch-ack" : "manual";
 }

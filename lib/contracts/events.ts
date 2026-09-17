@@ -214,6 +214,23 @@ export interface TradeClosedPayload {
 }
 
 /**
+ * T02c: a position opened while risk_lockouts already showed an active lock
+ * for this account — the live counterpart to T07's after-the-fact
+ * detectLockoutViolation (lib/compliance/violations.ts). Gateway-originated
+ * only, same category as PositionOpenedPayload/TradeClosedPayload above.
+ * Self-contained for audit/replay, not just a pointer back to other tables.
+ */
+export interface LockoutViolatedPayload {
+  accountId: AccountId;
+  brokerPositionId: string;
+  symbol: SymbolCode;
+  side: "buy" | "sell";
+  lockoutId: string;
+  lockoutReason: string;
+  openedAt: UtcTimestamp;
+}
+
+/**
  * T03: Gateway-originated only — the backend owns the FRED poll + cache
  * (context/product/tools/T03-gate-news.md). Broadcast on every refresh cycle
  * whether or not the list actually changed (same idempotent-recheck pattern
@@ -275,6 +292,7 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "risk.day_anchor.equity_observed": DayAnchorEquityObservedPayload;
   "risk.lockout.acknowledged": RiskLockoutAcknowledgedPayload;
   "journal.trade_closed": TradeClosedPayload;
+  "journal.lockout_violated": LockoutViolatedPayload;
   "market.calendar.updated": CalendarUpdatedPayload;
 }
 

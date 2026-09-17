@@ -66,19 +66,7 @@ public sealed class RiskTodayRepository(string connectionString)
             new { accountId, limit = MaxRecentClosedTrades });
         var (consecutiveLosses, lastConsecutiveLossAt) = CountConsecutiveLosses(recentClosed);
 
-        // T02b: an expired timed pause must not read back as "active" right
-        // after expiry — the client's own expiry publish (risk.lockout.cleared,
-        // clearedBy "pause-expired") is the primary path, this is the backup.
-        var activeLockout = await conn.QuerySingleOrDefaultAsync<ActiveLockoutRow>(
-            """
-            SELECT lockout_id AS LockoutId, reason AS Reason, since AS Since, until AS Until
-            FROM risk_lockouts
-            WHERE account_id = @accountId AND cleared_at IS NULL
-              AND (until IS NULL OR until > now())
-            ORDER BY since DESC
-            LIMIT 1
-            """,
-            new { accountId });
+        var activeLockout = await GetActiveLockoutAsync(conn, accountId);
 
         return new RiskTodaySummary(
             anchor?.StartsAtUtc,
@@ -88,6 +76,31 @@ public sealed class RiskTodayRepository(string connectionString)
             lastConsecutiveLossAt,
             activeLockout);
     }
+
+    /// <summary>T02c: pulled out of GetAsync so GatewayBridgeService can ask
+    /// "is this account locked right now" the instant a position opens,
+    /// without paying for the rest of RiskTodaySummary's query set.</summary>
+    public async Task<ActiveLockoutRow?> GetActiveLockoutAsync(string accountId, CancellationToken ct)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(ct);
+        return await GetActiveLockoutAsync(conn, accountId);
+    }
+
+    // T02b: an expired timed pause must not read back as "active" right
+    // after expiry — the client's own expiry publish (risk.lockout.cleared,
+    // clearedBy "pause-expired") is the primary path, this is the backup.
+    private static Task<ActiveLockoutRow?> GetActiveLockoutAsync(NpgsqlConnection conn, string accountId) =>
+        conn.QuerySingleOrDefaultAsync<ActiveLockoutRow>(
+            """
+            SELECT lockout_id AS LockoutId, reason AS Reason, since AS Since, until AS Until
+            FROM risk_lockouts
+            WHERE account_id = @accountId AND cleared_at IS NULL
+              AND (until IS NULL OR until > now())
+            ORDER BY since DESC
+            LIMIT 1
+            """,
+            new { accountId });
 
     /// <summary>Trailing run of losses from the most recent trade backward,
     /// stopping at the first non-losing trade. Pure — testable without a DB.</summary>

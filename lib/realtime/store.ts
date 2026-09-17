@@ -25,6 +25,7 @@ import type {
   AgentHeartbeatPayload,
   CalendarUpdatedPayload,
   ExecutionReportPayload,
+  LockoutViolatedPayload,
   MarketContextUpdatedPayload,
   MarketTickPayload,
   PositionsSnapshotPayload,
@@ -60,6 +61,13 @@ export interface CockpitSnapshot {
    * "no calendar data" (fail-closed), never as an empty, healthy calendar.
    */
   upcomingReleases: UpcomingRelease[] | null;
+  /**
+   * T02c: live facts of a position opened while a lockout was active,
+   * Gateway-detected — see LockoutViolatedPayload. Undismissed until the
+   * trader clears each one locally (dismissLockoutViolation); this is a
+   * live notice, not the audit trail (T07/`/journal` already has that).
+   */
+  lockoutViolations: LockoutViolatedPayload[];
 }
 
 export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
@@ -77,6 +85,7 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   activeLockout: null,
   acknowledgedLockoutIds: [],
   upcomingReleases: null,
+  lockoutViolations: [],
 };
 
 const MAX_FEED_LENGTH = 20;
@@ -155,6 +164,18 @@ export class CockpitStore {
         });
         break;
       }
+      // T02c: Gateway-detected live — append, don't replace; dismissed
+      // independently via dismissLockoutViolation (local, not another event).
+      case "journal.lockout_violated": {
+        const violation = envelope.payload as LockoutViolatedPayload;
+        this.patch({
+          lockoutViolations: [violation, ...this.snapshot.lockoutViolations].slice(
+            0,
+            MAX_FEED_LENGTH,
+          ),
+        });
+        break;
+      }
       // T03: Gateway-originated, always the full current list (never a delta) —
       // a plain replace, same as risk.lockout.enabled overwriting the ledger.
       case "market.calendar.updated": {
@@ -213,6 +234,17 @@ export class CockpitStore {
         // Unhandled event families are ignored by the Phase 01 dashboard.
         break;
     }
+  }
+
+  /** T02c: local-only — the underlying fact is already durably in
+   *  position_opens/risk_lockouts (T07/`/journal` reads it from there); this
+   *  just clears the live notice from this tab. */
+  dismissLockoutViolation(brokerPositionId: string): void {
+    this.patch({
+      lockoutViolations: this.snapshot.lockoutViolations.filter(
+        (violation) => violation.brokerPositionId !== brokerPositionId,
+      ),
+    });
   }
 
   private applyTick(symbol: string, price: number): void {

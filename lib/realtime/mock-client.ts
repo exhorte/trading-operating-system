@@ -34,7 +34,7 @@ import type {
   RiskLockoutClearedPayload,
   RiskLockoutEnabledPayload,
 } from "@/lib/contracts/events";
-import { KILL_SWITCH_REASON } from "@/lib/risk";
+import { clearedByForAck, KILL_SWITCH_REASON } from "@/lib/risk";
 import type { RealtimeClient } from "./client";
 import type { CockpitStore } from "./store";
 
@@ -98,10 +98,10 @@ export class MockRealtimeClient implements RealtimeClient {
     );
   }
 
-  /** The ack IS the manual-clear action for the kill switch — it never
-   *  auto-clears via a timer or the next day (see shouldAutoClearForNewDay). */
+  /** T02c: the ack IS the manual-clear action for any untimed lockout — none
+   *  of them auto-clear via a timer or the next day any more. */
   acknowledgeLockout(lockoutId: string): void {
-    const account = this.store.getSnapshot().account;
+    const { account, activeLockout } = this.store.getSnapshot();
     if (!account) {
       return;
     }
@@ -115,7 +115,7 @@ export class MockRealtimeClient implements RealtimeClient {
     this.store.apply(
       makeEnvelope<RiskLockoutClearedPayload>("risk.lockout.cleared", "mock-risk-engine", {
         accountId: account.accountId,
-        clearedBy: "kill-switch-ack",
+        clearedBy: clearedByForAck(activeLockout?.reason ?? ""),
       }),
     );
   }

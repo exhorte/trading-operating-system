@@ -11,10 +11,10 @@ export { evaluateRiskState } from "./evaluate";
 export { evaluateSignalRisk, type SignalRiskInput } from "./sizing";
 export {
   applyActiveLockout,
+  clearedByForAck,
   detectConsecutiveLossPause,
   detectNewLockout,
   isLockoutExpired,
-  shouldAutoClearForNewDay,
   CONSECUTIVE_LOSS_PAUSE_MINUTES,
   CONSECUTIVE_LOSS_REASON,
   KILL_SWITCH_REASON,

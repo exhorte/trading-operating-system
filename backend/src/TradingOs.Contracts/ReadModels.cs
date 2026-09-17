@@ -100,6 +100,21 @@ public sealed record JournalTradeClosedPayload(
     double ExitPrice,
     string ClosedAt);
 
+/// <summary>
+/// T02c: a position opened while risk_lockouts already had an active lock for
+/// this account — the live counterpart to T07's after-the-fact
+/// detectLockoutViolation (lib/compliance/violations.ts). Self-contained for
+/// audit/replay, like PositionOpenedPayload above.
+/// </summary>
+public sealed record LockoutViolatedPayload(
+    string AccountId,
+    string BrokerPositionId,
+    string Symbol,
+    string Side,
+    string LockoutId,
+    string LockoutReason,
+    string OpenedAt);
+
 /// <summary>T03: one scheduled FRED release — mirrors lib/domain/risk.ts::UpcomingRelease.</summary>
 public sealed record UpcomingRelease(int ReleaseId, string Label, string ScheduledAt);
 

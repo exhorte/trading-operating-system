@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   applyActiveLockout,
+  clearedByForAck,
   CONSECUTIVE_LOSS_REASON,
   detectConsecutiveLossPause,
   detectNewLockout,
   isLockoutExpired,
   KILL_SWITCH_REASON,
-  shouldAutoClearForNewDay,
   type ActiveLockout,
 } from "./lockout";
 import type { RiskState } from "@/lib/domain/risk";
@@ -122,25 +122,14 @@ describe("detectConsecutiveLossPause", () => {
   });
 });
 
-describe("shouldAutoClearForNewDay", () => {
-  it("clears a daily-loss lockout once a new day anchor arrives", () => {
-    const active: ActiveLockout = {
-      lockoutId: "l1",
-      reason: "Daily loss guard",
-      since: "2026-09-04T22:00:00.000Z",
-      until: null,
-    };
-    expect(shouldAutoClearForNewDay(active, "2026-09-04T21:00:00.000Z")).toBe(false); // lock is after this anchor
-    expect(shouldAutoClearForNewDay(active, "2026-09-05T21:00:00.000Z")).toBe(true); // next day's anchor
+describe("clearedByForAck", () => {
+  it("tags the kill switch with its own long-standing audit value", () => {
+    expect(clearedByForAck(KILL_SWITCH_REASON)).toBe("kill-switch-ack");
   });
 
-  it("never auto-clears the kill switch, even across a day rollover", () => {
-    const active: ActiveLockout = {
-      lockoutId: "l1",
-      reason: KILL_SWITCH_REASON,
-      since: "2026-09-04T22:00:00.000Z",
-      until: null,
-    };
-    expect(shouldAutoClearForNewDay(active, "2026-09-05T21:00:00.000Z")).toBe(false);
+  it("T02c: tags every other reason generically — daily loss, max trades alike", () => {
+    expect(clearedByForAck("Daily loss guard")).toBe("manual");
+    expect(clearedByForAck("Nombre de trades maximum atteint")).toBe("manual");
+    expect(clearedByForAck(CONSECUTIVE_LOSS_REASON)).toBe("manual");
   });
 });

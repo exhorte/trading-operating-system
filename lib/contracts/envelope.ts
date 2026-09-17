@@ -65,6 +65,11 @@ export type EventType =
   // T02b: Gateway-only, same category as risk.day_anchor.resolved — only the
   // observer's deal history knows a position truly closed.
   | "journal.trade_closed"
+  // T02c: Gateway-only, same category — emitted the instant a position opens
+  // while risk_lockouts already shows an active lock for the account, so a
+  // bypass is flagged live instead of only being caught after the fact by
+  // T07's compliance detector. Best-effort against the persisted ledger.
+  | "journal.lockout_violated"
   // T03: Gateway-only — the backend polls FRED and owns the calendar cache;
   // never client-published.
   | "market.calendar.updated";

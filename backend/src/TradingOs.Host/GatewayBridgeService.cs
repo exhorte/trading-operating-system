@@ -18,6 +18,7 @@ public sealed class GatewayBridgeService(
     IHubContext<CockpitHub> hub,
     PersistenceWriter writer,
     TradeCaptureRepository captures,
+    RiskTodayRepository riskToday,
     ILogger<GatewayBridgeService> logger) : BackgroundService
 {
     private const string Source = "mt5-gateway";
@@ -122,12 +123,56 @@ public sealed class GatewayBridgeService(
                 opened.AccountId, opened.BrokerPositionId, opened.Symbol, CurrentTimeframe(),
                 DateTimeOffset.Parse(opened.OpenedAt).UtcDateTime,
                 opened.EntryPrice, opened.StopLoss, opened.TakeProfit, ct));
+            _ = CheckLockoutViolationAsync(opened, ct);
         }
         else if (type == EventTypes.JournalTradeClosed && payload is JournalTradeClosedPayload closed)
         {
             _ = RunCaptureWriteAsync(() => captures.RecordExitAsync(
                 closed.AccountId, closed.BrokerPositionId, closed.ExitPrice,
                 DateTimeOffset.Parse(closed.ClosedAt).UtcDateTime, ct));
+        }
+    }
+
+    /// <summary>
+    /// T02c: the live counterpart to T07's after-the-fact detectLockoutViolation
+    /// — checks the persisted ledger the instant a position opens, so a bypass
+    /// is flagged in the cockpit right away instead of only surfacing days
+    /// later (state.md's 2026-09-14 incident: 5 trades found only while
+    /// testing an unrelated MCP tool). Best-effort: if the lockout-enabled
+    /// write for a brand-new lock hasn't landed yet when this races it, the
+    /// live alert can miss — T07's after-the-fact detector is still the
+    /// authoritative source, this is strictly additive.
+    /// </summary>
+    private async Task CheckLockoutViolationAsync(PositionOpenedPayload opened, CancellationToken ct)
+    {
+        try
+        {
+            var activeLockout = await riskToday.GetActiveLockoutAsync(opened.AccountId, ct);
+            if (activeLockout is null)
+            {
+                return;
+            }
+            var envelope = Envelope<object>.Create(
+                EventTypes.JournalLockoutViolated,
+                Source,
+                new LockoutViolatedPayload(
+                    opened.AccountId,
+                    opened.BrokerPositionId,
+                    opened.Symbol,
+                    opened.Side,
+                    activeLockout.LockoutId,
+                    activeLockout.Reason,
+                    opened.OpenedAt));
+            _ = hub.Clients.All.SendAsync("event", envelope, ct);
+            Persist(writer, envelope);
+        }
+        catch (OperationCanceledException)
+        {
+            // shutting down
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to check for a live lockout violation");
         }
     }
 

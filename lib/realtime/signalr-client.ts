@@ -21,6 +21,7 @@ import { analyzeMarketContext, DEFAULT_SESSION_WINDOWS } from "@/lib/analysis";
 import { sessionEnabled, sessionForTimestamp } from "@/lib/analysis/sessions";
 import {
   applyActiveLockout,
+  clearedByForAck,
   CONSECUTIVE_LOSS_PAUSE_MINUTES,
   defaultRiskPolicy,
   detectConsecutiveLossPause,
@@ -28,7 +29,6 @@ import {
   evaluateRiskState,
   isLockoutExpired,
   KILL_SWITCH_REASON,
-  shouldAutoClearForNewDay,
 } from "@/lib/risk";
 import { makeEnvelope } from "@/lib/mock/envelope";
 import { toMarketContextReadModel, toRiskStatusReadModel } from "@/lib/contracts/projections";
@@ -443,13 +443,11 @@ export class SignalRRealtimeClient implements RealtimeClient {
       this.lockoutPublishPending = true;
       this.publishLockoutEnabled(makeId("lockout"), account.accountId, newPause.reason, newPause.until);
     }
-    if (
-      activeLockout &&
-      this.dayAnchorStartsAtUtc &&
-      shouldAutoClearForNewDay(activeLockout, this.dayAnchorStartsAtUtc)
-    ) {
-      this.publishLockoutCleared(account.accountId, "next-day-reset");
-    }
+    // T02c: no untimed lockout auto-clears at the day anchor any more —
+    // daily loss and max trades now require the same explicit ack as the
+    // kill switch (see acknowledgeLockout, clearedByForAck). Two real
+    // incidents (state.md) went unacknowledged overnight under the old
+    // shouldAutoClearForNewDay behavior, since removed.
     // T02b: a timed pause whose clock ran out must not keep locking the
     // account, and the ledger shouldn't keep a stale "active" row either —
     // the backend's own /api/risk/today filter is only the backup for this.
@@ -502,13 +500,14 @@ export class SignalRRealtimeClient implements RealtimeClient {
   }
 
   /**
-   * T02a: the trader's own record of having closed positions manually — and,
-   * since the kill switch never auto-clears (no timer, no next-day reset:
-   * see shouldAutoClearForNewDay), the only way this specific lock is ever
-   * released. The ack IS the manual-clear action for this lock type.
+   * T02a/T02c: the trader's own record of having taken note of an untimed
+   * lockout — since none of them auto-clear any more (no timer, no next-day
+   * reset), this ack is the only way any of them is ever released.
+   * clearedByForAck keeps the kill switch's own long-standing audit value
+   * ("kill-switch-ack") distinct from every other reason ("manual").
    */
   acknowledgeLockout(lockoutId: string): void {
-    const account = this.store.getSnapshot().account;
+    const { account, activeLockout } = this.store.getSnapshot();
     if (!account) {
       return;
     }
@@ -519,7 +518,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
         acknowledgedAt: new Date().toISOString(),
       }),
     );
-    this.publishLockoutCleared(account.accountId, "kill-switch-ack");
+    this.publishLockoutCleared(account.accountId, clearedByForAck(activeLockout?.reason ?? ""));
   }
 
   /** Publish a whitelisted envelope through the hub (persist + rebroadcast).

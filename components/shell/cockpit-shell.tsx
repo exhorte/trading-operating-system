@@ -3,7 +3,8 @@
 import { useState, type ReactNode } from "react";
 import { IconRail, Sidebar } from "./sidebar";
 import { TopCommandBar } from "./top-command-bar";
-import { KillSwitchBanner } from "./kill-switch-banner";
+import { LockoutAckBanner } from "./lockout-ack-banner";
+import { LockoutViolationBanner } from "./lockout-violation-banner";
 
 export function CockpitShell({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -14,7 +15,8 @@ export function CockpitShell({ children }: { children: ReactNode }) {
       <Sidebar open={sidebarOpen} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopCommandBar onToggleSidebar={() => setSidebarOpen((open) => !open)} />
-        <KillSwitchBanner />
+        <LockoutAckBanner />
+        <LockoutViolationBanner />
         <main className="min-h-0 flex-1 overflow-y-auto p-3">{children}</main>
       </div>
     </div>

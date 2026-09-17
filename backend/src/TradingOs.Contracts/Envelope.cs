@@ -56,6 +56,13 @@ public static class EventTypes
     /// knows a real close happened, same category as RiskDayAnchorResolved
     /// (no PublishEvent whitelist entry).</summary>
     public const string JournalTradeClosed = "journal.trade_closed";
+    /// <summary>T02c: Gateway-originated — emitted the instant a position
+    /// opens while risk_lockouts already shows an active lock for the
+    /// account (GatewayBridgeService.CheckLockoutViolationAsync), so a bypass
+    /// is flagged live instead of only caught after the fact by T07's
+    /// compliance detector. Best-effort against the persisted ledger; no
+    /// PublishEvent whitelist entry, same category as JournalPositionOpened.</summary>
+    public const string JournalLockoutViolated = "journal.lockout_violated";
     /// <summary>T03: Gateway-originated — the backend owns the FRED poll,
     /// broadcast on every refresh cycle regardless of whether the list
     /// changed (same idempotent-recheck pattern as RiskDayAnchorResolved).</summary>

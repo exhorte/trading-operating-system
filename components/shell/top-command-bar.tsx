@@ -53,7 +53,7 @@ export function TopCommandBar({ onToggleSidebar }: { onToggleSidebar: () => void
         <PersistenceHealthBadge />
         {/* T02a: real now — locks the account for real (persisted ledger).
             Still never touches the broker: no close_all command exists, so
-            closing positions stays a manual MT5 action (KillSwitchBanner). */}
+            closing positions stays a manual MT5 action (LockoutAckBanner). */}
         <button
           type="button"
           disabled={activeLockout !== null}
