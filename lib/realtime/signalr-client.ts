@@ -80,6 +80,9 @@ interface HubSnapshot {
   positions: Position[];
   agents: AgentStatus[];
   candles: Candle[];
+  /** Mt5AgentServer.IsConnected. `agents` above is the observer's hello and
+   *  never answers for the execution agent — see CockpitSnapshotDto. */
+  executionAgentConnected: boolean;
 }
 
 export class SignalRRealtimeClient implements RealtimeClient {
@@ -219,6 +222,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
       account: snapshot.account,
       positions: snapshot.positions,
       agents: snapshot.agents,
+      executionAgentConnected: snapshot.executionAgentConnected,
     });
     this.scheduleContextRecompute();
     if (snapshot.account) {
@@ -381,7 +385,8 @@ export class SignalRRealtimeClient implements RealtimeClient {
    *  consecutive-loss streak (T02b). The lockout ledger — not this
    *  computation — decides "locked right now" (see applyActiveLockout). */
   private recomputeRisk(): void {
-    const { account, positions, activeLockout, upcomingReleases, agents } = this.store.getSnapshot();
+    const { account, positions, activeLockout, upcomingReleases, executionAgentConnected } =
+      this.store.getSnapshot();
     if (!account || this.baselineBalance === null || this.baselineEquity === null) {
       return;
     }
@@ -392,9 +397,15 @@ export class SignalRRealtimeClient implements RealtimeClient {
         : null;
     const nowIso = new Date().toISOString();
     const session = sessionForTimestamp(nowIso, DEFAULT_SESSION_WINDOWS);
-    // T09: an empty agent list is "no agent connected", not "unknown" — the
-    // hub tells us about every agent it knows, so nothing here is a guess.
-    const agentConnected = agents.some((agent) => agent.state === "connected");
+    // T09: still never "unknown" — the hub states the execution agent's
+    // connection explicitly, at hydration and on every change.
+    // Fixed 2026-09-18: this used to be `agents.some(a => a.state ===
+    // "connected")`, but `agents` only ever holds the READ-ONLY observer's
+    // hello (GatewayState.SetHello is called from Mt5ObserverClient, never
+    // from Mt5AgentServer). So the gate reported "execution agent reachable"
+    // whenever the market feed was up, with no EA-05 agent connected at all —
+    // exactly the false confidence T09 was built to remove.
+    const agentConnected = executionAgentConnected;
     const computed = evaluateRiskState({
       policy,
       initialBalance: this.baselineBalance,

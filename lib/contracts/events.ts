@@ -231,6 +231,17 @@ export interface LockoutViolatedPayload {
 }
 
 /**
+ * Live state of the EA-05 execution agent's TCP connection
+ * (Mt5AgentServer.IsConnected), Gateway-originated. The only honest answer to
+ * "can an order actually reach MT5 right now" — AgentStatus/`agents` carries
+ * the read-only observer's hello and says nothing about execution, which is
+ * what connectionGate was reading by mistake until 2026-09-18.
+ */
+export interface ExecutionAgentConnectionPayload {
+  connected: boolean;
+}
+
+/**
  * T03: Gateway-originated only — the backend owns the FRED poll + cache
  * (context/product/tools/T03-gate-news.md). Broadcast on every refresh cycle
  * whether or not the list actually changed (same idempotent-recheck pattern
@@ -293,6 +304,7 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "risk.lockout.acknowledged": RiskLockoutAcknowledgedPayload;
   "journal.trade_closed": TradeClosedPayload;
   "journal.lockout_violated": LockoutViolatedPayload;
+  "execution.agent.connection": ExecutionAgentConnectionPayload;
   "market.calendar.updated": CalendarUpdatedPayload;
 }
 

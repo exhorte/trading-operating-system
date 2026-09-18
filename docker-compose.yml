@@ -50,6 +50,13 @@ services:
       Cockpit__AgentPort: "9765"
       Cockpit__ListenUrl: "http://0.0.0.0:5080"
       Cockpit__AgentBindAny: "true"
+      # T03's news gate fails closed by design, so with no FRED key it is not a
+      # safety gate at all — it's an off switch: `news_releases` has been empty
+      # since the table was created, and it blocked every S01 evaluation that
+      # reached it. Substituted from a gitignored `.env` beside this file
+      # (`.gitignore` covers `.env*`); empty when absent, i.e. today's
+      # behaviour unchanged. Never inline the key here — this file is committed.
+      Fred__ApiKey: "${FRED_API_KEY:-}"
 
 volumes:
   tradingos-pgdata:

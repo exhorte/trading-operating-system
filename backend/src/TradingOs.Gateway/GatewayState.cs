@@ -95,13 +95,21 @@ public sealed class GatewayState
         }
     }
 
-    public CockpitSnapshotDto Snapshot()
+    /// <summary>
+    /// <paramref name="executionAgentConnected"/> is required, not defaulted:
+    /// this state object only ever learns about the read-only observer (it is
+    /// the observer's hello that calls SetHello), so it cannot answer for the
+    /// EA-05 agent on its own — the caller, which holds Mt5AgentServer, must
+    /// say. Defaulting it either way would re-create the exact confusion that
+    /// made connectionGate read the observer's link as execution readiness.
+    /// </summary>
+    public CockpitSnapshotDto Snapshot(bool executionAgentConnected)
     {
         lock (_lock)
         {
             var candles = _candles.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToArray();
             var agents = _agent is null ? Array.Empty<AgentStatus>() : [_agent];
-            return new CockpitSnapshotDto(_account, _positions, agents, candles);
+            return new CockpitSnapshotDto(_account, _positions, agents, candles, executionAgentConnected);
         }
     }
 }

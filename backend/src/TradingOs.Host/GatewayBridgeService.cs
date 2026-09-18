@@ -66,7 +66,19 @@ public sealed class GatewayBridgeService(
             Persist(writer, envelope);
         };
         agentServer.ConnectionChanged += (connected) =>
+        {
             logger.LogInformation("MT5 execution agent {State}", connected ? "connected" : "disconnected");
+            // Until now this was log-only, so the cockpit never learned the
+            // execution agent's real state and connectionGate fell back to the
+            // observer-derived agents list — reading a read-only market feed as
+            // "an order can reach MT5". Broadcast it for real.
+            var envelope = Envelope<object>.Create(
+                EventTypes.ExecutionAgentConnection,
+                Source,
+                new ExecutionAgentConnectionPayload(connected));
+            _ = hub.Clients.All.SendAsync("event", envelope, stoppingToken);
+            Persist(writer, envelope);
+        };
 
         // Drain the persistence channel alongside both connections.
         await Task.WhenAll(
@@ -176,7 +188,8 @@ public sealed class GatewayBridgeService(
         }
     }
 
-    private string CurrentTimeframe() => state.Snapshot().Candles.FirstOrDefault()?.Timeframe ?? "M15";
+    private string CurrentTimeframe() =>
+        state.Snapshot(agentServer.IsConnected).Candles.FirstOrDefault()?.Timeframe ?? "M15";
 
     private async Task RunCaptureWriteAsync(Func<Task> write)
     {

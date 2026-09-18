@@ -163,3 +163,55 @@ est en ordre — sans lire huit lignes ni ouvrir MT5.
   tôt) alors que `/` répondait 200 — cause : un `.next` périmé, laissé par
   des `npm run build` de production intercalés entre des serveurs de dev.
   `rm -rf .next` répare. À connaître avant de suspecter le code.
+
+- 2026-09-18 — **bug corrigé dans `connectionGate` : le gate lisait
+  l'observer, pas l'agent d'exécution.** Trouvé en vérifiant enfin les pages
+  contre le vrai backend (possible depuis sa conteneurisation) : `/preflight`
+  affichait « Execution agent — connected » alors que `/health` répondait
+  `agentConnected: false` et qu'aucun agent EA-05 n'était connecté — seul
+  l'observer Python tournait.
+
+  **Cause, vérifiée dans le code et non supposée** : `GatewayState._agent` —
+  la seule source du tableau `agents` envoyé au cockpit — n'est alimenté que
+  par `Mt5ObserverClient` (c'est le hello de l'observer qui appelle
+  `SetHello`, `Mt5ObserverClient.cs:132-133`). `Mt5AgentServer` ne touche
+  jamais `GatewayState`. Son propre `agent.connected` était bien diffusé mais
+  **aucun `case` ne l'écoutait** dans `store.ts` (il tombait dans le
+  `default`), et son `ConnectionChanged` n'était que loggé, jamais diffusé.
+  `recomputeRisk()` calculait donc `agentConnected` avec
+  `agents.some(a => a.state === "connected")`, c'est-à-dire « le flux de
+  marché est up » — lu comme « un ordre peut atteindre MT5 ».
+
+  **Portée réelle** : pas seulement l'affichage. Ce même booléen alimente
+  `evaluateRiskState`, donc le Risk Engine lui-même croyait un agent
+  d'exécution joignable. Aucune conséquence live tant qu'`OrderSend`/CONFIRM
+  reste fermé (rien ne part), mais c'était exactement la fausse confiance que
+  ce gate existe pour supprimer. Le mock l'avait masqué : `mockAgents()`
+  fabrique un agent « connected », donc la vérification d'origine de T09 ne
+  pouvait pas voir le câblage réel.
+
+  **Correctif** : `Mt5AgentServer.IsConnected` devient une donnée de premier
+  ordre, séparée des `agents` de l'observer — `CockpitSnapshotDto
+  .ExecutionAgentConnected` (hydratation) + nouvel événement Gateway-direct
+  `execution.agent.connection` (changements live, diffusé depuis
+  `ConnectionChanged` qui n'était que loggé). `GatewayState.Snapshot(bool)`
+  prend le paramètre **obligatoire** plutôt qu'un défaut, même raison que le
+  champ non nullable de l'incrément 1 : cet objet ne connaît que l'observer,
+  il ne peut pas répondre pour l'agent, et un défaut recréerait la confusion.
+  Côté cockpit : `executionAgentConnected` dans le store (défaut `false`,
+  fail-closed), `recomputeRisk()` l'utilise à la place de `agents.some(...)`.
+
+  **Libellés corrigés au passage** — deux surfaces présentaient l'observer
+  comme un agent d'exécution : `AgentHealthPanel` (titre « Execution agents »
+  sur la liste observer → « MT5 links », avec une ligne dédiée à l'agent
+  EA-05) et la tuile KPI « Agents n/n online » → « Execution agent »
+  (l'observer reste visible dans le panneau détaillé et via le badge WS).
+
+  **Vérifié contre le vrai backend**, pas en mock : après rebuild du
+  conteneur, `/preflight` affiche « Execution agent — no agent connected » et
+  3 points bloquants au lieu de 2, pendant que l'observer est toujours
+  connecté et que les autres gates lisent de vraies valeurs (spread 26 pts,
+  pertes consécutives 1/3) — c'est-à-dire exactement le cas qui donnait un
+  faux « connected » avant. Gates : tsc, lint, vitest 210/210, `dotnet
+  build` (0/0), `next build` verts. `dotnet test` toujours bloqué par Smart
+  App Control (voir runbook).

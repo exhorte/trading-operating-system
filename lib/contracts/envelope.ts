@@ -70,6 +70,11 @@ export type EventType =
   // bypass is flagged live instead of only being caught after the fact by
   // T07's compliance detector. Best-effort against the persisted ledger.
   | "journal.lockout_violated"
+  // Gateway-only: the EA-05 execution agent's TCP connection opening/closing.
+  // Deliberately NOT agent.connected — the read-only observer emits that one
+  // too, which is exactly how connectionGate ended up reading a market feed
+  // as "an order can reach MT5" (T09 bug, fixed 2026-09-18).
+  | "execution.agent.connection"
   // T03: Gateway-only — the backend polls FRED and owns the calendar cache;
   // never client-published.
   | "market.calendar.updated";

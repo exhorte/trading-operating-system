@@ -140,6 +140,10 @@ export class MockRealtimeClient implements RealtimeClient {
       lastHeartbeatAt: new Date().toISOString(),
       // T03: demo fixture only, static — not wired to a scenario.
       upcomingReleases: mockUpcomingReleases(),
+      // Demo fixture: mock mode shows the execution agent as reachable so the
+      // preflight verdict is demonstrable. Real mode reads this from
+      // Mt5AgentServer.IsConnected, never from mockAgents().
+      executionAgentConnected: true,
     });
 
     if (initial) {

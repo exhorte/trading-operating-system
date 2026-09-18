@@ -18,7 +18,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
-import { aggregateCandles } from "@/lib/analysis/aggregate";
 import { DEFAULT_SESSION_WINDOWS } from "@/lib/analysis/config";
 import { defaultRiskPolicy } from "@/lib/risk/policy";
 import { isNewsBlackout, type UpcomingRelease } from "@/lib/risk/news-calendar";
@@ -112,6 +111,23 @@ function readSpread(path: string): SpreadSnapshot | null {
     return JSON.parse(readFileSync(path, "utf-8")) as SpreadSnapshot;
   } catch {
     return null; // not yet written, or the export loop hasn't run this cycle
+  }
+}
+
+/**
+ * One higher-timeframe snapshot, as exported natively by
+ * export_m1_candles.py. Only closed bars: a forming H4 or D1 bar has no
+ * confirmed body, and S01 validates structure "en clôture de corps".
+ * Returns [] when the file is missing so the caller can say so plainly
+ * rather than evaluating a timeframe it does not actually have.
+ */
+function readTimeframe(canonical: string, timeframe: "h1" | "h4" | "d1"): Candle[] {
+  try {
+    return readJsonl(join(CANDLES_DIR, `${timeframe}_${canonical.toLowerCase()}.jsonl`))
+      .filter((c) => c.closed)
+      .map(toCandle);
+  } catch {
+    return [];
   }
 }
 
@@ -309,9 +325,19 @@ async function evaluateSymbol(
     return;
   }
 
-  const h1 = aggregateCandles(m1, "M1", "H1");
-  const h4 = aggregateCandles(m1, "M1", "H4");
-  const d1 = aggregateCandles(m1, "M1", "D1");
+  // Native MT5 bars, not aggregated from the M1 window above. Aggregating
+  // them was the reason S01 never passed step 1: 1500 M1 bars span ~25h,
+  // which yields 2 D1 bars, and dailyBias needs >= 5 per timeframe to find
+  // a single swing — so the D1 arm was "neutral" unconditionally, whatever
+  // the market did. Native bars also carry the broker's own day boundary
+  // rather than a UTC-midnight bucket (same distinction as T02a's anchor).
+  const h1 = readTimeframe(canonical, "h1");
+  const h4 = readTimeframe(canonical, "h4");
+  const d1 = readTimeframe(canonical, "d1");
+  if (h1.length === 0 || h4.length === 0 || d1.length === 0) {
+    console.log(`[detect] ${canonical}: no H1/H4/D1 snapshot yet — is the exporter writing to ${CANDLES_DIR}?`);
+    return;
+  }
   const cutoff = Math.max(0, m1.length - REACTION_WINDOW_M1_BARS);
 
   const input: SetupProposalInput = {

@@ -12,20 +12,44 @@ const AGENT_TONES: Record<string, PillTone> = {
   disconnected: "loss",
 };
 
+/**
+ * Two different links, deliberately shown apart since 2026-09-18: the list
+ * below is the READ-ONLY observer's hello (GatewayState only ever learns
+ * about that one), while the execution agent's real TCP state comes from
+ * Mt5AgentServer. Titling the observer "Execution agents" is what let the
+ * cockpit imply an order could reach MT5 while no EA-05 agent existed.
+ */
 export function AgentHealthPanel() {
-  const { agents, account } = useCockpit();
+  const { agents, account, executionAgentConnected } = useCockpit();
   const untrusted = useIsDataUntrusted();
+
+  const executionRow = (
+    <div className="flex items-center justify-between gap-2 rounded border border-border bg-surface-elevated p-2">
+      <span className="text-xs font-medium">
+        Execution agent
+        <span className="ml-1.5 text-muted">(EA-05)</span>
+      </span>
+      <StatusPill tone={executionAgentConnected ? "profit" : "loss"}>
+        {executionAgentConnected ? "connected" : "no agent"}
+      </StatusPill>
+    </div>
+  );
 
   if (agents.length === 0) {
     return (
-      <Card title="Execution agents">
-        <Skeleton className="h-24" />
+      <Card title="MT5 links">
+        {executionRow}
+        <Skeleton className="mt-2 h-16" />
       </Card>
     );
   }
 
   return (
-    <Card title="Execution agents" untrusted={untrusted}>
+    <Card title="MT5 links" untrusted={untrusted}>
+      {executionRow}
+      <p className="mt-2 mb-1 text-[11px] uppercase tracking-wide text-muted">
+        Observer (read-only)
+      </p>
       <ul className="flex flex-col gap-2">
         {agents.map((agent) => (
           <li

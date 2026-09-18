@@ -124,9 +124,18 @@ public sealed record UpcomingRelease(int ReleaseId, string Label, string Schedul
 /// must fail closed on null, never treat it as "confirmed empty".</summary>
 public sealed record CalendarUpdatedPayload(UpcomingRelease[]? Releases);
 
+/// <summary>Live state of the EA-05 execution agent's TCP connection — the
+/// only honest answer to "can an order actually reach MT5 right now".
+/// Separate from AgentStatus/Agents, which carries the read-only observer's
+/// hello and says nothing about execution.</summary>
+public sealed record ExecutionAgentConnectionPayload(bool Connected);
+
 /// <summary>Initial state a dashboard receives on hub connect (snapshot + events pattern).</summary>
 public sealed record CockpitSnapshotDto(
     AccountSummary? Account,
     Position[] Positions,
     AgentStatus[] Agents,
-    Candle[] Candles);
+    Candle[] Candles,
+    /// <summary>Mt5AgentServer.IsConnected at hydration time. Agents above is
+    /// observer-derived and must never stand in for this (T09 bug).</summary>
+    bool ExecutionAgentConnected);

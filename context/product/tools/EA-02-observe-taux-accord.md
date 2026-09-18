@@ -163,3 +163,36 @@ Voir S01, section « Critère de réussite » : sur un échantillon de séances 
   passe. `TRADINGOS_ACCOUNT_ID` doit être positionné (env var) avant de
   lancer le worker en continu ; pas fait automatiquement pour ne pas figer
   un identifiant de compte dans un script committé.
+
+- 2026-09-18 — **décision « agréger M1 → H1/H4/D1 » révisée : les hautes
+  timeframes viennent maintenant nativement de MT5.**
+
+  Le worker n'avait jamais rien proposé. La cause n'était pas S01 mais trois
+  gates structurellement fermées (détail dans `state.md`, « Ce qui bloque ») ;
+  celle qui concerne cette fiche est la troisième. La fenêtre M1 exportée
+  (`DEFAULT_BARS = 1500`) couvre ~25 h, ce qui agrège à **8 bougies H4 et 2
+  bougies D1**. Or `dailyBias` exige une structure confirmée sur H4 **et**
+  D1, et `detectSwings` a besoin d'au moins `2 × swingLookback + 1 = 5`
+  bougies pour former un seul swing : avec 2 bougies D1, `detectSwings`
+  renvoie `[]`, `structuralBias([])` vaut `neutral`, et **l'étape 1 était donc
+  infranchissable quel que soit le marché**. Le commentaire du script
+  affirmait que 1 500 bougies suffisaient « with headroom » — affirmation
+  jamais mesurée, et fausse.
+
+  Corrigé en tirant H1/H4/D1 directement de MT5 (`copy_rates_from_pos` avec
+  `TIMEFRAME_H1/H4/D1`, 500/300/300 bougies) plutôt qu'en les agrégeant. Deux
+  gains, le second non anticipé lors du choix d'origine : c'est instantané et
+  borné, et surtout la bougie journalière porte la **frontière de journée du
+  broker** au lieu d'un bucket sur minuit UTC — la distinction que T02a
+  résout déjà pour l'ancre de journée, et qui compte pour le dealing range et
+  les PD arrays. `aggregateCandles` n'est pas supprimé : T05 s'en sert encore
+  pour reconstruire le timeframe d'une capture.
+
+  Le M1 reste exporté et sert ce pour quoi il est adapté : `contextCandles` /
+  `reactionCandles`, c'est-à-dire le sweep et le déplacement.
+
+  **Vérifié en direct** (killzone Londres, EURUSDm/GBPUSDm, un seul worker
+  après nettoyage des doublons) : l'entonnoir atteint `sweep`, étape 4/9 —
+  biais validé, dealing range ancré, liquidité cartographiée. Les seuils de
+  S01 (`c = 0,25`, 1:3, corps 1,5 × ATR) ne sont **toujours** jamais atteints ;
+  ils restent posés, pas mesurés.

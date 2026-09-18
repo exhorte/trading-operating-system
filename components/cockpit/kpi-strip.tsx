@@ -28,7 +28,7 @@ function KpiCell({ kpi }: { kpi: Kpi }) {
 }
 
 export function KpiStrip() {
-  const { account, risk, positions, agents } = useCockpit();
+  const { account, risk, positions, executionAgentConnected } = useCockpit();
   const untrusted = useIsDataUntrusted();
 
   // Only the account is required. `risk` is null until a risk engine exists
@@ -44,7 +44,6 @@ export function KpiStrip() {
     );
   }
 
-  const connectedAgents = agents.filter((agent) => agent.state === "connected").length;
   const kpis: Kpi[] = [
     { label: "Equity", value: formatMoney(account.equity) },
     {
@@ -81,10 +80,15 @@ export function KpiStrip() {
             : "loss",
     },
     { label: "Active positions", value: String(positions.length) },
+    // Was "Agents: n/n online", counted from the read-only observer's hello —
+    // which says nothing about whether an order could reach MT5, and read as
+    // execution readiness until 2026-09-18. The observer's own state stays
+    // visible in AgentHealthPanel and the top bar's WS badge; this tile now
+    // carries the fact a trading decision actually depends on.
     {
-      label: "Agents",
-      value: `${connectedAgents}/${agents.length} online`,
-      tone: connectedAgents === agents.length ? "profit" : "loss",
+      label: "Execution agent",
+      value: executionAgentConnected ? "connected" : "none",
+      tone: executionAgentConnected ? "profit" : "loss",
     },
   ];
 

@@ -73,4 +73,14 @@ public static class EventTypes
     /// <summary>EA-06: one open position as the terminal reports it right now
     /// (PositionsTotal() scan), agent-originated on the heartbeat cadence.</summary>
     public const string ExecutionPositionScan = "execution.position.scan";
+    /// <summary>
+    /// Whether the EA-05 execution agent's TCP connection is currently open
+    /// (Mt5AgentServer.IsConnected). Deliberately NOT agent.connected: that
+    /// one is also emitted by the read-only observer's hello, so it cannot
+    /// answer "can an order actually reach MT5". Conflating the two is what
+    /// made T09's connectionGate read the observer's link as execution
+    /// readiness — see T09's fiche. Gateway-originated, no PublishEvent
+    /// whitelist entry.
+    /// </summary>
+    public const string ExecutionAgentConnection = "execution.agent.connection";
 }

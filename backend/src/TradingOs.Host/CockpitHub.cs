@@ -35,7 +35,7 @@ public sealed class CockpitHub(
     private const int MaxPublishBytes = 64 * 1024;
 
     /// <summary>Latest known state so a client can hydrate before the event stream.</summary>
-    public CockpitSnapshotDto GetSnapshot() => state.Snapshot();
+    public CockpitSnapshotDto GetSnapshot() => state.Snapshot(agentServer.IsConnected);
 
     /// <summary>
     /// Phase 10: a dashboard publishes a signal/decision envelope; the hub

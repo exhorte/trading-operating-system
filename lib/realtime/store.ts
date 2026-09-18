@@ -24,6 +24,7 @@ import type {
   AccountSnapshotPayload,
   AgentHeartbeatPayload,
   CalendarUpdatedPayload,
+  ExecutionAgentConnectionPayload,
   ExecutionReportPayload,
   LockoutViolatedPayload,
   MarketContextUpdatedPayload,
@@ -68,6 +69,15 @@ export interface CockpitSnapshot {
    * live notice, not the audit trail (T07/`/journal` already has that).
    */
   lockoutViolations: LockoutViolatedPayload[];
+  /**
+   * Whether the EA-05 execution agent's TCP connection is open right now
+   * (Mt5AgentServer.IsConnected, hydrated from the hub snapshot and kept
+   * current by execution.agent.connection). **Never** derive this from
+   * `agents` above: that list is the read-only observer's hello, and reading
+   * it as execution readiness is the bug this field exists to kill — the Risk
+   * Engine's connectionGate (T09) approved orders on it until 2026-09-18.
+   */
+  executionAgentConnected: boolean;
 }
 
 export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
@@ -86,6 +96,9 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   acknowledgedLockoutIds: [],
   upcomingReleases: null,
   lockoutViolations: [],
+  // Fail closed: "no agent" until the hub says otherwise, never an optimistic
+  // default that would let the gate pass before anything is known.
+  executionAgentConnected: false,
 };
 
 const MAX_FEED_LENGTH = 20;
@@ -174,6 +187,14 @@ export class CockpitStore {
             MAX_FEED_LENGTH,
           ),
         });
+        break;
+      }
+      // The EA-05 agent's real connection, the one connectionGate must use.
+      // Distinct from agent.connected/agent.disconnected below, which the
+      // observer also emits.
+      case "execution.agent.connection": {
+        const { connected } = envelope.payload as ExecutionAgentConnectionPayload;
+        this.patch({ executionAgentConnected: connected });
         break;
       }
       // T03: Gateway-originated, always the full current list (never a delta) —

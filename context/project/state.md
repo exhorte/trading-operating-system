@@ -1,8 +1,7 @@
 # État du projet
 
-Dernière mise à jour : 2026-09-17 (suite). Instantané seulement —
-l'historique vit dans `session-log.md` (ADR 0008) et dans le journal de
-chaque fiche d'outil.
+Dernière mise à jour : 2026-09-18. Instantané seulement — l'historique vit
+dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
 
 ## En une phrase
 
@@ -112,6 +111,47 @@ cockpit natif affichant les vraies valeurs) — détail dans `session-log.md`.
 `dotnet test` reste le seul gate non vérifiable sur cette machine tant que
 la politique Smart App Control n'est pas ajustée par l'utilisateur.
 
+**S01/EA-02 : trois gates structurellement fermées, trouvées et corrigées le
+2026-09-18.** Le détecteur n'avait jamais rien proposé, et l'explication
+n'était à aucun moment « la stratégie est trop stricte » — aucune de ses
+étapes 2 à 9 n'avait jamais pu s'exécuter :
+
+1. **Gate calendrier sans données.** `news_releases` était vide depuis la
+   création de la table (aucune clé FRED configurée). T03 échoue fermé par
+   conception, donc la gate n'était pas une sécurité mais un interrupteur en
+   position off : le 2026-09-15, **370 évaluations sur 370** en killzone y
+   sont mortes. Clé fournie par l'utilisateur le 2026-09-18, injectée via un
+   `.env` non committé (`Fred__ApiKey` dans `docker-compose.yml`) ; le cache
+   se peuple (15 releases).
+2. **Exportateur écrivant où personne ne lit.** `--out-dir .` depuis
+   `04_code` alors que le worker lit `TRADINGOS_CANDLES_DIR`, par défaut
+   `tools/mt5-observer`. Le détecteur évaluait un instantané **figé depuis
+   trois jours** (toujours hors killzone), et chaque écriture heurtait la clé
+   primaire `(symbol, event_at)` en silence.
+3. **H4/D1 agrégées depuis 25 h de M1 → 2 bougies D1.** `dailyBias` exige
+   une structure confirmée sur H4 **et** D1, et `detectSwings` a besoin d'au
+   moins 5 bougies pour un seul swing : le bras D1 renvoyait donc `neutral`
+   **inconditionnellement**, rendant l'étape 1 infranchissable quel que soit
+   le marché. Le commentaire de l'exportateur affirmait pourtant que 1 500
+   bougies M1 suffisaient « with headroom » — jamais mesuré. Corrigé en
+   tirant H1/H4/D1 **nativement** de MT5 (500/300/300), ce qui apporte au
+   passage la frontière de journée du broker plutôt qu'un bucket UTC (même
+   distinction que l'ancre T02a). Révise la décision « agrège M1 →
+   H1/H4/D1 » de la fiche EA-02.
+
+Résultat vérifié en direct : l'entonnoir atteint `sweep` (étape 4/9) sur
+EURUSDm et GBPUSDm — premier refus réellement dépendant du marché. **Les
+seuils de S01 (`c = 0,25`, 1:3, corps à 1,5 × ATR) n'ont toujours jamais été
+atteints** : les régler resterait spéculatif tant que l'entonnoir n'a pas
+été observé sur plusieurs séances.
+
+**Piège d'outillage à connaître** : `TaskStop` ne tue que le shell, pas
+l'arbre `node`/`python`. Quatre workers et deux exportateurs ont tourné en
+concurrence, se disputant la clé primaire — la base affichait le verdict du
+plus rapide, pas celui du code courant. Vérifier avec
+`Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*run-setup-detection*' }`
+avant de tirer la moindre conclusion d'un chiffre d'entonnoir.
+
 **T02a/T02b, précision utile pour EA-07** : le kill switch et la gate
 « Daily loss guard » ont tous deux tourné en réel plusieurs fois (verrouillage
 → acquittement/reset → levée, tracé en base). **La pause de 30 min sur deux
@@ -163,11 +203,20 @@ réponse — T02c** (durcissement du lockout, détail dans « Ce qui bloque » e
 `T02-lockout.md`). T10 redevient la suite sans réserve en attente.
 
 **Backend réel de nouveau up le 2026-09-17, en conteneur** (voir « Ce qui
-bloque ») — vérifié en direct avec de vraies données. Occasion pas encore
-saisie : T06/T07/T08/T15, listés juste au-dessus comme « jamais vus rendus
-à l'écran avec de vraies données », peuvent maintenant l'être — le backend
-tourne, l'observer aussi, il suffit d'ouvrir `/journal` et les pages
-associées dans un navigateur.
+bloque ») — vérifié en direct avec de vraies données.
+
+**Occasion saisie le 2026-09-18, et elle a payé** : `/journal` (T06/T07) vu
+rendu avec de vraies données pour la première fois — correct (les 6
+violations, P&L exacts, ventilations, liens Capture). Mais `/preflight`
+affichait « Execution agent — connected » sans aucun agent EA-05 connecté :
+`connectionGate` lisait le tableau `agents`, alimenté uniquement par le
+hello de l'**observer**. Corrigé le jour même (fiche T09, entrée
+2026-09-18) — `Mt5AgentServer.IsConnected` est désormais une donnée séparée
+de premier ordre, et le Risk Engine l'utilise à la place. **La leçon vaut
+au-delà** : le mode mock débloque le rendu, il ne vérifie pas le câblage —
+la vérification d'origine de T09, faite en mock, ne pouvait pas voir ce bug.
+Restent non vus à l'écran avec de vraies données : T08 (sortie Markdown, pas
+une page) et T15 (serveur MCP, pas une page) — vérifiés autrement.
 
 Aucun nouvel outil de roadmap identifié au-delà de Vague 2 pour l'instant —
 la suite (Vague 3, T09+) dépend de T11/T12 (multi-compte, hors périmètre
@@ -201,7 +250,10 @@ seconde voie d'exécution — aucune consigne générale d'« avancer » ou de
 « clôturer » ne vaut accord pour ça. Les conditions de sa fiche ne sont de
 toute façon pas remplies : (a) T02b — la pause 30 min sur deux pertes
 consécutives — n'a jamais été déclenchée en réel ; (b) le taux d'accord
-d'EA-02 est toujours inconnu (zéro proposition sur 595 évaluations) ;
+d'EA-02 est toujours inconnu — zéro proposition, mais la cause a changé de
+nature le 2026-09-18 : ce n'était pas la stratégie qui refusait, c'étaient
+trois défauts de câblage qui l'empêchaient de s'exécuter (voir « Ce qui
+bloque »). L'entonnoir atteint désormais l'étape 4/9 (`sweep`) ;
 (c) la Vague 1 n'est pas close (un trade a été ouvert pendant un lockout
 actif le 2026-09-15).
 

@@ -6,6 +6,96 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-18 (suite — **S01 s'exécute enfin** : trois gates structurellement fermées, trouvées et corrigées)
+
+Demande initiale : « analyser la stratégie de l'EA, trouver les faiblesses
+dans ses prises de position, optimiser ses gains ». Deux corrections de
+cadrage avant tout diagnostic. D'abord, **l'EA n'a pas de stratégie** :
+`TradingOsAgent.mq5` est un exécutant (connexion, heartbeat, validation,
+accusé), son `OrderSend` reste mort. La stratégie, c'est S01, détectée par
+EA-01/EA-02. Ensuite, « optimiser les gains » est fermé par ADR 0001 (le KPI
+est la conformité, pas le P&L) et ADR 0002 — dit une fois, sans y revenir,
+et la suite a montré qu'il n'y avait de toute façon rien à régler.
+
+**Le détecteur n'avait jamais rien proposé, et aucune des trois causes
+n'était la stratégie.** Détail complet dans `state.md` (« Ce qui bloque ») :
+gate calendrier sans données (370 évaluations sur 370 tuées le 15/09),
+exportateur écrivant dans un dossier que personne ne lit (instantané figé
+depuis trois jours), et surtout **H4/D1 agrégées depuis 25 h de M1 → 2
+bougies D1**, alors que `dailyBias` a besoin d'au moins 5 bougies par
+timeframe pour un seul swing : le bras D1 renvoyait `neutral`
+inconditionnellement, l'étape 1 était infranchissable quoi que fasse le
+marché. Le commentaire de l'exportateur affirmait le contraire sans que
+personne ne l'ait mesuré.
+
+Correctif retenu par l'utilisateur parmi deux options : **bougies natives
+MT5** (H1/H4/D1, 500/300/300) plutôt qu'augmenter `--bars` — plus juste, la
+journée D1 étant celle du broker et non un bucket UTC (même distinction que
+l'ancre T02a). Révise la décision « agrège M1 → H1/H4/D1 » de la fiche
+EA-02.
+
+**Résultat vérifié en direct** : l'entonnoir passe de « jamais démarré » à
+`sweep`, étape 4/9 — biais H4/D1 validé, dealing range H1 ancré, liquidité
+cartographiée, et le refus porte désormais sur une condition de marché.
+Premier refus légitime de l'histoire du projet.
+
+**Deux erreurs de ma part dans cette session, corrigées et notées** : (1)
+j'ai affirmé que les killzones étaient en UTC fixe — faux,
+`lib/setup/preconditions.ts` fait bien du NY DST-aware via `Intl` ; j'avais
+déduit au lieu de lire. (2) J'ai lancé l'exportateur avec le mauvais
+`--out-dir`, en suivant ma propre note mémoire qui était fausse — note
+corrigée. **Piège d'outillage** : `TaskStop` ne tue que le shell, pas
+l'arbre `node`/`python` ; quatre workers ont tourné en concurrence sur la
+même clé primaire, la base affichant le verdict du plus rapide et non celui
+du code courant. Tout chiffre d'entonnoir lu avant le nettoyage est à jeter.
+
+Gates : `tsc`, `lint`, `py_compile` verts. Rien de committé.
+
+---
+
+## 2026-09-18 (**bug de `connectionGate` corrigé** — le gate lisait l'observer, pas l'agent d'exécution)
+
+« Phase suivante » : T10 était la suite sans réserve, mais avant de l'ouvrir
+j'ai saisi l'occasion notée dans `state.md` — vérifier enfin à l'écran, avec
+le vrai backend (possible depuis sa conteneurisation), les pages jamais vues
+rendues avec de vraies données. `/journal` (T06/T07) est correct : les 6
+violations de lockout, les P&L exacts, les ventilations, les liens Capture.
+
+**Mais `/preflight` affichait « Execution agent — connected » alors que
+`/health` répondait `agentConnected: false`** et qu'aucun agent EA-05 n'était
+connecté — seul l'observer Python tournait. Cause confirmée en lisant le
+code : le tableau `agents` envoyé au cockpit n'est alimenté **que** par le
+hello de l'observer (`Mt5ObserverClient` appelle `SetHello` ;
+`Mt5AgentServer` ne touche jamais `GatewayState`), et `recomputeRisk()`
+dérivait `agentConnected` de ce tableau. Le gate répondait donc « le flux de
+marché est up », lu comme « un ordre peut atteindre MT5 ». Pas seulement
+cosmétique : ce booléen alimente `evaluateRiskState`, donc le Risk Engine
+lui-même. Sans conséquence live tant qu'`OrderSend` reste fermé, mais
+c'était exactement la fausse confiance que T09 existait pour supprimer.
+
+Le mock l'avait masqué (`mockAgents()` fabrique un agent « connected ») —
+la vérification d'origine de T09, faite en mode mock, ne pouvait pas voir le
+câblage réel. Leçon qui vaut au-delà de ce bug : le mode mock débloque le
+rendu, il ne vérifie pas le câblage.
+
+Correctif et détail complet dans la fiche T09 (entrée 2026-09-18) :
+`Mt5AgentServer.IsConnected` devient une donnée de premier ordre
+(`CockpitSnapshotDto.ExecutionAgentConnected` + nouvel événement
+`execution.agent.connection` diffusé depuis un `ConnectionChanged` qui
+n'était que loggé), `executionAgentConnected` dans le store en fail-closed,
+et deux libellés qui présentaient l'observer comme un agent d'exécution
+corrigés (`AgentHealthPanel`, tuile KPI).
+
+**Vérifié contre le vrai backend, pas en mock** : `/preflight` affiche
+désormais « no agent connected » et 3 points bloquants au lieu de 2,
+l'observer toujours connecté et les autres gates sur de vraies valeurs.
+Gates vertes (tsc, lint, vitest 210/210, `dotnet build` 0/0, `next build`) ;
+`dotnet test` toujours bloqué par Smart App Control.
+
+T10 n'est pas commencé — cette correction a pris la place de la phase.
+
+---
+
 ## 2026-09-17 (suite — **backend conteneurisé**, contourne le blocage Smart App Control)
 
 Demande explicite (« mets le backend dans Docker ») après le backend resté
