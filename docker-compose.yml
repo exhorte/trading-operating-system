@@ -42,7 +42,8 @@ services:
     environment:
       # Container port 5432 (compose network), not the host-mapped 5433 above.
       ConnectionStrings__TradingOs: "Host=timescaledb;Port=5432;Database=tradingos;Username=tradingos;Password=tradingos_dev"
-      Cockpit__DashboardOrigin: "http://localhost:3000"
+      # 3000 = backend mode, 3001 = mock preview (.claude/launch.json).
+      Cockpit__DashboardOrigin: "http://localhost:3000,http://localhost:3001"
       # The Python observer + MT5 terminal stay on the Windows host, never
       # containerized — host.docker.internal is Docker Desktop's built-in
       # route back to the host (nothing extra to configure on Windows).

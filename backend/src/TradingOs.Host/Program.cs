@@ -6,8 +6,13 @@ using TradingOs.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Dashboard origin for local dev; SignalR needs credentials-compatible CORS.
-var dashboardOrigin = builder.Configuration["Cockpit:DashboardOrigin"] ?? "http://localhost:3000";
+// Dashboard origins for local dev; SignalR needs credentials-compatible CORS.
+// Comma-separated since 2026-09-20: the cockpit runs on 3000 in backend mode
+// and on 3001 in the mock preview (.claude/launch.json declares both), and a
+// single allowed origin silently broke every HTTP-backed panel on 3001 —
+// journal, positions, compliance badge — as an opaque CORS failure.
+var dashboardOrigins = (builder.Configuration["Cockpit:DashboardOrigin"] ?? "http://localhost:3000")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 var observerUrl = builder.Configuration["Cockpit:ObserverUrl"] ?? "ws://localhost:8765";
 // EA-05: plain TCP, not WSS — see Mt5AgentServer's doc comment for why.
 // Distinct port from the observer's WS server (8765): two processes, two
@@ -28,7 +33,7 @@ var agentBindAny = builder.Configuration.GetValue<bool>("Cockpit:AgentBindAny");
 builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
-        policy.WithOrigins(dashboardOrigin).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+        policy.WithOrigins(dashboardOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
 builder.Services.AddSingleton<GatewayState>();
 builder.Services.AddSingleton(sp => new Mt5ObserverClient(sp.GetRequiredService<GatewayState>(), observerUrl));
