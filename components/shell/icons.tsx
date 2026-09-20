@@ -9,6 +9,14 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <rect x="14" y="14" width="7" height="7" rx="1" />
     </>
   ),
+  checklist: (
+    <>
+      <path d="m3 6 1.8 1.8L8.4 4" />
+      <path d="m3 12 1.8 1.8L8.4 10" />
+      <path d="m3 18 1.8 1.8L8.4 16" />
+      <path d="M12 6h9M12 12h9M12 18h9" />
+    </>
+  ),
   chart: (
     <>
       <path d="M4 20V10" />
@@ -30,11 +38,11 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M9 8h6" />
     </>
   ),
-  replay: (
+  report: (
     <>
-      <path d="M3 12a9 9 0 1 0 3-6.7" />
-      <path d="M3 4v5h5" />
-      <path d="m10 9 5 3-5 3V9Z" />
+      <path d="M6 3h8l4 4v14H6V3Z" />
+      <path d="M14 3v4h4" />
+      <path d="M9 17v-3M12 17v-6M15 17v-4" />
     </>
   ),
   shield: (
@@ -55,12 +63,6 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M10 3v6L5 18a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3" />
       <path d="M8 3h8" />
       <path d="M7.5 15h9" />
-    </>
-  ),
-  settings: (
-    <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.3 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.5 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.5 2.3-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.5-2-1.5c.1-.4.1-.8.1-1.2Z" />
     </>
   ),
 };

@@ -6,6 +6,136 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-20 (suite — **écran « Analyse de compte » livré** : le modèle FTMO adapté, discipline en tête, sans conseil)
+
+Enchaîné sur la refonte d'architecture ci-dessous, sur demande directe
+(« fait l'écran analyse de compte »). `/analyse`, neuvième écran.
+
+**Une tension de fiche levée explicitement, pas contournée.** La fiche T08
+(Décision 1) a écarté une page cockpit pour la revue hebdomadaire : « un
+document qui se lit une fois et se garde… ce serait un second /journal ».
+Cet écran est un autre objet, et la distinction est écrite dans
+`information_architecture.md` : T08 rend **une semaine dans un fichier**,
+`/analyse` lit **n'importe quelle plage à l'écran**, et calcule surtout des
+dimensions que T08 n'a jamais eues — durée de trade, taille de position,
+jour d'ouverture *contre* jour de fermeture, heure d'entrée, sens. Pas de
+table de trades : sur ce point la fiche avait raison, `/journal` la porte
+déjà.
+
+**Trois écarts délibérés avec le modèle FTMO**, tous tenus par du code :
+discipline avant P&L dans l'ordre de lecture (ADR 0001) ; **aucun conseil**
+— FTMO clôt ses blocs par « focus only on those particular trades that
+turned out successful for you », soit la sélection a posteriori qui a mis
+fin à la recherche d'edge (ADR 0002), et un test interdit ce registre
+(`narrative.test.ts`, « never gives trading advice ») ; aucune table de
+trades.
+
+**Ce qui a été mutualisé plutôt que recopié** — c'était la troisième copie
+dans chaque cas : `lib/journal/types.ts` (forme d'un trade clôturé, T08 y
+est branché), `lib/journal/use-journal-window.ts` (couple trades +
+lockouts), `lib/compliance/summarize.ts` (chiffres de conformité, purs),
+`lib/compliance/labels.ts`. `useComplianceRate` n'est plus qu'une politique
+de fenêtre glissante par-dessus.
+
+**Vérifié contre les vraies données, pas seulement en tests.** Les fonctions
+pures exécutées sur le compte 477029930 (2026-06-01 → 2026-09-21) : 9
+trades, +$25,27 net, 33 % de conformité, 6 `LOCKOUT_ACTIVE` — les quatre
+recoupent exactement T08 et `state.md`. Et **chaque ventilation somme au
+même net** : durée (−0,90 + 53,45 − 27,28), taille (0,30 + 52,25 − 27,28),
+sens (53,20 − 27,93) = +25,27. T08 relancé après le déplacement de type :
+fichier régénéré identique à la référence du 2026-09-17.
+
+**Préversion mock alignée sur un compte réel, dans la foulée et sur demande.**
+Le mock servait `account-001`, qui n'existe dans aucune base : `/journal`,
+`/positions`, `/analyse` et le badge de conformité y étaient vides en
+permanence. `lib/mock/initial-snapshot.ts` lit désormais
+`NEXT_PUBLIC_MOCK_ACCOUNT_ID`, défaut `"account-001"`.
+
+**Variable d'environnement et pas constante, délibérément** :
+`.claude/CLAUDE.md` pose « Aucun identifiant de compte n'est jamais demandé,
+stocké ou partagé », et le coder en dur l'aurait poussé sur le remote.
+`.env*` est gitignoré, `.env.example` documente la variable sans valeur. Quand
+elle est renseignée, le libellé du compte passe à « Compte réel — flux
+simulé » : l'equity et les positions restent scriptées, seul le côté journal
+devient réel, et le mélange doit rester visible.
+
+**Ce que l'activation a révélé immédiatement** : `/risk` est passé de « 100 %
+conforme, 0 verrou » à **33 % hors cadre, 6 trades non conformes sur 9, et
+cinq verrous réels** — kill switch du 2026-09-15 (3 min, acquitté) et quatre
+« Daily loss guard » du 2026-09-14 (19 h 17, acquittés). La trace exacte des
+deux incidents de Vague 1, affichée sans qu'on la cherche. Un écran de
+discipline qui affiche 100 % parce qu'il n'a rien à lire est pire qu'un écran
+vide.
+
+**Le rendu peuplé de `/analyse` est donc vérifié** : les nombres à l'écran
+sont identiques à ceux calculés hors-écran (9 trades, +$25,27, 56 % de
+réussite, rapport 1.49 ; ventilations durée/taille/sens sommant toutes à
++25,27).
+
+Gates : `tsc` clean, `eslint` clean, **247 tests verts** (+29).
+
+---
+
+## 2026-09-20 (**refonte de l'architecture d'information du cockpit** — le Command Center passe de ~104 valeurs à ~25, trois écrans vides sont remplis, deux sont supprimés)
+
+Session d'interface, déclenchée par une remarque de l'utilisateur : « le
+command center semble très chargé, trop d'information, difficile de se fixer
+ou trouver une information directement ».
+
+**Diagnostic chiffré avant de toucher quoi que ce soit** : ~104 valeurs
+distinctes dans un viewport, et surtout quatre horizons de temps mélangés
+(maintenant / aujourd'hui / ce mois / structure de marché) sans qu'aucune
+question ne soit posée. En parallèle, cinq des dix entrées de navigation
+étaient des placeholders « not built yet ».
+
+**Règle retenue, validée par l'utilisateur : un écran, une question.** Le
+détail et la cartographie complète sont dans le nouveau
+`context/frontend/information_architecture.md` — ce fichier ne le répète pas.
+
+- **Command Center** : ligne de verdict « Armé / Pas armé » en tête, quatre
+  KPI au lieu de huit (les quatre retirés étaient des composantes d'une même
+  question, désormais la tuile « Marge avant verrou »), positions ouvertes.
+- **Trois écrans vides remplis** avec ce qui en sortait : `/market-context`,
+  `/risk` (renommé « Risque & Discipline »), `/agents` (« Agents & Audit »).
+  Rien n'a été perdu dans le déplacement.
+- **Deux écrans supprimés** : `/settings` (rien à configurer) et `/replay`
+  (attend le pipeline analytics). `PnlCalendar` supprimé aussi — `/journal`
+  a déjà un `MonthCalendar` plus riche, alimenté par la base.
+
+**Trois surfaces de données trouvées sans aucun écran**, en cartographiant
+les endpoints backend contre leurs consommateurs front : `/api/audit/recent`
+(zéro consommateur — la piste d'audit d'un système qui se revendique
+auditable vivait derrière `curl`), l'historique des lockouts, et le
+calendrier FRED réduit à un chip. Les trois ont servi à donner du contenu
+propre aux écrans receveurs.
+
+**Deux duplications supprimées** : la règle « armé / pas armé » (deux copies)
+vit maintenant dans `lib/cockpit/verdict.ts`, pur et testé (8 tests) ; le
+calcul du taux de conformité T07 dans `lib/compliance/use-compliance-rate.ts`,
+un fetch pour le badge et la nouvelle jauge.
+
+**Un bug backend trouvé en vérifiant, pas en cherchant** : `Cockpit:DashboardOrigin`
+n'acceptait qu'une seule origine (`http://localhost:3000`), donc **tout panneau
+adossé à HTTP était cassé sur le port 3001** — le preview mock déclaré dans
+`.claude/launch.json`. Journal, positions et badge de conformité y échouaient
+en CORS opaque, ce qu'on lisait depuis des semaines comme « pas de données ».
+La config accepte désormais une liste ; `docker-compose.yml` déclare 3000 et
+3001. Conteneur reconstruit, en-tête vérifié.
+
+**Analyse des modèles de référence** (`05_screenchot/`, demandée en début de
+session) dans `context/frontend/visual_reference_ftmo_journal.md` : le journal
+type TradeZella, et les deux exports FTMO (Analyse de compte, Account MetriX).
+Le MetriX est le plus proche de notre produit — sa jauge de discipline est
+l'ancêtre direct de `DisciplineGauge`, re-pointée sur le taux de conformité
+T07 plutôt que sur le P&L.
+
+Vérifié : `tsc` clean, `eslint` clean, 218 tests verts, les huit écrans
+rendus à l'écran sur le port 3001. **Non vérifié** : `dotnet test` reste
+bloqué par Smart App Control (runbook §2) — le changement C# est couvert par
+`dotnet build` et par la vérification de l'en-tête CORS en direct.
+
+---
+
 ## 2026-09-20 (**bilan de la killzone NY AM du 18/09** — S01 refuse pour une raison de marché ; tout est à l'arrêt)
 
 Suite du 2026-09-18, après `1210fae` (poussé : correctif `connectionGate` +

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
+import { sessionVerdict } from "@/lib/cockpit/verdict";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -27,8 +28,10 @@ export default function PreflightPage() {
     );
   }
 
-  const blocking = risk.gates.filter((gate) => gate.state !== "open");
-  const armed = blocking.length === 0 && risk.state !== "locked";
+  // Same rule as the Command Center's verdict banner, imported rather than
+  // re-derived — this page owns the detail, not a second definition of
+  // "armed" (lib/cockpit/verdict.ts).
+  const { armed, blocking } = sessionVerdict(risk);
 
   return (
     <div className="flex flex-col gap-4">

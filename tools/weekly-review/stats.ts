@@ -7,24 +7,15 @@
 
 import { evaluateTrade, complianceRate, type ComplianceTradeInput } from "@/lib/compliance/evaluate";
 import type { LockoutWindow, Violation } from "@/lib/compliance/violations";
+import type { JournalTrade } from "@/lib/journal/types";
 import { defaultRiskPolicy } from "@/lib/risk/policy";
 import { toCanonicalSymbol } from "@/lib/market/symbols/registry";
 import { DEFAULT_SESSION_WINDOWS } from "@/lib/analysis/config";
 
-/** Shape of GET /api/journal/trades (JournalRepository.GetTradesAsync). */
-export interface JournalTrade {
-  brokerPositionId: string;
-  symbol: string;
-  side: string;
-  volume: number;
-  entryPrice: number | null;
-  exitPrice: number;
-  realizedPnl: number;
-  stopLoss: number | null;
-  openedAt: string | null;
-  closedAt: string;
-  hasCapture: boolean;
-}
+/** Re-exported so this module's own consumers keep importing it from here;
+ *  the declaration itself moved to lib/journal/types.ts on 2026-09-20, when
+ *  the account analysis screen became its third copy. */
+export type { JournalTrade } from "@/lib/journal/types";
 
 export interface SymbolBreakdown {
   symbol: string;
