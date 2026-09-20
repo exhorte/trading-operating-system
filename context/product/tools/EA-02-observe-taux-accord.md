@@ -196,3 +196,38 @@ Voir S01, section « Critère de réussite » : sur un échantillon de séances 
   biais validé, dealing range ancré, liquidité cartographiée. Les seuils de
   S01 (`c = 0,25`, 1:3, corps 1,5 × ATR) ne sont **toujours** jamais atteints ;
   ils restent posés, pas mesurés.
+
+- 2026-09-18 (suite) — **première observation réelle de l'entonnoir, et ce
+  que le pipeline ne garantit pas encore.**
+
+  Relancé après un redémarrage de session (un worker avait survécu, pas
+  l'exportateur — il relisait un instantané figé depuis ~8 min), un seul
+  worker, puis surveillé sur la killzone NY AM (11:00→14:00 UTC, 07:00–10:00
+  NY) :
+
+  | Étape bloquante | Évaluations |
+  |---|---|
+  | `range_location` (étape 2/9) | 356 |
+  | `precondition_session_window` (bords de la fenêtre) | 2 |
+
+  EURUSDm et GBPUSDm, au pas d'une minute : « price is discount, need premium
+  for a sell » sur toute la killzone — biais baissier (H4 et D1 concordants),
+  vente uniquement au-dessus de l'équilibre du dealing range 1H, prix resté en
+  dessous. Aucun rejet `precondition_calendar` (15 releases FRED en cache
+  depuis le matin) : la gate ne bloque plus. Plus tôt le même jour, à
+  Londres, l'entonnoir avait atteint `sweep` (étape 4/9).
+
+  **Limites de cette observation, à ne pas arrondir** : (1) le refus est
+  compatible avec la règle, mais le dealing range n'a pas été recalculé de
+  façon indépendante sur les bougies H1 brutes — « le marché n'a pas donné »
+  est l'hypothèse la plus simple, pas un fait vérifié ; (2) une séance, deux
+  symboles très corrélés (EURUSD et GBPUSD bougent ensemble contre le
+  dollar), donc pas deux observations indépendantes ; (3) les étapes 5 à 9 et
+  les seuils de S01 n'ont toujours jamais été atteints. Le critère de
+  réussite de S01 (accord machine/humain sur un échantillon de séances) reste
+  non mesurable : il n'y a ni proposition à comparer, ni échantillon.
+
+  **Le pipeline ne se supervise pas tout seul.** Au 2026-09-20 (dimanche)
+  tout est à l'arrêt — redémarrage de la machine : conteneurs sortis en code
+  255, MT5 fermé, plus aucun processus. L'échantillon de séances dépend de
+  deux processus lancés à la main ; question ouverte dans `state.md`.

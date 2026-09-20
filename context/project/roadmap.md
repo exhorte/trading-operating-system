@@ -116,7 +116,7 @@ les ordres » était **déjà vrai** avant T09 (chaque gate bloqué refuse déj�
 et ne contraint de toute façon que ce qui passe par ce système — un ordre
 saisi à la main dans MT5 échappe à tout. T09 a livré la valeur qui restait :
 le rituel (une page, un verdict) et un vrai trou bouché — le gate de
-connexion, absent jusque-là.
+connexion, absent jusque-là. **Correction du 2026-09-18** : ce gate lisait d'abord le tableau `agents`, alimenté par l'observer lecture seule, et non l'état de l'agent d'exécution — le trou n'était donc réellement bouché que depuis ce jour-là (fiche T09, entrée du 2026-09-18).
 
 ## Vague 4 — intelligence de marché
 

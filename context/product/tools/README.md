@@ -12,7 +12,7 @@ volontaire comme un échec.
 | Fiche | Outil | Vague | Statut |
 |---|---|---|---|
 | T01 | Calculateur de taille one-click | 1 | retiré (2026-09-14) |
-| T02 | Lockout comportemental | 1 | livré |
+| T02 | Lockout comportemental | 1 | livré (T02a/T02b 2026-09-05 ; **T02c 2026-09-17** — alerte temps réel dès qu'une position s'ouvre pendant un verrou actif, accusé de réception obligatoire pour lever tout verrou non chronométré ; le chemin Gateway de l'alerte n'a jamais été exercé en réel) |
 | T03 | Gate calendrier économique | 1 | livré |
 | T04 | Ticket pré-trade | 1 | retiré (2026-09-14) |
 | T05 | Captures automatiques entrée/sortie | 1 | livré |
@@ -20,10 +20,10 @@ volontaire comme un échec.
 | T07 | Tracker d'erreurs et taux de conformité | 2 | livré (4 incréments, 2026-09-16 — lockout + fenêtre de session + taille, stop déplacé reporté ; rendu navigateur jamais vu, aucun agent MT5 connecté à cette session) |
 | T15 | Serveur MCP « mon trading » (lecture seule) | 2 | livré (4 incréments, 2026-09-17 — vérifié par un vrai handshake MCP contre des données réelles ; a révélé un second incident de lockout contourné, voir `state.md`) |
 | T08 | Revue hebdomadaire générée | 2 | livré (3 incréments, 2026-09-17 — vérifié contre les vraies données du 2026-09-14/15, document Markdown inspecté) |
-| T09 | Checklist de pré-vol exécutable | 3 | livré (3 incréments, 2026-09-17 — `/preflight`, gate de connexion ajouté ; **premier rendu vérifié à l'écran depuis T05**, via le mode `mock`) |
+| T09 | Checklist de pré-vol exécutable | 3 | livré (3 incréments, 2026-09-17 — `/preflight`, gate de connexion ajouté ; **premier rendu vérifié à l'écran depuis T05**, via le mode `mock` ; **le mock masquait un bug, corrigé le 2026-09-18** : le gate de connexion lisait l'observer et non l'agent d'exécution, vu en vérifiant contre le vrai backend) |
 | S01 | Stratégie « Sweep aligné » | EA | à faire |
 | EA-01 | Détection S01, en TypeScript pur | EA | livré |
-| EA-02 | Mode OBSERVE et taux d'accord | EA | livré (code) |
+| EA-02 | Mode OBSERVE et taux d'accord | EA | livré (code) — pipeline débloqué le 2026-09-18 (trois gates fermées, voir la fiche) ; entonnoir jusqu'à l'étape 4/9, zéro proposition ; taux d'accord non mesurable, pipeline à l'arrêt au 2026-09-20 |
 | EA-03 | Protocole d'exécution et machine à états | EA | livré |
 | EA-04 | Profils de compte, modèle de coût, registre de symboles | EA | livré |
 | EA-05 | Agent MQL5 | EA | livré (incrément 6 inclus, 2026-09-15 — `OrderSend` écrit, inatteignable hors `CONFIRM`, jamais exécuté) |

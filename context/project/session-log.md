@@ -6,6 +6,63 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-20 (**bilan de la killzone NY AM du 18/09** — S01 refuse pour une raison de marché ; tout est à l'arrêt)
+
+Suite du 2026-09-18, après `1210fae` (poussé : correctif `connectionGate` +
+pipeline S01 débloqué, voir les deux entrées ci-dessous).
+
+**Relance du pipeline après un redémarrage de session.** État trouvé : un
+worker survivant — une seule chaîne de processus, pas de doublon — mais
+l'exportateur mort, donc un worker qui relisait depuis ~8 min un instantané
+figé. Tout ce qui portait `run-setup-detection` arrêté, puis exportateur et
+worker relancés ; vérifié par l'heure de création et le PID parent de
+chaque chaîne (une instance de chaque). C'est l'envers du piège noté plus
+bas (`TaskStop` ne tue pas l'arbre) : ce que la fin d'une session laisse
+vivant est imprévisible, un composant peut survivre pendant que l'autre est
+mort.
+
+**Killzone NY AM du 2026-09-18 (11:00→14:00 UTC), un seul worker : 356
+évaluations, toutes bloquées à `range_location`** (étape 2/9), sur EURUSDm
+et GBPUSDm — « price is discount, need premium for a sell » : biais baissier,
+donc vente uniquement au-dessus de l'équilibre du dealing range 1H, et le
+prix est resté en dessous toute la killzone. Aucun rejet
+`precondition_calendar` : la gate FRED, débloquée le matin même, ne bloque
+plus. La killzone de Londres du même jour avait atteint `sweep` (étape 4/9),
+donc franchi l'étape 2 à ce moment-là.
+
+**Ce que ça établit, et ce que ça n'établit pas.** Le refus est compatible
+avec la règle de S01 ; « le marché n'a pas donné le retracement » est
+l'hypothèse la plus simple, **pas une vérification** — je ne l'ai pas
+recoupée avec un recalcul indépendant du dealing range sur les bougies H1
+brutes. Les étapes 5 à 9 (déplacement/MSS, entrée, stop, portes de coût et
+de R:R, sorties) n'ont toujours jamais été atteintes ; les seuils de S01
+(`c = 0,25`, 1:3, corps 1,5 × ATR) restent posés, pas mesurés.
+
+**Fausse alerte de mon propre moniteur, corrigée.** Il annonçait « dernière
+évaluation il y a 702 min » alors que le pipeline était sain (`event_at` à
+1-2 min) : `${latest_event% *}` ne retirait pas un suffixe de fuseau mais
+**l'heure**, ne laissant que la date — donc « depuis minuit ». Le format
+réel de Postgres (`2026-09-18 11:41:00+00`) se lit directement avec
+`date -d`. À retenir : tester l'arithmétique d'une alerte sur la vraie
+sortie de la source, pas sur le format qu'on croit recevoir.
+
+**État constaté le 2026-09-20 à 12:28 UTC (dimanche, marchés fermés) : tout
+est à l'arrêt.** Les deux conteneurs sont sortis en code 255 environ 12 h
+plus tôt (arrêt non propre de Docker Desktop ou de la machine, cause non
+investiguée), MT5 est fermé, plus aucun observer, exportateur ou worker.
+Git propre sur `1210fae`. Rien n'a été relancé : marchés fermés, et MT5
+demande une ouverture manuelle.
+
+Fichiers de suivi mis à jour dans le même passage : `state.md`, fiche EA-02,
+index des fiches, `roadmap.md` (note T09), `runbook.md` (emplacement de la
+clé FRED corrigé, nouvelle section 5 « Pipeline de détection S01 », ordre de
+redémarrage après arrêt non propre), `03_Suivi_Projet/Suivi.md`. Rien de
+committé. **Question ouverte, ajoutée à `state.md`** : superviser le
+pipeline EA-02 ? Le critère de réussite de S01 mesure un échantillon de
+séances, et chaque arrêt silencieux en perd.
+
+---
+
 ## 2026-09-18 (suite — **S01 s'exécute enfin** : trois gates structurellement fermées, trouvées et corrigées)
 
 Demande initiale : « analyser la stratégie de l'EA, trouver les faiblesses

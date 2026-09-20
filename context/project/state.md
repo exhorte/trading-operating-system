@@ -1,6 +1,6 @@
 # État du projet
 
-Dernière mise à jour : 2026-09-18. Instantané seulement — l'historique vit
+Dernière mise à jour : 2026-09-20. Instantané seulement — l'historique vit
 dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
 
 ## En une phrase
@@ -23,9 +23,12 @@ jamais tourné contre un broker. Ouvrir `CONFIRM` est EA-07, non démarré,
 non demandé, et ses propres préconditions ne sont pas remplies. **Vague 2
 est livrée** (T06 journal, T07 conformité, T15 serveur MCP, T08 revue
 hebdomadaire) — son propre critère de sortie (taux de conformité affiché
-en haut du cockpit) est rempli. Détail de chaque brique dans sa propre
-fiche (`context/product/tools/`) et dans `session-log.md`, pas ici — ce
-fichier reste un instantané.
+en haut du cockpit) est rempli. **S01 s'exécute** depuis le 2026-09-18
+(trois gates structurellement fermées ont été corrigées) mais n'a encore
+rien proposé ; le pipeline est **à l'arrêt** au 2026-09-20 — voir « Ce qui
+bloque ». Détail de chaque brique dans sa propre fiche
+(`context/product/tools/`) et dans `session-log.md`, pas ici — ce fichier
+reste un instantané.
 
 ## Ce qui existe et fonctionne
 
@@ -36,7 +39,7 @@ jamais tourné contre un vrai terminal** — voir « Ce qui bloque ».
 
 | Brique | Où | État |
 |---|---|---|
-| Chaîne temps réel MT5 → cockpit | `tools/mt5-observer/`, `backend/src/TradingOs.Gateway/`, `backend/src/TradingOs.Host/` | Validée live. Observer Python lecture seule → gateway .NET → SignalR → cockpit. |
+| Chaîne temps réel MT5 → cockpit | `tools/mt5-observer/`, `backend/src/TradingOs.Gateway/`, `backend/src/TradingOs.Host/` | Validée live. Observer Python lecture seule → gateway .NET → SignalR → cockpit. Le gateway .NET tourne **en conteneur Docker** depuis le 2026-09-17 (Smart App Control bloque le binaire natif — runbook §2) ; observer et MT5 restent natifs. |
 | Contrats de domaine | `lib/domain/`, `lib/contracts/` | TypeScript portable, miroirs C# dans `TradingOs.Contracts`. |
 | Moteur d'analyse | `lib/analysis/` | Swings, structure, liquidité, PD arrays, sessions, ATR. Pur, testé. Sert de source de niveaux — **pas de source de signal**. |
 | Risk Engine | `lib/risk/` | Gates FTMO, sizing, lockout (ledger stocké, pause de 30 min sur pertes consécutives depuis T02b), gate calendrier FRED fail-closed depuis T03. Pur, testé. |
@@ -44,7 +47,7 @@ jamais tourné contre un vrai terminal** — voir « Ce qui bloque ».
 | Comptes et symboles | `lib/accounts/`, `lib/market/symbols/` | EA-04 : `defaultRiskPolicy` résout par compte (registre vide à ce jour — aucun compte FTMO/réel confirmé), registre canonique↔broker EURUSD/GBPUSD/XAUUSD. |
 | Agent d'exécution MT5 | `tools/mt5-execution-agent/`, `backend/src/TradingOs.Gateway/Mt5AgentServer.cs` | EA-05 : connexion, heartbeat, réception, validation locale, persistance `commandId → résultat` sur disque — **vérifiés par l'utilisateur contre un vrai terminal** (2026-09-12). Mode figé à `OBSERVE` par construction. |
 | Persistance | `backend/src/TradingOs.Persistence/`, `docker-compose.yml` | TimescaleDB port 5433, écriture non bloquante, audit JSONB. |
-| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; T01 (sizing) et T04 (ticket) retirés le 2026-09-14 (décision explicite), bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03, viewer de capture T05 (`/journal/[brokerPositionId]`). `/journal` (T06, 2026-09-16) : table filtrable + calendrier P&L + ventilations symbole/session/heure/jour, zéro nouvelle table (vue pure sur `closed_trades`/`position_opens`/`trade_captures`/`setup_proposals`) + colonne Violations (T07). `TopCommandBar` porte désormais `ComplianceBadge` (T07, taux de conformité hebdomadaire — la vraie tête de cockpit, charter.md principe 2), à la place où le P&L irait. `/positions` (EA-06) : divergence — positions externes, `UNKNOWN` résolus. `/preflight` (T09) : verdict `Armé`/`Pas armé` sur les 9 gates du Risk Engine, dont le gate de connexion ajouté par T09. |
+| Cockpit | `app/(cockpit)/`, `components/` | Coquille sombre et dense ; T01 (sizing) et T04 (ticket) retirés le 2026-09-14 (décision explicite), bandeau kill switch T02a, chrono de pause T02b, chip calendrier FRED T03, viewer de capture T05 (`/journal/[brokerPositionId]`). `/journal` (T06, 2026-09-16) : table filtrable + calendrier P&L + ventilations symbole/session/heure/jour, zéro nouvelle table (vue pure sur `closed_trades`/`position_opens`/`trade_captures`/`setup_proposals`) + colonne Violations (T07). `TopCommandBar` porte désormais `ComplianceBadge` (T07, taux de conformité hebdomadaire — la vraie tête de cockpit, charter.md principe 2), à la place où le P&L irait. `/positions` (EA-06) : divergence — positions externes, `UNKNOWN` résolus. `/preflight` (T09) : verdict `Armé`/`Pas armé` sur les 9 gates du Risk Engine, dont le gate de connexion ajouté par T09, qui lit l'état TCP de l'agent EA-05 (`Mt5AgentServer.IsConnected`) et non l'observer depuis le correctif du 2026-09-18. |
 | Captures de trade | `lib/journal/`, `components/journal/`, `trade_captures` | T05 : faits immuables écrits par le Gateway (fenêtre, prix), rendu à la demande côté cockpit via `analyzeMarketContext` — jamais une image pré-rendue (ADR 0009). Écriture fiable même sur aller-retour rapide depuis le correctif du 2026-09-15. **Rendu cassé pour tout symbole hors XAUUSDm** (pas de M15 en base pour EURUSD/GBPUSD) — voir « Ce qui bloque ». |
 | Outils standalone | `tools/mcp-server/`, `tools/weekly-review/`, `tools/shared/` | T15 (serveur MCP lecture seule, `npm run mcp`) et T08 (revue hebdomadaire Markdown, `npm run weekly-review`) : deux scripts `tsx` autonomes, toujours via l'API REST existante (`tools/shared/backend-client.ts`, jamais Postgres/MT5 en direct), important `lib/compliance/` plutôt que de le réécrire. |
 
@@ -93,9 +96,11 @@ supprimée). Détail complet dans `T02-lockout.md`. **Ça ne ferme pas
 Vague 1** — les six trades ont déjà eu lieu, le durcissement empêche
 seulement une récidive du même genre. Vérifié : gates vertes (tsc, lint,
 vitest 210/210, `dotnet build`, `next build`, `python -m py_compile`) et
-mode mock (nouvelle config `cockpit-dev-mock`, port 3001) ; **`dotnet test`
-et le backend réel non vérifiés cette session** — voir blocage
-environnemental ci-dessous.
+mode mock (nouvelle config `cockpit-dev-mock`, port 3001) ; **`dotnet test` non
+vérifiable ici (Smart App Control) et le chemin Gateway de l'alerte en
+direct (`CheckLockoutViolationAsync`) jamais exercé en réel** — il faudrait
+un vrai lockout actif et une position ouverte à la main ; seules les
+bannières ont été vues, en mode mock.
 
 **Blocage environnemental du 2026-09-17, résolu le même jour par
 conteneurisation.** Smart App Control (Windows) est activé sur cette
@@ -111,46 +116,45 @@ cockpit natif affichant les vraies valeurs) — détail dans `session-log.md`.
 `dotnet test` reste le seul gate non vérifiable sur cette machine tant que
 la politique Smart App Control n'est pas ajustée par l'utilisateur.
 
-**S01/EA-02 : trois gates structurellement fermées, trouvées et corrigées le
-2026-09-18.** Le détecteur n'avait jamais rien proposé, et l'explication
-n'était à aucun moment « la stratégie est trop stricte » — aucune de ses
-étapes 2 à 9 n'avait jamais pu s'exécuter :
+**S01/EA-02 : le détecteur s'exécute enfin, il n'a toujours rien proposé — et
+ce n'est plus un défaut de câblage.** Jusqu'au 2026-09-18, aucune de ses
+étapes 2 à 9 n'avait jamais pu tourner : trois gates structurellement
+fermées — la gate calendrier sans données (`news_releases` vide depuis
+toujours, aucune clé FRED : 370 évaluations sur 370 mortes le 2026-09-15),
+l'exportateur écrivant dans un dossier que le worker ne lit pas, et H4/D1
+agrégées depuis 25 h de M1 (2 bougies D1 là où `detectSwings` en exige 5,
+donc un biais `neutral` inconditionnel). Les trois sont corrigées (fiche
+EA-02, entrées du 2026-09-18 ; `session-log.md`). Observé depuis, en direct,
+avec un seul worker :
 
-1. **Gate calendrier sans données.** `news_releases` était vide depuis la
-   création de la table (aucune clé FRED configurée). T03 échoue fermé par
-   conception, donc la gate n'était pas une sécurité mais un interrupteur en
-   position off : le 2026-09-15, **370 évaluations sur 370** en killzone y
-   sont mortes. Clé fournie par l'utilisateur le 2026-09-18, injectée via un
-   `.env` non committé (`Fred__ApiKey` dans `docker-compose.yml`) ; le cache
-   se peuple (15 releases).
-2. **Exportateur écrivant où personne ne lit.** `--out-dir .` depuis
-   `04_code` alors que le worker lit `TRADINGOS_CANDLES_DIR`, par défaut
-   `tools/mt5-observer`. Le détecteur évaluait un instantané **figé depuis
-   trois jours** (toujours hors killzone), et chaque écriture heurtait la clé
-   primaire `(symbol, event_at)` en silence.
-3. **H4/D1 agrégées depuis 25 h de M1 → 2 bougies D1.** `dailyBias` exige
-   une structure confirmée sur H4 **et** D1, et `detectSwings` a besoin d'au
-   moins 5 bougies pour un seul swing : le bras D1 renvoyait donc `neutral`
-   **inconditionnellement**, rendant l'étape 1 infranchissable quel que soit
-   le marché. Le commentaire de l'exportateur affirmait pourtant que 1 500
-   bougies M1 suffisaient « with headroom » — jamais mesuré. Corrigé en
-   tirant H1/H4/D1 **nativement** de MT5 (500/300/300), ce qui apporte au
-   passage la frontière de journée du broker plutôt qu'un bucket UTC (même
-   distinction que l'ancre T02a). Révise la décision « agrège M1 →
-   H1/H4/D1 » de la fiche EA-02.
+- killzone de Londres du 2026-09-18 : l'entonnoir atteint `sweep` (étape
+  4/9) ;
+- killzone NY AM du 2026-09-18 (11:00→14:00 UTC) : **356 évaluations
+  bloquées à `range_location`** (étape 2) sur EURUSDm et GBPUSDm — biais
+  baissier, donc vente uniquement en zone prime, prix resté en zone décote
+  toute la killzone ; aucun rejet `precondition_calendar`, la gate FRED ne
+  bloque plus (15 releases en cache au 2026-09-18).
 
-Résultat vérifié en direct : l'entonnoir atteint `sweep` (étape 4/9) sur
-EURUSDm et GBPUSDm — premier refus réellement dépendant du marché. **Les
-seuils de S01 (`c = 0,25`, 1:3, corps à 1,5 × ATR) n'ont toujours jamais été
-atteints** : les régler resterait spéculatif tant que l'entonnoir n'a pas
-été observé sur plusieurs séances.
+Le refus est compatible avec la règle de S01, mais **n'a pas été recoupé**
+avec un recalcul indépendant du dealing range sur les bougies brutes :
+« le marché n'a pas donné » est l'hypothèse la plus simple, pas une
+vérification. Les étapes 5 à 9 n'ont jamais été atteintes, et **les seuils
+de S01 (`c = 0,25`, 1:3, corps à 1,5 × ATR) n'ont toujours jamais été
+exercés** — les régler resterait spéculatif.
 
-**Piège d'outillage à connaître** : `TaskStop` ne tue que le shell, pas
-l'arbre `node`/`python`. Quatre workers et deux exportateurs ont tourné en
-concurrence, se disputant la clé primaire — la base affichait le verdict du
-plus rapide, pas celui du code courant. Vérifier avec
+**Le pipeline n'est pas supervisé, et il est à l'arrêt.** Exportateur et
+worker sont deux processus manuels ; l'échantillon de séances que demande le
+critère de réussite de S01 dépend d'eux. Au 2026-09-20 12:28 UTC (dimanche)
+tout est tombé : conteneurs sortis en code 255 environ 12 h plus tôt (cause
+non investiguée), MT5 fermé, plus aucun processus. Deux pièges d'outillage :
+`TaskStop` ne tue que le shell, pas l'arbre `node`/`python` (quatre workers
+en concurrence le 2026-09-18, la base affichant le verdict du plus rapide) ;
+et après un redémarrage de session, un composant peut survivre pendant que
+l'autre est mort (le worker a survécu, l'exportateur non). Toujours
+vérifier, avant de lire un chiffre d'entonnoir :
 `Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*run-setup-detection*' }`
-avant de tirer la moindre conclusion d'un chiffre d'entonnoir.
+et que `event_at` avance. Démarrage : `context/infrastructure/runbook.md`,
+section 5.
 
 **T02a/T02b, précision utile pour EA-07** : le kill switch et la gate
 « Daily loss guard » ont tous deux tourné en réel plusieurs fois (verrouillage
@@ -171,67 +175,29 @@ une collecte longue. Piste si ça revient : `gmag11/MetaTrader5-Docker`.
 ## Prochaine action
 
 **T10 — brief pré-séance automatique (Vague 3)**, suite pré-autorisée
-(« Vague 3 — T09/T10, puis T19 »). Pas encore commencé.
+(« Vague 3 — T09/T10, puis T19 »). Pas encore commencé : les sessions du
+2026-09-17/18 sont parties dans des corrections trouvées en vérifiant contre
+du réel (voir `session-log.md`), pas dans de nouveaux outils.
 
-T09 livré le 2026-09-17 : `/preflight` (verdict `Armé` / `Pas armé` +
-points vérifiés) et un **vrai trou bouché au passage** — `connectionGate` :
-jusqu'ici le Risk Engine approuvait un ordre sans jamais vérifier qu'un
-agent d'exécution était joignable, la découverte n'arrivant qu'à l'envoi
-(`AGENT_UNREACHABLE`). Périmètre réduit après cartographie : l'auto-
-vérification, l'affichage par gate et le refus du Risk Engine existaient
-déjà tous les trois.
+**Ce qui conditionne la mesure de S01 : que le pipeline EA-02 tourne pendant
+les killzones.** Il est à l'arrêt (voir « Ce qui bloque »). Prochaines
+fenêtres, heure d'été : Londres 02:00–05:00 NY = **06:00–09:00 UTC**, NY AM
+07:00–10:00 NY = **11:00–14:00 UTC** — la première, lundi 2026-09-21, une
+fois les marchés rouverts dimanche soir. Redémarrage : runbook, section 5.
 
-**Déblocage méthodologique à retenir** : le mode `mock`
-(`NEXT_PUBLIC_REALTIME_SOURCE=mock`, sur un port séparé) permet de voir
-les pages du cockpit rendues **sans backend ni agent MT5**. C'est ce qui
-bloquait la vérification visuelle depuis T05 (`useCockpit().account` reste
-null sans flux live). **T06 et T07, jamais vus à l'écran, peuvent être
-vérifiés de cette façon** — à faire.
+**Leçon à retenir de la période** : le mode `mock`
+(`NEXT_PUBLIC_REALTIME_SOURCE=mock`, port séparé, config `cockpit-dev-mock`)
+débloque le rendu des pages sans backend ni agent MT5, mais il **ne vérifie
+pas le câblage** — la vérification d'origine de T09, faite en mock, ne
+pouvait pas voir que `connectionGate` lisait l'observer. Tout chemin de risque
+se vérifie contre le vrai backend. Vues à l'écran avec de vraies données
+depuis le 2026-09-18 : `/journal` (T06/T07, correct) et `/preflight` (T09,
+après correctif) ; T08 (Markdown) et T15 (MCP) ne sont pas des pages, ils ont
+été vérifiés autrement.
 
-**Vague 2 livrée le 2026-09-17 — les quatre outils identifiés
-(T06/T07/T15/T08) sont tous délivrés**, y compris son propre critère de
-sortie (roadmap.md) : le taux de conformité hebdomadaire se calcule
-automatiquement et s'affiche en haut du cockpit (`ComplianceBadge`, T07).
-Détail de chaque outil dans sa fiche (`context/product/tools/T0{6,7,8}-*.md`,
-`T15-serveur-mcp.md`). **Même limite pour les quatre** : jamais vus rendus
-à l'écran avec de vraies données — vérifiés contre le backend et la base
-réels (appels directs, un vrai handshake MCP pour T15, un document généré
-et relu pour T08), jamais dans un navigateur avec un agent MT5 connecté.
-
-**Traité le 2026-09-17 : le second incident de lockout contourné a eu une
-réponse — T02c** (durcissement du lockout, détail dans « Ce qui bloque » et
-`T02-lockout.md`). T10 redevient la suite sans réserve en attente.
-
-**Backend réel de nouveau up le 2026-09-17, en conteneur** (voir « Ce qui
-bloque ») — vérifié en direct avec de vraies données.
-
-**Occasion saisie le 2026-09-18, et elle a payé** : `/journal` (T06/T07) vu
-rendu avec de vraies données pour la première fois — correct (les 6
-violations, P&L exacts, ventilations, liens Capture). Mais `/preflight`
-affichait « Execution agent — connected » sans aucun agent EA-05 connecté :
-`connectionGate` lisait le tableau `agents`, alimenté uniquement par le
-hello de l'**observer**. Corrigé le jour même (fiche T09, entrée
-2026-09-18) — `Mt5AgentServer.IsConnected` est désormais une donnée séparée
-de premier ordre, et le Risk Engine l'utilise à la place. **La leçon vaut
-au-delà** : le mode mock débloque le rendu, il ne vérifie pas le câblage —
-la vérification d'origine de T09, faite en mock, ne pouvait pas voir ce bug.
-Restent non vus à l'écran avec de vraies données : T08 (sortie Markdown, pas
-une page) et T15 (serveur MCP, pas une page) — vérifiés autrement.
-
-Aucun nouvel outil de roadmap identifié au-delà de Vague 2 pour l'instant —
-la suite (Vague 3, T09+) dépend de T11/T12 (multi-compte, hors périmètre
-tant qu'un deuxième compte prop firm n'existe pas) ou d'un choix explicite
-de l'utilisateur.
-
-T06 (Vague 2) livré le 2026-09-16 — voir sa fiche pour le détail des 4
-incréments et des trois décisions validées (P&L par trade oui,
-expectancy/profit factor/courbe d'équité non — même ligne qu'ADR 0011 ;
-zéro nouvelle table ; lien Capture jamais mort). **Restant ouvert, à
-vérifier à la prochaine séance avec MT5/l'observer connectés** : `/journal`
-n'a jamais été vu rendu dans un navigateur — vérifié uniquement en appelant
-`GET /api/journal/trades` directement contre les vrais trades du
-2026-09-14/15 (confirmé : jointures correctes, `null` honnête sur le trade
-sans capture et sur les stops jamais posés), jamais par un écran réel.
+Après T10 : T19 (pré-autorisé), puis choix explicite de l'utilisateur.
+T11/T12 (multi-compte, prop firm) restent hors périmètre tant qu'un deuxième
+compte prop firm n'existe pas.
 
 Le track EA reste en pause. EA-01 à EA-06 sont livrés ; EA-06 (2026-09-16) a
 fermé les deux trous que l'incrément 6 d'EA-05 avait laissés ouverts
@@ -250,10 +216,9 @@ seconde voie d'exécution — aucune consigne générale d'« avancer » ou de
 « clôturer » ne vaut accord pour ça. Les conditions de sa fiche ne sont de
 toute façon pas remplies : (a) T02b — la pause 30 min sur deux pertes
 consécutives — n'a jamais été déclenchée en réel ; (b) le taux d'accord
-d'EA-02 est toujours inconnu — zéro proposition, mais la cause a changé de
-nature le 2026-09-18 : ce n'était pas la stratégie qui refusait, c'étaient
-trois défauts de câblage qui l'empêchaient de s'exécuter (voir « Ce qui
-bloque »). L'entonnoir atteint désormais l'étape 4/9 (`sweep`) ;
+d'EA-02 est toujours inconnu — zéro proposition ; depuis le 2026-09-18 ce
+n'est plus un défaut de câblage qui l'explique, et l'entonnoir n'a jamais
+dépassé l'étape 4/9 (voir « Ce qui bloque ») ;
 (c) la Vague 1 n'est pas close (un trade a été ouvert pendant un lockout
 actif le 2026-09-15).
 
@@ -262,3 +227,4 @@ actif le 2026-09-15).
 - Quel déclencheur pour le multi-compte ? Par défaut : le jour où un deuxième compte prop firm est ouvert.
 - Le compte FTMO existe-t-il déjà ? Toute la modélisation de ses règles est urgente ou spéculative selon la réponse.
 - Veut-on pousser un trade manuel par le même chemin d'exécution, pour qu'il soit journalisé identiquement ?
+- Faut-il superviser le pipeline EA-02 (exportateur + worker) — tâche planifiée Windows, ou service ? Aujourd'hui deux processus lancés à la main : le critère de réussite de S01 mesure un échantillon de séances, et chaque arrêt silencieux (redémarrage de la machine, fin de session) en perd une partie sans que personne le voie.
