@@ -13,7 +13,7 @@ import {
   type FtmoSettings,
 } from "@/lib/accounts/settings";
 import { formatMoney, formatSignedMoney } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Field, formatDateTime, inputClass, primaryButtonClass, secondaryButtonClass } from "./form-controls";
 import { PendingChange } from "./pending-change";
@@ -30,7 +30,7 @@ function FtmoPreview({ settings }: { settings: FtmoSettings }) {
   }
   const sourced = objectives.profitTargetPercent !== null;
   return (
-    <div className="rounded border border-border bg-surface-elevated px-2.5 py-2 text-[11px] leading-snug">
+    <div className="rounded border border-border bg-muted px-2.5 py-2 text-xs leading-snug">
       <p className="text-foreground">
         Perte journalière max{" "}
         <span className="tnum">{formatSignedMoney(-(size * policy.dailyLossLimitPercent) / 100)}</span> · plancher{" "}
@@ -102,7 +102,7 @@ export function FtmoSettingsForm({
   }
 
   return (
-    <Card
+    <Panel
       title="Prop firm · FTMO"
       actions={
         resolution.source ? (
@@ -112,7 +112,7 @@ export function FtmoSettingsForm({
         )
       }
     >
-      <p className="text-[11px] text-muted">
+      <p className="text-xs text-muted-foreground">
         En vigueur : <span className="text-foreground">{describeFtmoSettings(resolution.settings)}</span>
         {resolution.source ? ` — depuis le ${formatDateTime(resolution.source.requestedAt)}` : ""}
       </p>
@@ -185,9 +185,9 @@ export function FtmoSettingsForm({
 
         <FtmoPreview settings={draft} />
 
-        {overlap && <p className="text-[11px] text-warning">{overlap}</p>}
+        {overlap && <p className="text-xs text-warning">{overlap}</p>}
         {errors.length > 0 && (
-          <ul className="list-disc pl-4 text-[11px] text-loss">
+          <ul className="list-disc pl-4 text-xs text-loss">
             {errors.map((error) => (
               <li key={error}>{error}</li>
             ))}
@@ -205,16 +205,16 @@ export function FtmoSettingsForm({
           <button type="button" onClick={reset} disabled={unchanged || saving} className={secondaryButtonClass}>
             Rétablir
           </button>
-          {unchanged && available && <span className="text-[11px] text-muted">Aucune modification.</span>}
+          {unchanged && available && <span className="text-xs text-muted-foreground">Aucune modification.</span>}
         </div>
 
         {submitState.status === "saved" && (
-          <p className={`text-[11px] ${submitState.version.deferred ? "text-warning" : "text-profit"}`}>
+          <p className={`text-xs ${submitState.version.deferred ? "text-warning" : "text-profit"}`}>
             {submitState.message}
           </p>
         )}
-        {submitState.status === "failed" && <p className="text-[11px] text-loss">{submitState.message}</p>}
+        {submitState.status === "failed" && <p className="text-xs text-loss">{submitState.message}</p>}
       </form>
-    </Card>
+    </Panel>
   );
 }

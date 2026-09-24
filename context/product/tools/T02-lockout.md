@@ -343,3 +343,14 @@ Le nombre de trades pris hors fenêtre autorisée tombe à zéro sans effort de 
   la fin de cette session. Aucune régression du côté de mon changement
   (`dotnet build` compile proprement, 0 erreur) — seule l'exécution du
   binaire recompilé est bloquée.
+
+- 2026-09-24 — **arrêt d'urgence déplacé, pas modifié.** Refonte visuelle
+  (ADR 0012) : la barre du haut ne garde que le compte. Le bouton quitte donc
+  `TopCommandBar` pour le bas de la barre latérale (`KillSwitchButton`),
+  au-dessus de Settings — **choix de l'utilisateur** parmi trois options
+  (barre latérale / menu du compte à deux clics / Command Center seul),
+  parce qu'il reste visible et à un clic depuis tout écran, y compris
+  barre repliée (icône avec infobulle). Même action qu'avant
+  (`useTriggerKillSwitch`, ledger persisté, aucune commande de fermeture),
+  même désactivation une fois verrouillé. Les bannières d'acquittement et
+  de violation restent pleine largeur, au-dessus de tout écran.

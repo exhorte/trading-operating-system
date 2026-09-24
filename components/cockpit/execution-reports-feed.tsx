@@ -3,7 +3,7 @@
 import type { ExecutionReportStatus } from "@/lib/contracts/enums";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { formatClockTime } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 
@@ -26,36 +26,36 @@ export function ExecutionReportsFeed() {
 
   if (connection === "connecting") {
     return (
-      <Card title="Execution reports">
+      <Panel title="Execution reports">
         <Skeleton className="h-28" />
-      </Card>
+      </Panel>
     );
   }
 
   return (
-    <Card title="Execution reports" untrusted={untrusted}>
+    <Panel title="Execution reports" untrusted={untrusted}>
       {executionReports.length === 0 ? (
-        <p className="py-6 text-center text-xs text-muted">No execution reports.</p>
+        <p className="py-6 text-center text-xs text-muted-foreground">No execution reports.</p>
       ) : (
         <ul className="flex flex-col gap-1.5">
           {executionReports.slice(0, 6).map((report) => (
             <li
               key={report.reportId}
-              className="flex items-center justify-between gap-2 rounded border border-border bg-surface-elevated px-2 py-1.5"
+              className="flex items-center justify-between gap-2 rounded border border-border bg-muted px-2 py-1.5"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="tnum text-muted">{report.commandId}</span>
+                  <span className="tnum text-muted-foreground">{report.commandId}</span>
                   <span className="font-medium">{report.symbol}</span>
                   <span className={report.side === "buy" ? "text-profit" : "text-loss"}>
                     {report.side.toUpperCase()}
                   </span>
                 </div>
-                <p className="truncate text-[10px] text-muted">{report.detail}</p>
+                <p className="truncate text-[11px] text-muted-foreground">{report.detail}</p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-0.5">
                 <StatusPill tone={REPORT_TONES[report.status]}>{report.status}</StatusPill>
-                <span className="tnum text-[10px] text-muted">
+                <span className="tnum text-[11px] text-muted-foreground">
                   {formatClockTime(report.reportedAt)}
                 </span>
               </div>
@@ -63,6 +63,6 @@ export function ExecutionReportsFeed() {
           ))}
         </ul>
       )}
-    </Card>
+    </Panel>
   );
 }

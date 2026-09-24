@@ -1,36 +1,59 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowRight, Layers } from "lucide-react";
+import { cn } from "cn";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { formatPrice, formatSignedMoney } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusPill } from "@/components/ui/status-pill";
 
-const HEADERS = ["Symbol", "Side", "Volume", "Entry", "Current", "SL", "TP", "uP&L", "R", "Strategy", ""];
+const HEADERS = ["Symbole", "Sens", "Volume", "Entrée", "Cours", "SL", "TP", "P&L latent", "R", "Stratégie", ""];
 
-export function PositionsTable() {
+/** What is open right now — the only thing on the Command Center one can act on.
+ *  Also heads /positions, where the "view all" link would point to itself. */
+export function PositionsTable({ showViewAll = true }: { showViewAll?: boolean }) {
   const { positions, connection } = useCockpit();
   const untrusted = useIsDataUntrusted();
 
+  const viewAll = showViewAll ? (
+    <Link
+      href="/positions"
+      className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+    >
+      Voir tout
+      <ArrowRight className="size-3.5" />
+    </Link>
+  ) : undefined;
+
   if (connection === "connecting") {
     return (
-      <Card title="Open positions">
-        <Skeleton className="h-28" />
-      </Card>
+      <Panel title="Positions ouvertes" icon={Layers} actions={viewAll}>
+        <Skeleton className="h-28 rounded-xl" />
+      </Panel>
     );
   }
 
   return (
-    <Card title="Open positions" untrusted={untrusted}>
+    <Panel
+      title="Positions ouvertes"
+      description={positions.length > 0 ? `${positions.length} position(s) suivie(s) en direct` : undefined}
+      icon={Layers}
+      actions={viewAll}
+      untrusted={untrusted}
+    >
       {positions.length === 0 ? (
-        <p className="py-6 text-center text-xs text-muted">No open positions.</p>
+        <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+          Aucune position ouverte.
+        </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-xs">
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted">
-                {HEADERS.map((header) => (
-                  <th key={header} className="pb-1.5 pr-3 font-medium">
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                {HEADERS.map((header, index) => (
+                  <th key={`${header}-${index}`} className="pr-4 pb-3 font-medium">
                     {header}
                   </th>
                 ))}
@@ -38,43 +61,42 @@ export function PositionsTable() {
             </thead>
             <tbody>
               {positions.map((position) => (
-                <tr key={position.positionId} className="border-b border-border/50 last:border-0">
-                  <td className="py-1.5 pr-3 font-medium">{position.symbol}</td>
-                  <td
-                    className={`py-1.5 pr-3 font-medium ${
-                      position.side === "buy" ? "text-profit" : "text-loss"
-                    }`}
-                  >
-                    {position.side.toUpperCase()}
+                <tr
+                  key={position.positionId}
+                  className="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+                >
+                  <td className="py-3 pr-4 font-medium">{position.symbol}</td>
+                  <td className="py-3 pr-4">
+                    <StatusPill tone={position.side === "buy" ? "profit" : "loss"}>
+                      {position.side === "buy" ? "Achat" : "Vente"}
+                    </StatusPill>
                   </td>
-                  <td className="tnum py-1.5 pr-3">{position.volume.toFixed(2)}</td>
-                  <td className="tnum py-1.5 pr-3">{formatPrice(position.entryPrice)}</td>
-                  <td className="tnum py-1.5 pr-3">{formatPrice(position.currentPrice)}</td>
-                  <td className="tnum py-1.5 pr-3 text-loss/80">{formatPrice(position.stopLoss)}</td>
-                  <td className="tnum py-1.5 pr-3 text-profit/80">
-                    {formatPrice(position.takeProfit)}
-                  </td>
+                  <td className="tnum py-3 pr-4">{position.volume.toFixed(2)}</td>
+                  <td className="tnum py-3 pr-4">{formatPrice(position.entryPrice)}</td>
+                  <td className="tnum py-3 pr-4">{formatPrice(position.currentPrice)}</td>
+                  <td className="tnum py-3 pr-4 text-loss/80">{formatPrice(position.stopLoss)}</td>
+                  <td className="tnum py-3 pr-4 text-profit/80">{formatPrice(position.takeProfit)}</td>
                   <td
-                    className={`tnum py-1.5 pr-3 font-medium ${
-                      position.unrealizedPnl >= 0 ? "text-profit" : "text-loss"
-                    }`}
+                    className={cn(
+                      "tnum py-3 pr-4 font-medium",
+                      position.unrealizedPnl >= 0 ? "text-profit" : "text-loss",
+                    )}
                   >
                     {formatSignedMoney(position.unrealizedPnl)}
                   </td>
-                  <td
-                    className={`tnum py-1.5 pr-3 ${
-                      position.rMultiple >= 0 ? "text-profit" : "text-loss"
-                    }`}
-                  >
+                  <td className={cn("tnum py-3 pr-4", position.rMultiple >= 0 ? "text-profit" : "text-loss")}>
                     {position.rMultiple.toFixed(2)}
                   </td>
-                  <td className="py-1.5 pr-3 text-muted">{position.strategyId}</td>
-                  <td className="py-1.5">
+                  <td className="py-3 pr-4 text-muted-foreground">{position.strategyId}</td>
+                  <td className="py-3 text-right">
                     {/* T05: entry capture is server-recorded the moment the
                         position was observed opening — link, not a button,
                         since there's nothing to trigger here. */}
-                    <Link href={`/journal/${position.positionId}`} className="text-info hover:underline">
-                      Capture
+                    <Link
+                      href={`/journal/${position.positionId}`}
+                      className="text-xs text-muted-foreground transition-colors hover:text-primary"
+                    >
+                      Capture →
                     </Link>
                   </td>
                 </tr>
@@ -83,6 +105,6 @@ export function PositionsTable() {
           </table>
         </div>
       )}
-    </Card>
+    </Panel>
   );
 }

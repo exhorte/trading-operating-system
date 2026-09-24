@@ -1,3 +1,4 @@
+import { ComplianceCard } from "@/components/cockpit/compliance-card";
 import { KpiStrip } from "@/components/cockpit/kpi-strip";
 import { PositionsTable } from "@/components/cockpit/positions-table";
 import { SessionVerdictBanner } from "@/components/cockpit/session-verdict-banner";
@@ -15,13 +16,19 @@ import { SessionVerdictBanner } from "@/components/cockpit/session-verdict-banne
  *   this month       -> /journal
  *   machine health   -> /agents
  *
- * Nothing was deleted in that move. See
- * context/frontend/information_architecture.md.
+ * 2026-09-24 redesign, after the reference mock-up: the verdict becomes the
+ * hero card, the compliance rate (T07 — the product's KPI) moves here from
+ * the top bar and sits beside it, then the four numbers, then the positions.
+ * Nothing was added that was not already on this screen or in its header.
+ * See context/frontend/information_architecture.md.
  */
 export default function CommandCenterPage() {
   return (
-    <div className="flex flex-col gap-2">
-      <SessionVerdictBanner />
+    <div className="flex flex-col gap-5">
+      <div className="grid gap-5 xl:grid-cols-3">
+        <SessionVerdictBanner className="xl:col-span-2" />
+        <ComplianceCard />
+      </div>
       <KpiStrip />
       <PositionsTable />
     </div>

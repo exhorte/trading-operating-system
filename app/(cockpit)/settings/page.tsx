@@ -44,10 +44,10 @@ export default function SettingsPage() {
   }, [refresh]);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-5">
       <SettingsGuardBanner ledger={ledger} error={error} />
 
-      <div className="grid gap-2 xl:grid-cols-2">
+      <div className="grid gap-5 xl:grid-cols-2">
         {/* Keyed by the version the draft starts from: a save, a cancel or a
             change made in another tab resets the form to the new target. */}
         <FtmoSettingsForm
@@ -70,7 +70,7 @@ export default function SettingsPage() {
 
       <ConnectionProcedure />
 
-      <div className="grid gap-2 xl:grid-cols-2">
+      <div className="grid gap-5 xl:grid-cols-2">
         <CodeRulesCard ftmoPhase={resolved.settings.ftmo.challenge.phase} />
         <SettingsHistory versions={ledger?.versions ?? []} resolved={resolved} />
       </div>

@@ -18,13 +18,13 @@ import { useCockpit } from "@/lib/realtime/provider";
 import { formatPercent, formatSignedMoney } from "@/lib/format";
 import { BreakdownSection } from "@/components/analyse/breakdown-section";
 import { StatTile } from "@/components/analyse/stat-tile";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 
 const inputClass =
-  "rounded border border-border bg-surface-elevated px-2 py-1 text-xs text-foreground";
+  "h-9 rounded-lg border border-input bg-input/30 px-3 text-sm text-foreground outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -86,10 +86,10 @@ export default function AccountAnalysisPage() {
   }
 
   const rangeCard = (
-    <Card title="Période analysée">
+    <Panel title="Période analysée">
       <div className="flex flex-wrap items-center gap-3 text-xs">
         <label className="flex items-center gap-1.5">
-          <span className="text-muted">Du</span>
+          <span className="text-muted-foreground">Du</span>
           <input
             type="date"
             value={from}
@@ -99,7 +99,7 @@ export default function AccountAnalysisPage() {
           />
         </label>
         <label className="flex items-center gap-1.5">
-          <span className="text-muted">Au</span>
+          <span className="text-muted-foreground">Au</span>
           <input
             type="date"
             value={to}
@@ -108,14 +108,14 @@ export default function AccountAnalysisPage() {
             className={inputClass}
           />
         </label>
-        <span className="text-muted">{account.label}</span>
+        <span className="text-muted-foreground">{account.label}</span>
       </div>
-    </Card>
+    </Panel>
   );
 
   if (failed) {
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-5">
         {rangeCard}
         <EmptyState
           title="Analyse indisponible"
@@ -127,7 +127,7 @@ export default function AccountAnalysisPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-5">
         {rangeCard}
         <Skeleton className="h-40" />
         <Skeleton className="h-64" />
@@ -137,7 +137,7 @@ export default function AccountAnalysisPage() {
 
   if (trades.length === 0) {
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-5">
         {rangeCard}
         <EmptyState
           title="Aucun trade clôturé sur cette période"
@@ -151,11 +151,11 @@ export default function AccountAnalysisPage() {
   const complianceTone: PillTone = rate >= 0.9 ? "profit" : rate >= 0.7 ? "warning" : "loss";
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-5">
       {rangeCard}
 
       {/* Le résumé, en une phrase générée — le motif central du modèle FTMO. */}
-      <Card title="Ce que la période dit">
+      <Panel title="Ce que la période dit">
         <p className="text-sm leading-relaxed text-foreground">{describeGeneral(general)}</p>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           <StatTile
@@ -192,11 +192,11 @@ export default function AccountAnalysisPage() {
             detail="gain moyen ÷ |perte moyenne|"
           />
         </div>
-      </Card>
+      </Panel>
 
       {/* ADR 0001 : la discipline passe avant le P&L, y compris dans l'ordre
           de lecture de la page. */}
-      <Card
+      <Panel
         title="Discipline sur la période"
         actions={
           <StatusPill tone={complianceTone} pulse={rate < 0.7}>
@@ -204,7 +204,7 @@ export default function AccountAnalysisPage() {
           </StatusPill>
         }
       >
-        <p className="text-xs leading-relaxed text-muted">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {compliance.breachedCount === 0
             ? `Aucun des ${compliance.tradeCount} trades de la période n'enfreint une règle détectable.`
             : `${compliance.breachedCount} trade(s) sur ${compliance.tradeCount} enfreignent au moins une règle détectable.`}{" "}
@@ -214,24 +214,24 @@ export default function AccountAnalysisPage() {
         <ul className="mt-3 flex flex-col gap-1.5">
           {violationEntries.map(({ type, count }) => (
             <li key={type} className="flex items-center justify-between gap-2 text-xs">
-              <span className={count > 0 ? "text-foreground" : "text-muted"}>
+              <span className={count > 0 ? "text-foreground" : "text-muted-foreground"}>
                 {VIOLATION_LABELS[type]}
               </span>
-              <span className={`tnum ${count > 0 ? "text-loss" : "text-muted"}`}>{count}</span>
+              <span className={`tnum ${count > 0 ? "text-loss" : "text-muted-foreground"}`}>{count}</span>
             </li>
           ))}
         </ul>
         {compliance.byType.SIZE_POLICY === 0 && (
-          <p className="mt-2 text-[11px] text-muted">
+          <p className="mt-2 text-xs text-muted-foreground">
             Le contrôle de taille s&apos;appuie sur le solde courant, faute de solde
             historisé — un zéro ici veut dire « rien trouvé avec cette approximation »,
             pas « vérifié sur le solde du jour ».
           </p>
         )}
-      </Card>
+      </Panel>
 
-      <Card title="Séances">
-        <p className="mb-3 text-xs leading-relaxed text-muted">
+      <Panel title="Séances">
+        <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
           {describeTradingDays(tradingDays)}
         </p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
@@ -270,9 +270,9 @@ export default function AccountAnalysisPage() {
             tone="loss"
           />
         </div>
-      </Card>
+      </Panel>
 
-      <div className="grid gap-2 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2">
         <BreakdownSection
           title="Par durée de trade"
           narrative={describeDuration(breakdowns.byDuration)}
@@ -313,7 +313,7 @@ export default function AccountAnalysisPage() {
         />
       </div>
 
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted-foreground">
         Descriptions d&apos;un échantillon, pas propriétés d&apos;un système. Choisir quoi
         trader d&apos;après la tranche qui a le mieux marché ici, c&apos;est exactement la
         sélection a posteriori qui a mis fin à la recherche d&apos;edge (ADR 0002).

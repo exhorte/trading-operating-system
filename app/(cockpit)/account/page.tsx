@@ -6,7 +6,7 @@ import { resolveActiveProfile } from "@/lib/accounts/active-profile";
 import { detectFirm, FIRMS } from "@/lib/accounts/firm";
 import { brokerMatchersOf } from "@/lib/accounts/settings";
 import { useAccountSettings } from "@/lib/accounts/use-account-settings";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { ConnectionChain } from "@/components/accounts/connection-chain";
 import { FirmAccountCard } from "@/components/accounts/firm-account-card";
 import { ObjectivesCard } from "@/components/accounts/objectives-card";
@@ -31,7 +31,7 @@ export default function AccountPage() {
   const profile = account ? resolveActiveProfile(account, resolved.settings) : null;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-5">
       {error && (
         <p className="rounded border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
           Paramètres de compte non lus : {error}{" "}
@@ -43,52 +43,52 @@ export default function AccountPage() {
 
       <ConnectionChain profile={profile} />
 
-      <div className="grid gap-2 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2">
         {FIRMS.map((firm) => (
           <FirmAccountCard key={firm} firm={firm} resolved={resolved} connectedFirm={connectedFirm} />
         ))}
       </div>
 
       {account && !profile && (
-        <Card title="Broker non reconnu">
+        <Panel title="Broker non reconnu">
           <p className="text-xs leading-relaxed text-foreground">
             Le terminal connecté se présente comme « {account.broker} » : ni «{" "}
             {resolved.settings.ftmo.brokerMatch} » ni « {resolved.settings.exness.brokerMatch} » n&apos;y
             figurent. Les règles par défaut s&apos;appliquent, et la perte max est mesurée depuis le solde
             au moment où le cockpit s&apos;est connecté — pas depuis une référence fixe.
           </p>
-          <p className="mt-2 text-xs text-muted">
+          <p className="mt-2 text-xs text-muted-foreground">
             Si c&apos;est ton compte FTMO ou Exness, corrige son texte de reconnaissance dans{" "}
-            <Link href="/settings" className="text-accent hover:underline">
+            <Link href="/settings" className="text-primary hover:underline">
               Settings
             </Link>
             .
           </p>
-        </Card>
+        </Panel>
       )}
 
       {profile && (
-        <div className="grid gap-2 lg:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-2">
           <RulesCard profile={profile} />
           {profile.challenge ? (
             <ObjectivesCard profile={profile} />
           ) : (
-            <Card title="Objectifs">
-              <p className="text-xs text-muted">
+            <Panel title="Objectifs">
+              <p className="text-xs text-muted-foreground">
                 Un compte en direct n&apos;a pas d&apos;objectifs imposés : ni objectif de profit ni
                 nombre de jours minimum. Seules les limites de gauche s&apos;appliquent — et
                 personne d&apos;autre que toi ne les fait respecter.
               </p>
-            </Card>
+            </Panel>
           )}
         </div>
       )}
 
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted-foreground">
         Le cockpit ne se connecte à aucun broker : il suit le terminal MT5 ouvert, et aucun
         identifiant n&apos;est demandé ni stocké. Le challenge, le capital de référence et la
         reconnaissance se changent dans{" "}
-        <Link href="/settings" className="text-accent hover:underline">
+        <Link href="/settings" className="text-primary hover:underline">
           Settings
         </Link>{" "}
         ; les pourcentages dans <code className="text-foreground">lib/accounts/</code>, par un commit.

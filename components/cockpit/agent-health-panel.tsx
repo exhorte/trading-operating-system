@@ -2,7 +2,7 @@
 
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { formatClockTime } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 
@@ -24,10 +24,10 @@ export function AgentHealthPanel() {
   const untrusted = useIsDataUntrusted();
 
   const executionRow = (
-    <div className="flex items-center justify-between gap-2 rounded border border-border bg-surface-elevated p-2">
+    <div className="flex items-center justify-between gap-2 rounded border border-border bg-muted p-2">
       <span className="text-xs font-medium">
         Execution agent
-        <span className="ml-1.5 text-muted">(EA-05)</span>
+        <span className="ml-1.5 text-muted-foreground">(EA-05)</span>
       </span>
       <StatusPill tone={executionAgentConnected ? "profit" : "loss"}>
         {executionAgentConnected ? "connected" : "no agent"}
@@ -37,33 +37,33 @@ export function AgentHealthPanel() {
 
   if (agents.length === 0) {
     return (
-      <Card title="MT5 links">
+      <Panel title="MT5 links">
         {executionRow}
         <Skeleton className="mt-2 h-16" />
-      </Card>
+      </Panel>
     );
   }
 
   return (
-    <Card title="MT5 links" untrusted={untrusted}>
+    <Panel title="MT5 links" untrusted={untrusted}>
       {executionRow}
-      <p className="mt-2 mb-1 text-[11px] uppercase tracking-wide text-muted">
+      <p className="mt-2 mb-1 text-xs uppercase tracking-wide text-muted-foreground">
         Observer (read-only)
       </p>
       <ul className="flex flex-col gap-2">
         {agents.map((agent) => (
           <li
             key={agent.agentId}
-            className="rounded border border-border bg-surface-elevated p-2"
+            className="rounded border border-border bg-muted p-2"
           >
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium">
                 {agent.agentId}
-                <span className="ml-1.5 text-muted">({agent.platform})</span>
+                <span className="ml-1.5 text-muted-foreground">({agent.platform})</span>
               </span>
               <StatusPill tone={AGENT_TONES[agent.state] ?? "muted"}>{agent.state}</StatusPill>
             </div>
-            <dl className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] text-muted">
+            <dl className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
               <dt>Account</dt>
               <dd className="text-right text-foreground">{account?.label ?? agent.accountId}</dd>
               <dt>Latency</dt>
@@ -78,6 +78,6 @@ export function AgentHealthPanel() {
           </li>
         ))}
       </ul>
-    </Card>
+    </Panel>
   );
 }

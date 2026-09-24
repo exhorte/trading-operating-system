@@ -24,7 +24,7 @@ export function SettingsGuardBanner({
         applique les valeurs par défaut du code.
       </div>
     ) : (
-      <div className="rounded border border-border bg-surface px-3 py-2 text-xs text-muted">
+      <div className="rounded border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
         Lecture des paramètres…
       </div>
     );
@@ -51,7 +51,7 @@ export function SettingsGuardBanner({
           ))}
         </ul>
       )}
-      <p className="mt-1 text-[11px] text-muted">
+      <p className="mt-1 text-xs text-muted-foreground">
         Une limite ne se desserre jamais en pleine séance : le backend en décide au moment
         d&apos;enregistrer (ADR 0007). Évalué le {formatDateTime(ledger.evaluatedAt)}
         {error ? ` — dernière relecture échouée (${error}), la dernière configuration lue reste appliquée` : ""}.

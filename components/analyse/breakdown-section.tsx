@@ -1,6 +1,6 @@
 import type { Bucket } from "@/lib/account-analysis/breakdowns";
 import { formatSignedMoney } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 
 interface BreakdownSectionProps {
   title: string;
@@ -28,15 +28,15 @@ export function BreakdownSection({ title, narrative, buckets, footnote }: Breakd
   const maxAbs = Math.max(1, ...buckets.map((b) => Math.abs(b.pnl)));
 
   return (
-    <Card title={title}>
-      <p className="mb-3 text-xs leading-relaxed text-muted">{narrative}</p>
+    <Panel title={title}>
+      <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{narrative}</p>
 
       {buckets.length === 0 ? (
-        <p className="text-xs text-muted">Aucune donnée sur cette dimension.</p>
+        <p className="text-xs text-muted-foreground">Aucune donnée sur cette dimension.</p>
       ) : (
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-[10px] uppercase tracking-wider text-muted">
+            <tr className="text-left text-xs text-muted-foreground">
               <th className="pb-1 font-medium">Tranche</th>
               <th className="pb-1 text-right font-medium">Trades</th>
               <th className="pb-1 pl-3 font-medium">Résultat</th>
@@ -46,10 +46,10 @@ export function BreakdownSection({ title, narrative, buckets, footnote }: Breakd
             {buckets.map((bucket) => (
               <tr key={bucket.label} className="border-t border-border">
                 <td className="py-1.5 pr-2 text-foreground">{bucket.label}</td>
-                <td className="tnum py-1.5 text-right text-muted">{bucket.trades}</td>
+                <td className="tnum py-1.5 text-right text-muted-foreground">{bucket.trades}</td>
                 <td className="py-1.5 pl-3">
                   <div className="flex items-center gap-2">
-                    <div className="h-1.5 min-w-[3rem] flex-1 overflow-hidden rounded bg-surface-elevated">
+                    <div className="h-1.5 min-w-[3rem] flex-1 overflow-hidden rounded bg-muted">
                       <div
                         className={`h-full rounded ${bucket.pnl >= 0 ? "bg-profit" : "bg-loss"}`}
                         style={{ width: `${(Math.abs(bucket.pnl) / maxAbs) * 100}%` }}
@@ -70,7 +70,7 @@ export function BreakdownSection({ title, narrative, buckets, footnote }: Breakd
         </table>
       )}
 
-      {footnote && <p className="mt-2 text-[11px] text-muted">{footnote}</p>}
-    </Card>
+      {footnote && <p className="mt-2 text-xs text-muted-foreground">{footnote}</p>}
+    </Panel>
   );
 }

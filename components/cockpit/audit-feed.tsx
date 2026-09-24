@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { backendHttpBase } from "@/lib/realtime/backend-url";
 import { formatClockTime } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 
@@ -78,34 +78,34 @@ export function AuditFeed() {
 
   if (failed) {
     return (
-      <Card title="Piste d'audit" actions={<StatusPill tone="loss">indisponible</StatusPill>}>
-        <p className="text-xs text-muted">
+      <Panel title="Piste d'audit" actions={<StatusPill tone="loss">indisponible</StatusPill>}>
+        <p className="text-xs text-muted-foreground">
           <code className="text-foreground">/api/audit/recent</code> ne répond pas. Le backend
           est-il démarré ? <code className="text-foreground">docker ps</code> doit montrer{" "}
           <code className="text-foreground">tradingos-backend</code> et{" "}
           <code className="text-foreground">tradingos-timescaledb</code>.
         </p>
-      </Card>
+      </Panel>
     );
   }
 
   if (!entries) {
     return (
-      <Card title="Piste d'audit">
+      <Panel title="Piste d'audit">
         <Skeleton className="h-64" />
-      </Card>
+      </Panel>
     );
   }
 
   return (
-    <Card
+    <Panel
       title="Piste d'audit"
       actions={
-        <span className="text-[11px] text-muted">{entries.length} dernières enveloppes</span>
+        <span className="text-xs text-muted-foreground">{entries.length} dernières enveloppes</span>
       }
     >
       {entries.length === 0 ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           Aucune enveloppe persistée. La chaîne temps réel n&apos;a rien écrit — observer MT5
           arrêté, ou écriture en base coupée.
         </p>
@@ -115,7 +115,7 @@ export function AuditFeed() {
             {tally.map(([type, count]) => (
               <span
                 key={type}
-                className="rounded border border-border bg-surface-elevated px-1.5 py-0.5 text-[10px] text-muted"
+                className="rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
               >
                 {type} <span className="tnum text-foreground">{count}</span>
               </span>
@@ -128,7 +128,7 @@ export function AuditFeed() {
                 className="flex items-center justify-between gap-2 border-t border-border py-1 text-xs first:border-t-0"
               >
                 <span className="truncate text-foreground">{entry.type}</span>
-                <span className="flex shrink-0 items-center gap-2 text-muted">
+                <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
                   <span>{entry.source}</span>
                   <span className="tnum">{formatClockTime(entry.sentAt)}</span>
                 </span>
@@ -137,6 +137,6 @@ export function AuditFeed() {
           </ul>
         </>
       )}
-    </Card>
+    </Panel>
   );
 }

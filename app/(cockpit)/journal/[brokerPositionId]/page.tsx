@@ -7,7 +7,7 @@ import { aggregateCandles } from "@/lib/analysis/aggregate";
 import { useCockpit } from "@/lib/realtime/provider";
 import { backendHttpBase } from "@/lib/realtime/backend-url";
 import { TradeChart, type TradeChartMarker } from "@/components/journal/trade-chart";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Candle } from "@/lib/domain/market";
@@ -174,9 +174,9 @@ export default function TradeCapturePage() {
 
   if (!accountId) {
     return (
-      <Card title="Trade capture">
+      <Panel title="Trade capture">
         <Skeleton className="h-72" />
-      </Card>
+      </Panel>
     );
   }
 
@@ -186,18 +186,18 @@ export default function TradeCapturePage() {
 
   if (!sections) {
     return (
-      <Card title="Trade capture">
+      <Panel title="Trade capture">
         <Skeleton className="h-72" />
-      </Card>
+      </Panel>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
       {sections.map((section) => (
-        <Card key={section.title} title={`${section.title} — position ${params.brokerPositionId}`}>
+        <Panel key={section.title} title={`${section.title} — position ${params.brokerPositionId}`}>
           <TradeChart candles={section.candles} context={section.context} markers={section.markers} />
-        </Card>
+        </Panel>
       ))}
     </div>
   );

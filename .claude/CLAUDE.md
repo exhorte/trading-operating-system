@@ -8,7 +8,7 @@ Ce dépôt est un **poste de travail personnel pour trader intraday**. Ce n'est 
 2. Lire `context/project/charter.md` — ce que le projet est et ce qu'il n'est plus.
 3. Lire `context/project/state.md` — instantané de ce qui existe et la prochaine action.
 4. Lire `context/project/session-log.md` — ce qui s'est passé dans les dernières sessions (ADR 0008 ; ne pas confondre avec `state.md`, qui ne raconte rien).
-5. Lire `context/adr/` en entier. Huit ADR courts ; ils tranchent la plupart des questions.
+5. Lire `context/adr/` en entier. Douze ADR courts ; ils tranchent la plupart des questions.
 6. Lire la fiche de l'outil en cours dans `context/product/tools/`.
 7. Lire les documents de domaine, d'architecture et d'ingénierie pertinents **avant** de toucher au code.
 

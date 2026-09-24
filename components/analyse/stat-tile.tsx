@@ -21,10 +21,10 @@ const TONE_CLASSES: Record<NonNullable<StatTileProps["tone"]>, string> = {
  */
 export function StatTile({ label, value, detail, tone = "default" }: StatTileProps) {
   return (
-    <div className="rounded border border-border bg-surface-elevated px-2.5 py-2">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-muted">{label}</p>
+    <div className="rounded border border-border bg-muted px-2.5 py-2">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className={`tnum mt-0.5 text-base font-semibold ${TONE_CLASSES[tone]}`}>{value}</p>
-      <p className="mt-0.5 text-[10px] leading-tight text-muted">{detail}</p>
+      <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground">{detail}</p>
     </div>
   );
 }

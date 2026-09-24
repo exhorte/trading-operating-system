@@ -17,6 +17,7 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0009 | Le serveur capture des faits, le cockpit rend | Accepté |
 | 0010 | Le Trading OS exécute, l'EA est un agent | Accepté |
 | 0011 | Un banc de replay n'est pas un backtester | Accepté |
+| 0012 | Système de design : shadcn/ui | Accepté — amende 0003 (dépendances front, densité) |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 

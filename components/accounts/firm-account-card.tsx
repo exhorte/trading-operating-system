@@ -9,7 +9,7 @@ import type { Firm } from "@/lib/accounts/firm";
 import { ftmoObjectives } from "@/lib/accounts/ftmo";
 import type { ResolvedAccountSettings } from "@/lib/accounts/settings";
 import { formatMoney, formatSignedMoney } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { StatusPill } from "@/components/ui/status-pill";
 import { formatDateTime } from "./form-controls";
 import { PendingChange } from "./pending-change";
@@ -22,7 +22,7 @@ export const FIRM_TITLES: Record<Firm, string> = {
 function Row({ label, children, tone = "text-foreground" }: { label: string; children: ReactNode; tone?: string }) {
   return (
     <>
-      <dt className="text-muted">{label}</dt>
+      <dt className="text-muted-foreground">{label}</dt>
       <dd className={`tnum text-right ${tone}`}>{children}</dd>
     </>
   );
@@ -64,7 +64,7 @@ export function FirmAccountCard({
   const p = profile.riskPolicy;
 
   return (
-    <Card
+    <Panel
       title={FIRM_TITLES[firm]}
       actions={
         connected ? (
@@ -77,7 +77,7 @@ export function FirmAccountCard({
       }
     >
       <p className="text-sm font-semibold tracking-tight text-foreground">{profile.label}</p>
-      <p className="mt-0.5 text-[11px] text-muted">
+      <p className="mt-0.5 text-xs text-muted-foreground">
         {resolution.source
           ? `Configuré dans Settings le ${formatDateTime(resolution.source.requestedAt)}`
           : "Valeurs par défaut du code — aucun réglage de Settings n'est en vigueur"}
@@ -132,15 +132,15 @@ export function FirmAccountCard({
       )}
 
       {!connected && (
-        <p className="mt-3 border-t border-border pt-3 text-[11px] leading-snug text-muted">
+        <p className="mt-3 border-t border-border pt-3 text-xs leading-snug text-muted-foreground">
           Pour le brancher : ouvre ce compte dans MT5, puis lance{" "}
           <code className="text-foreground">{observerCommand(firm)}</code>.{" "}
-          <Link href="/settings#connexion" className="text-accent hover:underline">
+          <Link href="/settings#connexion" className="text-primary hover:underline">
             Procédure complète
           </Link>
         </p>
       )}
-    </Card>
+    </Panel>
   );
 }
 
@@ -167,13 +167,13 @@ function FtmoRows({
       </Row>
       <Row
         label="Objectif de profit"
-        tone={objectives.profitTargetPercent === null ? "text-muted" : "text-foreground"}
+        tone={objectives.profitTargetPercent === null ? "text-muted-foreground" : "text-foreground"}
       >
         {objectives.profitTargetPercent === null
           ? "non sourcé"
           : `${formatSignedMoney((challenge.accountSize * objectives.profitTargetPercent) / 100)} (${objectives.profitTargetPercent} %)`}
       </Row>
-      <Row label="Jours de trading minimum" tone={objectives.minTradingDays === null ? "text-muted" : "text-foreground"}>
+      <Row label="Jours de trading minimum" tone={objectives.minTradingDays === null ? "text-muted-foreground" : "text-foreground"}>
         {objectives.minTradingDays ?? "non sourcé"}
       </Row>
     </>

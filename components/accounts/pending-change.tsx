@@ -37,13 +37,13 @@ export function PendingChange({
   }
 
   return (
-    <div className="rounded border border-warning/40 bg-warning/5 px-2.5 py-2 text-[11px] leading-snug">
+    <div className="rounded border border-warning/40 bg-warning/5 px-2.5 py-2 text-xs leading-snug">
       <div className="flex items-start justify-between gap-2">
         <p className="text-foreground">
           <span className="font-medium text-warning">En attente du prochain jour de trading</span>
           {" — "}
           {describeVersion(version)}
-          <span className="text-muted"> (demandé le {formatDateTime(version.requestedAt)})</span>
+          <span className="text-muted-foreground"> (demandé le {formatDateTime(version.requestedAt)})</span>
         </p>
         {cancellable && (
           <button type="button" onClick={cancel} disabled={busy} className={secondaryButtonClass}>

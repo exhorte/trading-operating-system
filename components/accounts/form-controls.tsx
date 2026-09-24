@@ -1,14 +1,17 @@
 import type { ReactNode } from "react";
+import { buttonVariants } from "@/components/ui/button";
 
-/** Same field look as /journal and /analyse filters. */
+/**
+ * shadcn/ui's Input look (2026-09-24 redesign), for native inputs and
+ * selects alike — same field as the /journal and /analyse filters.
+ */
 export const inputClass =
-  "w-full rounded border border-border bg-surface-elevated px-2 py-1 text-xs text-foreground disabled:opacity-50";
+  "h-9 w-full rounded-lg border border-input bg-input/30 px-3 text-sm text-foreground outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
 
-export const primaryButtonClass =
-  "rounded border border-accent/50 bg-accent/10 px-3 py-1 text-xs font-medium text-accent hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-accent/10";
+/** The mock-up's « New Challenge »: filled mint, dark text. */
+export const primaryButtonClass = buttonVariants({ size: "sm", className: "rounded-lg px-4" });
 
-export const secondaryButtonClass =
-  "rounded border border-border px-3 py-1 text-xs text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40";
+export const secondaryButtonClass = buttonVariants({ variant: "outline", size: "sm", className: "rounded-lg" });
 
 export function Field({
   label,
@@ -20,10 +23,10 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1 text-xs">
-      <span className="text-muted">{label}</span>
+    <label className="flex flex-col gap-1.5 text-xs">
+      <span className="font-medium text-muted-foreground">{label}</span>
       {children}
-      {hint && <span className="text-[11px] leading-snug text-muted">{hint}</span>}
+      {hint && <span className="text-xs leading-snug text-muted-foreground">{hint}</span>}
     </label>
   );
 }

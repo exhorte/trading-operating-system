@@ -11,6 +11,8 @@ export interface ComplianceWindow extends ComplianceSummary {
   lockouts: LockoutWindow[];
   /** Number of days the trailing window covers. */
   lookbackDays: number;
+  /** The closed trades could not be read — distinct from "no trade". */
+  failed: boolean;
 }
 
 /**
@@ -37,16 +39,17 @@ export function useComplianceRate(lookbackDays = 7): ComplianceWindow {
     return { fromDate: from.toISOString().slice(0, 10), toDate: to.toISOString().slice(0, 10) };
   }, [lookbackDays]);
 
-  const { trades, lockouts } = useJournalWindow(accountId, fromDate, toDate);
+  const { trades, lockouts, failed } = useJournalWindow(accountId, fromDate, toDate);
 
   return useMemo(() => {
     if (!accountId || !trades) {
-      return { ...emptyComplianceSummary(), lockouts, lookbackDays };
+      return { ...emptyComplianceSummary(), lockouts, lookbackDays, failed };
     }
     return {
       ...summarizeCompliance(accountId, trades, lockouts, balance),
       lockouts,
       lookbackDays,
+      failed,
     };
-  }, [accountId, trades, lockouts, balance, lookbackDays]);
+  }, [accountId, trades, lockouts, balance, lookbackDays, failed]);
 }

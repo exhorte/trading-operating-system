@@ -1,20 +1,22 @@
-export type IconName =
-  | "grid"
-  | "checklist"
-  | "chart"
-  | "layers"
-  | "book"
-  | "shield"
-  | "report"
-  | "cpu"
-  | "wallet"
-  | "gear"
-  | "flask";
+import type { LucideIcon } from "lucide-react";
+import {
+  BookOpen,
+  ChartCandlestick,
+  ChartColumnBig,
+  ClipboardCheck,
+  Cpu,
+  FlaskConical,
+  Layers,
+  LayoutDashboard,
+  Settings,
+  ShieldCheck,
+  Wallet,
+} from "lucide-react";
 
 export interface NavItem {
   label: string;
   href: string;
-  icon: IconName;
+  icon: LucideIcon;
   section: "operate" | "analyze" | "system";
 }
 
@@ -35,20 +37,29 @@ export interface NavItem {
  * T12 incrément 2 (2026-09-23) that became Account (what is connected, under
  * which rules) and Settings (the account settings ledger and the connection
  * procedure). See context/frontend/information_architecture.md.
+ *
+ * Since the 2026-09-24 redesign, Settings is pinned at the bottom of the
+ * sidebar (SETTINGS_ITEM), away from the screens one operates from.
  */
 export const NAV_ITEMS: NavItem[] = [
-  { label: "Command Center", href: "/", icon: "grid", section: "operate" },
-  { label: "Pré-vol", href: "/preflight", icon: "checklist", section: "operate" },
-  { label: "Market Context", href: "/market-context", icon: "chart", section: "operate" },
-  { label: "Positions", href: "/positions", icon: "layers", section: "operate" },
-  { label: "Risque & Discipline", href: "/risk", icon: "shield", section: "operate" },
-  { label: "Trades Journal", href: "/journal", icon: "book", section: "analyze" },
-  { label: "Analyse de compte", href: "/analyse", icon: "report", section: "analyze" },
-  { label: "Setups (S01)", href: "/setups", icon: "flask", section: "analyze" },
-  { label: "Account", href: "/account", icon: "wallet", section: "system" },
-  { label: "Settings", href: "/settings", icon: "gear", section: "system" },
-  { label: "Agents & Audit", href: "/agents", icon: "cpu", section: "system" },
+  { label: "Command Center", href: "/", icon: LayoutDashboard, section: "operate" },
+  { label: "Pré-vol", href: "/preflight", icon: ClipboardCheck, section: "operate" },
+  { label: "Market Context", href: "/market-context", icon: ChartCandlestick, section: "operate" },
+  { label: "Positions", href: "/positions", icon: Layers, section: "operate" },
+  { label: "Risque & Discipline", href: "/risk", icon: ShieldCheck, section: "operate" },
+  { label: "Trades Journal", href: "/journal", icon: BookOpen, section: "analyze" },
+  { label: "Analyse de compte", href: "/analyse", icon: ChartColumnBig, section: "analyze" },
+  { label: "Setups (S01)", href: "/setups", icon: FlaskConical, section: "analyze" },
+  { label: "Account", href: "/account", icon: Wallet, section: "system" },
+  { label: "Agents & Audit", href: "/agents", icon: Cpu, section: "system" },
 ];
+
+export const SETTINGS_ITEM: NavItem = {
+  label: "Settings",
+  href: "/settings",
+  icon: Settings,
+  section: "system",
+};
 
 export const SECTION_LABELS: Record<NavItem["section"], string> = {
   operate: "Opérer",
@@ -56,9 +67,15 @@ export const SECTION_LABELS: Record<NavItem["section"], string> = {
   system: "Système",
 };
 
+export function isNavItemActive(pathname: string, item: NavItem): boolean {
+  return item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+}
+
+/** The screen a path belongs to — for the header's title and breadcrumb. */
+export function navEntryFor(pathname: string): NavItem | null {
+  return [...NAV_ITEMS, SETTINGS_ITEM].find((item) => isNavItemActive(pathname, item)) ?? null;
+}
+
 export function pageTitleFor(pathname: string): string {
-  const match = NAV_ITEMS.find((item) =>
-    item.href === "/" ? pathname === "/" : pathname.startsWith(item.href),
-  );
-  return match?.label ?? "Trading OS";
+  return navEntryFor(pathname)?.label ?? "Trading OS";
 }

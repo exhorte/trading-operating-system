@@ -151,3 +151,22 @@ une violation.
   (aucun compte connecté), aucune erreur console nouvelle, `/health` répond
   200. Même limite que T06 : jamais vu rendu avec de vraies données à
   l'écran, aucun agent MT5 connecté à cette session.
+
+- 2026-09-24 — **le taux quitte la barre du haut pour la tête du Command
+  Center.** Refonte visuelle demandée (ADR 0012) : la barre du haut ne garde
+  que le compte. Le critère de réussite — « s'affiche en haut du cockpit » —
+  est désormais tenu par la première carte de l'écran d'accueil
+  (`ComplianceCard`, à côté du verdict de séance), plus par une pastille
+  visible sur chaque écran : **lecture de ma part**, signalée à
+  l'utilisateur. Même nombre que la jauge de `/risk` (même hook). La carte
+  détaille aussi les trois types de manquement.
+
+  **Défaut trouvé en le faisant, corrigé** : `useJournalWindow` transformait
+  une réponse refusée (HTTP 503) en historique **vide** — contraire à son
+  propre contrat (« null après un échec, jamais un tableau vide »). Or un
+  historique vide vaut 100 % de conformité : l'ancien badge affichait donc
+  « 100 % conformité » base arrêtée, exactement l'écran qui rassure parce
+  qu'il n'a rien à lire. Un refus lève désormais `failed` ; la carte, la
+  jauge et l'historique des verrous disent « illisible — le backend
+  répond-il ? ». Et sans aucun trade sur la période, la carte affiche « — »,
+  pas 100 %. Vérifié à l'écran avec la base réellement arrêtée.

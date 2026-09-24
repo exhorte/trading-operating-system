@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { backendHttpBase } from "@/lib/realtime/backend-url";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 
@@ -72,27 +72,27 @@ export function SetupProposalsPanel() {
 
   if (error) {
     return (
-      <Card title="S01 — Setup proposals (OBSERVE)">
+      <Panel title="S01 — Setup proposals (OBSERVE)">
         <p className="text-xs text-loss">{error}</p>
-      </Card>
+      </Panel>
     );
   }
 
   if (rows === null) {
     return (
-      <Card title="S01 — Setup proposals (OBSERVE)">
+      <Panel title="S01 — Setup proposals (OBSERVE)">
         <Skeleton className="h-40" />
-      </Card>
+      </Panel>
     );
   }
 
   return (
-    <Card
+    <Panel
       title="S01 — Setup proposals (OBSERVE)"
-      actions={<span className="text-[11px] text-muted">last 24h, no execution</span>}
+      actions={<span className="text-xs text-muted-foreground">last 24h, no execution</span>}
     >
       {rows.length === 0 ? (
-        <p className="text-xs text-muted">No evaluation recorded yet.</p>
+        <p className="text-xs text-muted-foreground">No evaluation recorded yet.</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {rows.map((row) => (
@@ -100,12 +100,12 @@ export function SetupProposalsPanel() {
               key={`${row.symbol}-${row.eventAt}`}
               className="flex items-center gap-2 border-b border-border/50 py-1 text-xs last:border-0"
             >
-              <span className="tnum w-10 text-muted">{formatTime(row.eventAt)}</span>
+              <span className="tnum w-10 text-muted-foreground">{formatTime(row.eventAt)}</span>
               <span className="w-16 font-medium">{row.symbol}</span>
               {row.status === "proposed" ? (
                 <>
                   <StatusPill tone="accent">{row.side}</StatusPill>
-                  <span className="tnum text-muted">
+                  <span className="tnum text-muted-foreground">
                     entry {row.entryPrice} · SL {row.stopLoss} · TP {row.takeProfit} · c={row.costRatio?.toFixed(2)}{" "}
                     · R:R {row.riskRewardRatio?.toFixed(1)}
                   </span>
@@ -113,13 +113,13 @@ export function SetupProposalsPanel() {
               ) : (
                 <>
                   <StatusPill tone="muted">{row.stage}</StatusPill>
-                  <span className="truncate text-muted">{row.detail}</span>
+                  <span className="truncate text-muted-foreground">{row.detail}</span>
                 </>
               )}
             </div>
           ))}
         </div>
       )}
-    </Card>
+    </Panel>
   );
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useCockpit } from "@/lib/realtime/provider";
 import { defaultRiskPolicy } from "@/lib/risk";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { StatusPill } from "@/components/ui/status-pill";
 
 const MINUTE_MS = 60_000;
@@ -50,17 +50,17 @@ export function EconomicCalendar() {
 
   if (upcomingReleases === null) {
     return (
-      <Card
+      <Panel
         title="Calendrier économique"
         actions={<StatusPill tone="loss">cache absent</StatusPill>}
       >
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           Le cache FRED n&apos;est pas chargé. La gate news échoue fermée — aucune
           séance ne sera autorisée tant que ce cache est vide. Vérifier{" "}
           <code className="text-foreground">FRED_API_KEY</code> dans{" "}
           <code className="text-foreground">04_code/.env</code>.
         </p>
-      </Card>
+      </Panel>
     );
   }
 
@@ -69,22 +69,22 @@ export function EconomicCalendar() {
     .sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt));
 
   return (
-    <Card
+    <Panel
       title="Calendrier économique"
       actions={
-        <span className="text-[11px] text-muted">
+        <span className="text-xs text-muted-foreground">
           blackout ±{blackoutMinutes} min · {upcomingReleases.length} publication(s) en cache
         </span>
       }
     >
       {upcoming.length === 0 ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           Aucune publication à venir dans le cache. La gate news laisse passer.
         </p>
       ) : (
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-[10px] uppercase tracking-wider text-muted">
+            <tr className="text-left text-xs text-muted-foreground">
               <th className="pb-1 font-medium">Publication</th>
               <th className="pb-1 font-medium">Quand</th>
               <th className="pb-1 font-medium">Fenêtre de blackout</th>
@@ -98,8 +98,8 @@ export function EconomicCalendar() {
               return (
                 <tr key={`${release.releaseId}-${release.scheduledAt}`} className="border-t border-border">
                   <td className="py-1.5 text-foreground">{release.label}</td>
-                  <td className="tnum py-1.5 text-muted">{formatWhen(release.scheduledAt)}</td>
-                  <td className="tnum py-1.5 text-muted">
+                  <td className="tnum py-1.5 text-muted-foreground">{formatWhen(release.scheduledAt)}</td>
+                  <td className="tnum py-1.5 text-muted-foreground">
                     {formatWindow(release.scheduledAt, blackoutMinutes)}
                   </td>
                   <td className="py-1.5 text-right">
@@ -113,6 +113,6 @@ export function EconomicCalendar() {
           </tbody>
         </table>
       )}
-    </Card>
+    </Panel>
   );
 }

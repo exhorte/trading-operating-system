@@ -2,7 +2,7 @@
 
 import { useComplianceRate } from "@/lib/compliance/use-compliance-rate";
 import type { LockoutWindow } from "@/lib/compliance/violations";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 
 function formatStamp(iso: string): string {
@@ -50,21 +50,23 @@ function stateOf(lockout: LockoutWindow): { label: string; tone: PillTone } {
  * to ask for.
  */
 export function LockoutHistory() {
-  const { lockouts, rate } = useComplianceRate();
+  const { lockouts, rate, failed } = useComplianceRate();
 
   const ordered = [...lockouts].sort((a, b) => Date.parse(b.since) - Date.parse(a.since));
   const openCount = ordered.filter((l) => l.clearedAt === null).length;
 
   if (rate === null) {
     return (
-      <Card title="Historique des verrous">
-        <p className="text-xs text-muted">Chargement…</p>
-      </Card>
+      <Panel title="Historique des verrous">
+        <p className="text-sm text-muted-foreground">
+          {failed ? "Historique illisible — le backend répond-il ?" : "Chargement…"}
+        </p>
+      </Panel>
     );
   }
 
   return (
-    <Card
+    <Panel
       title="Historique des verrous"
       actions={
         openCount > 0 ? (
@@ -72,19 +74,19 @@ export function LockoutHistory() {
             {openCount} non levé(s)
           </StatusPill>
         ) : (
-          <span className="text-[11px] text-muted">{ordered.length} au total</span>
+          <span className="text-xs text-muted-foreground">{ordered.length} au total</span>
         )
       }
     >
       {ordered.length === 0 ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           Aucun verrou enregistré pour ce compte. Un historique vide veut dire qu&apos;aucune
           limite n&apos;a jamais été atteinte — pas que les limites sont inactives.
         </p>
       ) : (
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-[10px] uppercase tracking-wider text-muted">
+            <tr className="text-left text-xs text-muted-foreground">
               <th className="pb-1 font-medium">Motif</th>
               <th className="pb-1 font-medium">Déclenché</th>
               <th className="pb-1 font-medium">Levé</th>
@@ -98,11 +100,11 @@ export function LockoutHistory() {
               return (
                 <tr key={lockout.lockoutId} className="border-t border-border">
                   <td className="py-1.5 text-foreground">{lockout.reason}</td>
-                  <td className="tnum py-1.5 text-muted">{formatStamp(lockout.since)}</td>
-                  <td className="tnum py-1.5 text-muted">
+                  <td className="tnum py-1.5 text-muted-foreground">{formatStamp(lockout.since)}</td>
+                  <td className="tnum py-1.5 text-muted-foreground">
                     {lockout.clearedAt === null ? "—" : formatStamp(lockout.clearedAt)}
                   </td>
-                  <td className="tnum py-1.5 text-right text-muted">
+                  <td className="tnum py-1.5 text-right text-muted-foreground">
                     {formatSpan(lockout.since, lockout.clearedAt)}
                   </td>
                   <td className="py-1.5 text-right">
@@ -114,6 +116,6 @@ export function LockoutHistory() {
           </tbody>
         </table>
       )}
-    </Card>
+    </Panel>
   );
 }

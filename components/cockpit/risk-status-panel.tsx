@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { formatPercent } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
+import { Progress } from "@/components/ui/progress";
 
 /** T02b: mm:ss remaining on a timed pause; "00:00" once it has run out (the
  *  ledger clearance — not this display — is what actually lifts the lock). */
@@ -40,18 +41,21 @@ function LimitBar({
   limit: number;
 }) {
   const ratio = Math.min(1, used / limit);
-  const barColor = ratio > 0.8 ? "bg-loss" : ratio > 0.5 ? "bg-warning" : "bg-profit";
+  const tone =
+    ratio > 0.8
+      ? { track: "bg-loss/15", bar: "bg-loss" }
+      : ratio > 0.5
+        ? { track: "bg-warning/15", bar: "bg-warning" }
+        : { track: "bg-primary/12", bar: "bg-primary" };
   return (
     <div>
       <div className="flex items-baseline justify-between text-xs">
-        <span className="text-muted">{label}</span>
+        <span className="text-muted-foreground">{label}</span>
         <span className="tnum">
           {formatPercent(used)} / {formatPercent(limit)}
         </span>
       </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded bg-surface-elevated">
-        <div className={`h-full rounded ${barColor}`} style={{ width: `${ratio * 100}%` }} />
-      </div>
+      <Progress value={ratio * 100} className={`mt-2 h-1.5 ${tone.track}`} indicatorClassName={tone.bar} />
     </div>
   );
 }
@@ -62,16 +66,16 @@ export function RiskStatusPanel() {
 
   if (!risk) {
     return (
-      <Card title="Risk status">
+      <Panel title="Risk status">
         <Skeleton className="h-40" />
-      </Card>
+      </Panel>
     );
   }
 
   const tone = risk.state === "normal" ? "profit" : risk.state === "warning" ? "warning" : "loss";
 
   return (
-    <Card
+    <Panel
       title="Risk status"
       untrusted={untrusted}
       actions={<StatusPill tone={tone}>{risk.state}</StatusPill>}
@@ -87,7 +91,7 @@ export function RiskStatusPanel() {
           used={risk.maxDrawdownUsedPercent}
           limit={risk.maxDrawdownLimitPercent}
         />
-        <div className="flex justify-between text-xs text-muted">
+        <div className="flex justify-between text-xs text-muted-foreground">
           <span>
             Trades today:{" "}
             <span className="tnum text-foreground">
@@ -119,11 +123,11 @@ export function RiskStatusPanel() {
                 />
                 {gate.label}
               </span>
-              <span className="text-muted">{gate.detail}</span>
+              <span className="text-muted-foreground">{gate.detail}</span>
             </li>
           ))}
         </ul>
       </div>
-    </Card>
+    </Panel>
   );
 }

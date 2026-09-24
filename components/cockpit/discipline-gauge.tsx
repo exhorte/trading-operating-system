@@ -3,8 +3,9 @@
 import { useComplianceRate } from "@/lib/compliance/use-compliance-rate";
 import { VIOLATION_LABELS } from "@/lib/compliance/labels";
 import type { ViolationType } from "@/lib/compliance/violations";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 
 /** Same thresholds as the top-bar badge — one rule, read twice. */
 function band(rate: number): { label: string; color: string; tone: string } {
@@ -39,13 +40,21 @@ const ARC_PATH = `M ${CENTER_X - RADIUS} ${CENTER_Y} A ${RADIUS} ${RADIUS} 0 0 1
  * (context/frontend/visual_reference_ftmo_journal.md).
  */
 export function DisciplineGauge() {
-  const { rate, tradeCount, breachedCount, byType, lookbackDays } = useComplianceRate();
+  const { rate, tradeCount, breachedCount, byType, lookbackDays, failed } = useComplianceRate();
 
   if (rate === null) {
+    // "Could not read" and "still reading" must not look alike: an endless
+    // skeleton reads as patience when the backend is actually down.
     return (
-      <Card title="Score de discipline">
-        <Skeleton className="h-52" />
-      </Card>
+      <Panel title="Score de discipline">
+        {failed ? (
+          <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+            Trades clôturés illisibles — le backend répond-il ?
+          </p>
+        ) : (
+          <Skeleton className="h-52 rounded-xl" />
+        )}
+      </Panel>
     );
   }
 
@@ -57,9 +66,9 @@ export function DisciplineGauge() {
   const maxCount = Math.max(1, ...entries.map((e) => e.count));
 
   return (
-    <Card
+    <Panel
       title="Score de discipline"
-      actions={<span className="text-[11px] text-muted">{lookbackDays} derniers jours</span>}
+      actions={<span className="text-xs text-muted-foreground">{lookbackDays} derniers jours</span>}
     >
       <div className="flex flex-col items-center">
         <svg viewBox="0 0 140 78" className="w-full max-w-[220px]" role="img"
@@ -67,7 +76,7 @@ export function DisciplineGauge() {
           <path
             d={ARC_PATH}
             fill="none"
-            stroke="var(--surface-elevated)"
+            stroke="var(--muted)"
             strokeWidth={STROKE}
             strokeLinecap="round"
           />
@@ -94,25 +103,25 @@ export function DisciplineGauge() {
             x={CENTER_X}
             y={CENTER_Y + 4}
             textAnchor="middle"
-            fill="var(--muted)"
+            fill="var(--muted-foreground)"
             fontSize="10"
           >
             {label}
           </text>
         </svg>
 
-        <p className="mt-1 text-xs text-muted">
+        <p className="mt-1 text-xs text-muted-foreground">
           <span className={`tnum font-medium ${tone}`}>{breachedCount}</span> trade(s) non
           conforme(s) sur <span className="tnum text-foreground">{tradeCount}</span>
         </p>
       </div>
 
       <div className="mt-3 border-t border-border pt-3">
-        <p className="mb-2 text-[10px] uppercase tracking-wider text-muted">
+        <p className="mb-2 text-xs text-muted-foreground">
           Par type de manquement
         </p>
         {tradeCount === 0 ? (
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             Aucun trade clôturé sur la période — le score vaut 100 % par défaut, il ne dit
             rien.
           </p>
@@ -121,22 +130,21 @@ export function DisciplineGauge() {
             {entries.map(({ type, count }) => (
               <li key={type}>
                 <div className="flex items-baseline justify-between gap-2 text-xs">
-                  <span className={count > 0 ? "text-foreground" : "text-muted"}>
+                  <span className={count > 0 ? "text-foreground" : "text-muted-foreground"}>
                     {VIOLATION_LABELS[type]}
                   </span>
-                  <span className="tnum text-muted">{count}</span>
+                  <span className="tnum text-muted-foreground">{count}</span>
                 </div>
-                <div className="mt-1 h-1 overflow-hidden rounded bg-surface-elevated">
-                  <div
-                    className={`h-full rounded ${count > 0 ? "bg-loss" : ""}`}
-                    style={{ width: `${(count / maxCount) * 100}%` }}
-                  />
-                </div>
+                <Progress
+                  value={(count / maxCount) * 100}
+                  className="mt-1.5 h-1 bg-muted"
+                  indicatorClassName={count > 0 ? "bg-loss" : "bg-transparent"}
+                />
               </li>
             ))}
           </ul>
         )}
       </div>
-    </Card>
+    </Panel>
   );
 }

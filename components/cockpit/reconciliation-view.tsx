@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { backendHttpBase } from "@/lib/realtime/backend-url";
 import { useCockpit } from "@/lib/realtime/provider";
 import { reconcile, type ReconciliationRow } from "@/lib/setup/reconciliation";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 import type { Side } from "@/lib/domain/primitives";
@@ -118,16 +118,16 @@ export function ReconciliationView() {
   }
   if (error) {
     return (
-      <Card title="Rapprochement — machine vs. réel">
+      <Panel title="Rapprochement — machine vs. réel">
         <p className="text-xs text-loss">{error}</p>
-      </Card>
+      </Panel>
     );
   }
   if (rows === null) {
     return (
-      <Card title="Rapprochement — machine vs. réel">
+      <Panel title="Rapprochement — machine vs. réel">
         <Skeleton className="h-40" />
-      </Card>
+      </Panel>
     );
   }
 
@@ -140,7 +140,7 @@ export function ReconciliationView() {
   );
 
   return (
-    <Card title="Rapprochement — machine vs. réel" actions={<span className="text-[11px] text-muted">7 jours, aucune métrique de performance</span>}>
+    <Panel title="Rapprochement — machine vs. réel" actions={<span className="text-xs text-muted-foreground">7 jours, aucune métrique de performance</span>}>
       <div className="mb-3 flex gap-2">
         {(Object.keys(CLASS_LABEL) as ReconciliationRow["class"][]).map((cls) => (
           <StatusPill key={cls} tone={CLASS_TONE[cls]}>
@@ -149,7 +149,7 @@ export function ReconciliationView() {
         ))}
       </div>
       {rows.length === 0 ? (
-        <p className="text-xs text-muted">Rien à rapprocher sur cette fenêtre.</p>
+        <p className="text-xs text-muted-foreground">Rien à rapprocher sur cette fenêtre.</p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {rows.map((row, i) => (
@@ -159,8 +159,8 @@ export function ReconciliationView() {
             >
               <StatusPill tone={CLASS_TONE[row.class]}>{CLASS_LABEL[row.class]}</StatusPill>
               <span className="w-16 font-medium">{row.symbol}</span>
-              <span className="text-muted">{row.side}</span>
-              <span className="tnum text-muted">
+              <span className="text-muted-foreground">{row.side}</span>
+              <span className="tnum text-muted-foreground">
                 {row.proposalDetectedAt && `proposé ${formatTime(row.proposalDetectedAt)}`}
                 {row.proposalDetectedAt && row.tradeOpenedAt && " · "}
                 {row.tradeOpenedAt && `ouvert ${formatTime(row.tradeOpenedAt)}`}
@@ -169,7 +169,7 @@ export function ReconciliationView() {
           ))}
         </div>
       )}
-    </Card>
+    </Panel>
   );
 }
 

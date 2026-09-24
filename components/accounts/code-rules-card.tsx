@@ -2,7 +2,7 @@ import { FTMO_COST_MODEL, ftmoRiskPolicy, type FtmoPhase } from "@/lib/accounts/
 import { REAL_COST_MODEL, realRiskPolicy } from "@/lib/accounts/real";
 import { CONSECUTIVE_LOSS_PAUSE_MINUTES } from "@/lib/risk";
 import { formatMoney } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 
 /**
  * The rules themselves — not editable here, on purpose. FTMO's limits are
@@ -38,10 +38,10 @@ export function CodeRulesCard({ ftmoPhase }: { ftmoPhase: FtmoPhase }) {
   ];
 
   return (
-    <Card title="Règles fixées dans le code">
+    <Panel title="Règles fixées dans le code">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-left text-[10px] uppercase tracking-wider text-muted">
+          <tr className="text-left text-xs text-muted-foreground">
             <th className="pb-1 font-medium">Règle</th>
             <th className="pb-1 text-right font-medium">FTMO</th>
             <th className="pb-1 text-right font-medium">Exness</th>
@@ -57,12 +57,12 @@ export function CodeRulesCard({ ftmoPhase }: { ftmoPhase: FtmoPhase }) {
           ))}
         </tbody>
       </table>
-      <p className="mt-3 border-t border-border pt-3 text-[11px] leading-snug text-muted">
+      <p className="mt-3 border-t border-border pt-3 text-xs leading-snug text-muted-foreground">
         Pertes FTMO : règles de FTMO, sourcées par tes exports MetriX. Exness 5 %/10 % : ta décision
         du 2026-09-21. Le reste : tes limites de discipline, identiques partout. Modifiables par un
         commit uniquement (<code className="text-foreground">lib/accounts/ftmo.ts</code>,{" "}
         <code className="text-foreground">real.ts</code>) — ce sont des règles, pas des faits du compte.
       </p>
-    </Card>
+    </Panel>
   );
 }

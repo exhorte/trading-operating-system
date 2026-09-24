@@ -9,7 +9,7 @@ import {
   type ObjectiveRow,
   type ObjectiveState,
 } from "@/lib/accounts/objectives";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 
@@ -50,27 +50,27 @@ export function ObjectivesCard({ profile }: { profile: ActiveProfile }) {
 
   if (failed) {
     return (
-      <Card title="Objectifs du challenge">
-        <p className="text-xs text-muted">
+      <Panel title="Objectifs du challenge">
+        <p className="text-xs text-muted-foreground">
           Les trades clôturés n&apos;ont pas pu être chargés — sans eux, ni les jours de trading
           ni la pire journée ne se calculent. Le backend répond-il ?
         </p>
-      </Card>
+      </Panel>
     );
   }
 
   if (!rows) {
     return (
-      <Card title="Objectifs du challenge">
+      <Panel title="Objectifs du challenge">
         <Skeleton className="h-44" />
-      </Card>
+      </Panel>
     );
   }
 
   return (
-    <Card
+    <Panel
       title="Objectifs du challenge"
-      actions={<span className="text-[11px] text-muted">{trades?.length ?? 0} trade(s) clôturé(s)</span>}
+      actions={<span className="text-xs text-muted-foreground">{trades?.length ?? 0} trade(s) clôturé(s)</span>}
     >
       <ul className="flex flex-col">
         {rows.map((row) => {
@@ -80,15 +80,15 @@ export function ObjectivesCard({ profile }: { profile: ActiveProfile }) {
               <div className="flex items-center justify-between gap-3 text-xs">
                 <span className="text-foreground">{row.label}</span>
                 <span className="flex shrink-0 items-center gap-2">
-                  <span className="tnum text-muted">{row.result}</span>
+                  <span className="tnum text-muted-foreground">{row.result}</span>
                   <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
                 </span>
               </div>
-              <p className="mt-1 text-[11px] leading-snug text-muted">{row.note}</p>
+              <p className="mt-1 text-xs leading-snug text-muted-foreground">{row.note}</p>
             </li>
           );
         })}
       </ul>
-    </Card>
+    </Panel>
   );
 }

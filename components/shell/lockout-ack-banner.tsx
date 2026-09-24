@@ -25,7 +25,7 @@ export function LockoutAckBanner() {
   const isKillSwitch = activeLockout.reason === KILL_SWITCH_REASON;
 
   return (
-    <div className="flex shrink-0 items-center justify-between gap-3 border-b border-loss/40 bg-loss/15 px-4 py-2 text-sm text-loss">
+    <div className="flex shrink-0 items-center justify-between gap-4 border-b border-loss/30 bg-loss/10 px-4 py-3 text-sm text-loss md:px-6">
       <span>
         {isKillSwitch ? (
           <>
@@ -42,7 +42,7 @@ export function LockoutAckBanner() {
       <button
         type="button"
         onClick={() => acknowledgeLockout(activeLockout.lockoutId)}
-        className="shrink-0 rounded border border-loss/50 bg-surface px-3 py-1 text-xs font-medium text-loss hover:bg-loss/20"
+        className="shrink-0 rounded-lg bg-loss/15 px-3.5 py-1.5 text-xs font-medium text-loss ring-1 ring-loss/40 transition-colors hover:bg-loss/25"
       >
         {isKillSwitch ? "J’ai fermé mes positions" : "J’en ai pris connaissance"}
       </button>

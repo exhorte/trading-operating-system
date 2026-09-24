@@ -17,8 +17,8 @@ import { ExecutionReportsFeed } from "@/components/cockpit/execution-reports-fee
  */
 export default function AgentsPage() {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="grid gap-2 lg:grid-cols-2">
+    <div className="flex flex-col gap-5">
+      <div className="grid gap-5 lg:grid-cols-2">
         <AgentHealthPanel />
         <ExecutionReportsFeed />
       </div>

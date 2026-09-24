@@ -6,7 +6,7 @@ import {
   type SettingsVersion,
   type VersionStatus,
 } from "@/lib/accounts/settings";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 import { formatDateTime } from "./form-controls";
 
@@ -27,12 +27,12 @@ export function SettingsHistory({
   resolved: ResolvedAccountSettings;
 }) {
   return (
-    <Card
+    <Panel
       title="Historique des changements"
-      actions={<span className="text-[11px] text-muted">{versions.length} version(s)</span>}
+      actions={<span className="text-xs text-muted-foreground">{versions.length} version(s)</span>}
     >
       {versions.length === 0 ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           Aucun changement enregistré : les valeurs par défaut du code s&apos;appliquent.
         </p>
       ) : (
@@ -52,7 +52,7 @@ export function SettingsHistory({
                   </span>
                   <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
                 </div>
-                <p className="mt-1 text-[11px] leading-snug text-muted">
+                <p className="mt-1 text-xs leading-snug text-muted-foreground">
                   Demandé le {formatDateTime(version.requestedAt)} ·{" "}
                   {version.deferred
                     ? `reporté au jour de trading suivant : ${version.deferralReasons
@@ -66,6 +66,6 @@ export function SettingsHistory({
           })}
         </ul>
       )}
-    </Card>
+    </Panel>
   );
 }

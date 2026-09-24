@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { RealtimeProvider } from "@/lib/realtime/provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,9 +26,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    // Dark only: `dark` switches shadcn/ui's `dark:` variants on, and the
+    // palette itself lives in :root (app/globals.css).
     <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      lang="fr"
+      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       // Browser extensions/theme scripts mutate <html> before hydration
       // (e.g. injected data-* attributes); suppress the resulting warning at
       // this level only — it does not hide mismatches inside the app tree.
@@ -37,7 +40,9 @@ export default function RootLayout({
           inject attributes like cz-shortcut-listen onto <body> before React
           hydrates. Scoped to this element only; app markup is unaffected. */}
       <body className="min-h-full" suppressHydrationWarning>
-        <RealtimeProvider>{children}</RealtimeProvider>
+        <RealtimeProvider>
+          <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+        </RealtimeProvider>
       </body>
     </html>
   );

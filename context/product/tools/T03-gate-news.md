@@ -88,3 +88,13 @@ Plus aucun trade ouvert dans les 30 minutes précédant une publication majeure,
   la mise à jour du badge après hydratation, le scénario `news_blackout` du
   mock, et un cycle FRED réel contre une vraie clé API n'ont pas été observés
   dans un navigateur ni contre l'API FRED réelle.
+
+- 2026-09-24 — **affichage permanent déplacé, toujours permanent.** Refonte
+  visuelle (ADR 0012) : le badge quitte la barre du haut pour le bas de la
+  barre latérale (`components/shell/news-status.tsx`), visible depuis toute
+  page comme l'exige cette fiche — « Affichage permanent dans le cockpit ».
+  Même logique (`nextRelease`, `isNewsBlackout`), même honnêteté : données
+  absentes = « Calendrier indisponible — gate publications fermée », en
+  corail ; blackout en cours = or, pastille qui pulse. Barre repliée :
+  l'icône garde sa pastille de couleur et le texte passe en infobulle. Un
+  clic mène au calendrier complet (`/market-context`).

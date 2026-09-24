@@ -35,7 +35,7 @@ chaque fois pour le réapprendre.
 | Command Center | Où j'en suis, là, maintenant ? | allégé |
 | Pré-vol | Est-ce que je peux ouvrir une position maintenant ? | inchangé |
 | Market Context | Pourquoi le marché est dans cet état ? | rempli |
-| Positions | Qu'est-ce qui est ouvert, et est-ce que ça colle ? | inchangé |
+| Positions | Qu'est-ce qui est ouvert, et est-ce que ça colle ? | complété (2026-09-24 : les positions ouvertes en tête, puis la divergence) |
 | Risque & Discipline | Où en est ma discipline, combien avant le verrou ? | rempli |
 | Trades Journal | Qu'est-ce que j'ai fait, et est-ce que je l'ai bien fait ? | inchangé |
 | Setups (S01) | Le détecteur voit-il ce que je vois ? | inchangé |
@@ -208,3 +208,26 @@ deux écrans :
 
 Aucun des deux ne demande d'identifiant : MT5 se connecte, le cockpit suit
 (ADR 0003).
+
+## Refonte visuelle (2026-09-24, ADR 0012)
+
+Sur shadcn/ui, d'après la maquette `05_screenchot/dashboar.jpg`. Les
+questions des écrans n'ont pas changé ; leur mise en forme, si. Référence
+pratique : `design_system.md`.
+
+- **La barre du haut ne garde que le titre, le fil d'Ariane et le compte.**
+  Ce qu'elle portait a été placé où il se lit, rien n'a été retiré :
+  conformité → première carte du Command Center ; publication et blackout,
+  arrêt d'urgence → bas de la barre latérale, sur tout écran ; liaison,
+  persistance, environnement → pastille et menu du compte. Settings est
+  épinglé en bas de la barre latérale.
+- **Command Center** : le verdict devient la carte principale (halo menthe
+  ou corail, les neuf contrôles en pastilles), la conformité à côté, puis
+  les quatre chiffres en grandes tuiles, puis les positions.
+- **Pré-vol** : même carte de verdict, puis une carte par contrôle (icône,
+  état, détail) au lieu d'une liste serrée.
+- **Positions** : répond enfin aux deux moitiés de sa question — ce qui est
+  ouvert (la table du Command Center, réutilisée), puis la divergence
+  d'exécution.
+- Partout : cartes aérées, grands chiffres légers, espacements doublés,
+  plus de libellés en 10 px capitales.

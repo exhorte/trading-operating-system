@@ -61,8 +61,16 @@ export function useJournalWindow(
         if (cancelled) {
           return;
         }
+        // A refused read is a failure, not an empty history: until
+        // 2026-09-24 a 503 became `[]` here, contradicting this hook's own
+        // contract — and an empty history scores 100 % compliant, which the
+        // top-bar badge then displayed with the database down. Lockouts stay
+        // best-effort, as before.
+        if (!tradesRes.ok) {
+          throw new Error(`journal trades: HTTP ${tradesRes.status}`);
+        }
         setFailed(false);
-        setTrades(tradesRes.ok ? ((await tradesRes.json()) as JournalTrade[]) : []);
+        setTrades((await tradesRes.json()) as JournalTrade[]);
         setLockouts(lockoutsRes.ok ? ((await lockoutsRes.json()) as LockoutWindow[]) : []);
       } catch {
         if (!cancelled) {

@@ -9,7 +9,7 @@ import {
   terminalSymbol,
 } from "@/lib/accounts/connection";
 import { FIRMS, type Firm } from "@/lib/accounts/firm";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { secondaryButtonClass } from "./form-controls";
 
 const FIRM_NAMES: Record<Firm, string> = { ftmo: "FTMO", exness: "Exness" };
@@ -18,7 +18,7 @@ function CopyableCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="mt-1 flex items-center gap-2">
-      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded border border-border bg-surface-elevated px-2 py-1 text-[11px] text-foreground">
+      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded border border-border bg-muted px-2 py-1 text-xs text-foreground">
         {command}
       </code>
       <button
@@ -42,7 +42,7 @@ function FirmProcedure({ firm }: { firm: Firm }) {
   return (
     <div>
       <h3 className="text-xs font-medium text-foreground">{name}</h3>
-      <ol className="mt-2 flex list-decimal flex-col gap-2 pl-4 text-[11px] leading-snug text-muted">
+      <ol className="mt-2 flex list-decimal flex-col gap-2 pl-4 text-xs leading-snug text-muted-foreground">
         <li>
           Dans MT5 : <span className="text-foreground">Fichier → Connexion à un compte de trading</span>, et
           choisis le compte {name}. Le mot de passe reste dans MT5 — le Trading OS ne le demande jamais.
@@ -78,8 +78,8 @@ function FirmProcedure({ firm }: { firm: Firm }) {
  */
 export function ConnectionProcedure() {
   return (
-    <Card title="Connexion MT5 — procédure">
-      <div className="mb-4 rounded border border-border bg-surface-elevated px-3 py-2 text-[11px] leading-snug text-muted">
+    <Panel title="Connexion MT5 — procédure">
+      <div className="mb-4 rounded border border-border bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
         <p>
           En une commande, depuis <code className="text-foreground">04_code</code>, une fois MT5 ouvert et
           connecté au compte : base, backend, observer sur le bon symbole et cockpit démarrent dans
@@ -93,7 +93,7 @@ export function ConnectionProcedure() {
           <FirmProcedure key={firm} firm={firm} />
         ))}
       </div>
-      <p className="mt-3 border-t border-border pt-3 text-[11px] leading-snug text-muted">
+      <p className="mt-3 border-t border-border pt-3 text-xs leading-snug text-muted-foreground">
         Un compte à la fois : le cockpit suit le terminal auquel l&apos;observer est attaché. Pour
         passer de l&apos;un à l&apos;autre, change de compte dans MT5 puis relance l&apos;observer —
         son premier message transmet le nouveau broker, et le symbole n&apos;est pas le même
@@ -101,6 +101,6 @@ export function ConnectionProcedure() {
         <code className="text-foreground">{terminalSymbol("exness", "XAUUSD")}</code> : lancé avec le
         mauvais, l&apos;observer s&apos;arrête sur « symbol not found »).
       </p>
-    </Card>
+    </Panel>
   );
 }

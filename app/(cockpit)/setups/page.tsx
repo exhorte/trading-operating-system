@@ -8,7 +8,7 @@ import { ReconciliationView } from "@/components/cockpit/reconciliation-view";
  */
 export default function SetupsPage() {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-5">
       <SetupProposalsPanel />
       <ReconciliationView />
     </div>

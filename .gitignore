@@ -50,6 +50,9 @@ tools/mt5-observer/spread_*.json
 
 # MQL5 compiled binaries and MetaEditor headless-compile logs (EA-05)
 tools/mt5-execution-agent/*.ex5
+# MT5 input presets saved through the terminal's junction (2026-09-24): they
+# carry InpAccountId — an account number never goes into the repository.
+tools/mt5-execution-agent/*.set
 tools/mt5-execution-agent/compile.log
 tools/mt5-execution-agent/*.log
 tools/mt5-execution-agent/tradingos_commands*.log

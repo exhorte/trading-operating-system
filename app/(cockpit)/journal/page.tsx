@@ -12,7 +12,7 @@ import { evaluateTrade, type ComplianceTradeInput } from "@/lib/compliance/evalu
 import type { LockoutWindow, Violation } from "@/lib/compliance/violations";
 import { defaultRiskPolicy } from "@/lib/risk/policy";
 import { toCanonicalSymbol } from "@/lib/market/symbols/registry";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Side } from "@/lib/domain/primitives";
@@ -49,7 +49,8 @@ interface SetupProposal {
  *  sur le même niveau est le même trade" (EA-02 prompt). */
 const PROPOSAL_TOLERANCE_MINUTES = 5;
 
-const inputClass = "rounded border border-border bg-surface-elevated px-2 py-1 text-xs text-foreground";
+const inputClass =
+  "h-9 rounded-lg border border-input bg-input/30 px-3 text-sm text-foreground outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -131,16 +132,16 @@ const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function BreakdownTable({ title, buckets }: { title: string; buckets: Bucket[] }) {
   return (
-    <Card title={title}>
+    <Panel title={title}>
       {buckets.length === 0 ? (
-        <p className="text-xs text-muted">No data.</p>
+        <p className="text-xs text-muted-foreground">No data.</p>
       ) : (
         <table className="w-full text-xs">
           <tbody>
             {buckets.map((b) => (
               <tr key={b.label} className="border-b border-border/50 last:border-0">
                 <td className="py-1 pr-3">{b.label}</td>
-                <td className="tnum py-1 pr-3 text-muted">{b.trades}</td>
+                <td className="tnum py-1 pr-3 text-muted-foreground">{b.trades}</td>
                 <td className={`tnum py-1 text-right font-medium ${b.pnl >= 0 ? "text-profit" : "text-loss"}`}>
                   {formatSignedMoney(b.pnl)}
                 </td>
@@ -149,7 +150,7 @@ function BreakdownTable({ title, buckets }: { title: string; buckets: Bucket[] }
           </tbody>
         </table>
       )}
-    </Card>
+    </Panel>
   );
 }
 
@@ -176,10 +177,10 @@ function MonthCalendar({ year, month, dayTotals }: { year: number; month: number
   });
 
   return (
-    <Card title={monthLabel}>
-      <div className="grid grid-cols-7 gap-1 text-center text-[10px]">
+    <Panel title={monthLabel}>
+      <div className="grid grid-cols-7 gap-1 text-center text-[11px]">
         {WEEKDAY_LABELS.map((w) => (
-          <div key={w} className="pb-1 font-medium uppercase tracking-wider text-muted">
+          <div key={w} className="pb-1 font-medium uppercase tracking-wider text-muted-foreground">
             {w}
           </div>
         ))}
@@ -195,7 +196,7 @@ function MonthCalendar({ year, month, dayTotals }: { year: number; month: number
                 bucket ? (bucket.pnl >= 0 ? "bg-profit/10" : "bg-loss/10") : ""
               }`}
             >
-              <span className="text-muted">{cell.day}</span>
+              <span className="text-muted-foreground">{cell.day}</span>
               {bucket && (
                 <span className={`tnum font-medium ${bucket.pnl >= 0 ? "text-profit" : "text-loss"}`}>
                   {formatSignedMoney(bucket.pnl)}
@@ -205,7 +206,7 @@ function MonthCalendar({ year, month, dayTotals }: { year: number; month: number
           );
         })}
       </div>
-    </Card>
+    </Panel>
   );
 }
 
@@ -397,25 +398,25 @@ export default function TradesJournalPage() {
 
   if (!accountId) {
     return (
-      <Card title="Trades journal">
+      <Panel title="Trades journal">
         <Skeleton className="h-72" />
-      </Card>
+      </Panel>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card title="Filters">
+    <div className="flex flex-col gap-5">
+      <Panel title="Filters">
         <div className="flex flex-wrap items-center gap-3 text-xs">
-          <label className="flex items-center gap-1.5 text-muted">
+          <label className="flex items-center gap-1.5 text-muted-foreground">
             From
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} />
           </label>
-          <label className="flex items-center gap-1.5 text-muted">
+          <label className="flex items-center gap-1.5 text-muted-foreground">
             To
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} />
           </label>
-          <label className="flex items-center gap-1.5 text-muted">
+          <label className="flex items-center gap-1.5 text-muted-foreground">
             Symbol
             <select value={symbol} onChange={(e) => setSymbol(e.target.value)} className={inputClass}>
               <option value="all">All</option>
@@ -427,14 +428,14 @@ export default function TradesJournalPage() {
             </select>
           </label>
         </div>
-      </Card>
+      </Panel>
 
       {error ? (
         <EmptyState title="No journal data" description={error} hint="T06" />
       ) : !trades ? (
-        <Card title="Trades">
+        <Panel title="Trades">
           <Skeleton className="h-72" />
-        </Card>
+        </Panel>
       ) : filtered.length === 0 ? (
         <EmptyState
           title="No closed trades in this range"
@@ -442,11 +443,11 @@ export default function TradesJournalPage() {
           hint="T06 — zero manual entry: rows appear automatically as trades close"
         />
       ) : (
-        <Card title={`Trades (${filtered.length})`}>
+        <Panel title={`Trades (${filtered.length})`}>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-xs">
               <thead>
-                <tr className="border-b border-border text-left text-[10px] uppercase tracking-wider text-muted">
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
                   {["Closed", "Symbol", "Side", "Volume", "Entry", "Exit", "R", "P&L", "Duration", "Setup", "Violations", ""].map(
                     (header) => (
                       <th key={header} className="pb-1.5 pr-3 font-medium">
@@ -461,7 +462,7 @@ export default function TradesJournalPage() {
                   const r = computeRMultiple(t);
                   return (
                     <tr key={t.brokerPositionId} className="border-b border-border/50 last:border-0">
-                      <td className="py-1.5 pr-3 text-muted">{new Date(t.closedAt).toLocaleString()}</td>
+                      <td className="py-1.5 pr-3 text-muted-foreground">{new Date(t.closedAt).toLocaleString()}</td>
                       <td className="py-1.5 pr-3 font-medium">{t.symbol}</td>
                       <td
                         className={`py-1.5 pr-3 font-medium ${t.side === "buy" ? "text-profit" : "text-loss"}`}
@@ -471,7 +472,7 @@ export default function TradesJournalPage() {
                       <td className="tnum py-1.5 pr-3">{t.volume.toFixed(2)}</td>
                       <td className="tnum py-1.5 pr-3">{t.entryPrice !== null ? formatPrice(t.entryPrice) : "—"}</td>
                       <td className="tnum py-1.5 pr-3">{formatPrice(t.exitPrice)}</td>
-                      <td className={`tnum py-1.5 pr-3 ${r === null ? "text-muted" : r >= 0 ? "text-profit" : "text-loss"}`}>
+                      <td className={`tnum py-1.5 pr-3 ${r === null ? "text-muted-foreground" : r >= 0 ? "text-profit" : "text-loss"}`}>
                         {r === null ? "—" : r.toFixed(2)}
                       </td>
                       <td
@@ -479,12 +480,12 @@ export default function TradesJournalPage() {
                       >
                         {formatSignedMoney(t.realizedPnl)}
                       </td>
-                      <td className="py-1.5 pr-3 text-muted">{formatDuration(t.openedAt, t.closedAt)}</td>
+                      <td className="py-1.5 pr-3 text-muted-foreground">{formatDuration(t.openedAt, t.closedAt)}</td>
                       <td className="py-1.5 pr-3">
                         {(() => {
                           const p = proposalByTrade.get(t.brokerPositionId);
                           if (!p) {
-                            return <span className="text-muted">—</span>;
+                            return <span className="text-muted-foreground">—</span>;
                           }
                           const detail = [
                             p.sweptLevelKind,
@@ -504,7 +505,7 @@ export default function TradesJournalPage() {
                         {(() => {
                           const violations = violationsByTrade.get(t.brokerPositionId) ?? [];
                           if (violations.length === 0) {
-                            return <span className="text-muted">—</span>;
+                            return <span className="text-muted-foreground">—</span>;
                           }
                           return (
                             <span
@@ -522,7 +523,7 @@ export default function TradesJournalPage() {
                             Capture
                           </Link>
                         ) : (
-                          <span className="text-muted">—</span>
+                          <span className="text-muted-foreground">—</span>
                         )}
                       </td>
                     </tr>
@@ -531,7 +532,7 @@ export default function TradesJournalPage() {
               </tbody>
             </table>
           </div>
-        </Card>
+        </Panel>
       )}
 
       {filtered.length > 0 && (

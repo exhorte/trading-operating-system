@@ -14,12 +14,12 @@ import { MarketContextPanel } from "@/components/cockpit/market-context-panel";
  */
 export default function MarketContextPage() {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="grid gap-2 lg:grid-cols-2">
+    <div className="flex flex-col gap-5">
+      <div className="grid gap-5 lg:grid-cols-2">
         <MarketContextPanel />
         <EconomicCalendar />
       </div>
-      <p className="text-xs text-muted">
+      <p className="text-xs text-muted-foreground">
         Les niveaux affichés viennent de <code className="text-foreground">lib/analysis</code> —
         source de niveaux, jamais source de signal (ADR 0002). Le graphique annoté
         (liquidité, FVG, OB, BOS/CHOCH) n&apos;est pas construit.

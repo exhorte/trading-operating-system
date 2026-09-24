@@ -1,7 +1,7 @@
 import type { ActiveProfile } from "@/lib/accounts/active-profile";
 import { CONSECUTIVE_LOSS_PAUSE_MINUTES } from "@/lib/risk";
 import { formatMoney } from "@/lib/format";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 
 function percentOf(reference: number | null, percent: number): string {
   return reference === null ? "sur le solde courant" : formatMoney((reference * percent) / 100);
@@ -33,10 +33,10 @@ export function RulesCard({ profile }: { profile: ActiveProfile }) {
   ];
 
   return (
-    <Card title="Règles appliquées">
+    <Panel title="Règles appliquées">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-left text-[10px] uppercase tracking-wider text-muted">
+          <tr className="text-left text-xs text-muted-foreground">
             <th className="pb-1 font-medium">Règle</th>
             <th className="pb-1 text-right font-medium">Limite</th>
             <th className="pb-1 text-right font-medium">Montant</th>
@@ -47,21 +47,21 @@ export function RulesCard({ profile }: { profile: ActiveProfile }) {
             <tr key={rule} className="border-t border-border">
               <td className="py-1.5 text-foreground">{rule}</td>
               <td className="tnum py-1.5 text-right text-foreground">{limit}</td>
-              <td className="tnum py-1.5 text-right text-muted">{amount}</td>
+              <td className="tnum py-1.5 text-right text-muted-foreground">{amount}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-border pt-3 text-[11px]">
-        <dt className="text-muted">Référence de calcul</dt>
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-border pt-3 text-xs">
+        <dt className="text-muted-foreground">Référence de calcul</dt>
         <dd className={ref === null ? "text-warning" : "text-foreground"}>{profile.referenceSource}</dd>
-        <dt className="text-muted">Commission</dt>
+        <dt className="text-muted-foreground">Commission</dt>
         <dd className="text-foreground">
           {profile.costModel.commissionPerLotRoundTrip > 0
             ? `${formatMoney(profile.costModel.commissionPerLotRoundTrip)} par lot, aller-retour`
             : "aucune (compte Standard mesuré en Phase 0)"}
         </dd>
       </dl>
-    </Card>
+    </Panel>
   );
 }

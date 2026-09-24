@@ -20,7 +20,7 @@ export function LockoutViolationBanner() {
   }
 
   return (
-    <div className="flex shrink-0 flex-col gap-1 border-b border-warning/40 bg-warning/15 px-4 py-2 text-sm text-warning">
+    <div className="flex shrink-0 flex-col gap-2 border-b border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning md:px-6">
       {lockoutViolations.map((violation) => (
         <div key={violation.brokerPositionId} className="flex items-center justify-between gap-3">
           <span>
@@ -31,7 +31,7 @@ export function LockoutViolationBanner() {
           <button
             type="button"
             onClick={() => dismiss(violation.brokerPositionId)}
-            className="shrink-0 rounded border border-warning/50 bg-surface px-3 py-1 text-xs font-medium text-warning hover:bg-warning/20"
+            className="shrink-0 rounded-lg bg-warning/15 px-3.5 py-1.5 text-xs font-medium text-warning ring-1 ring-warning/40 transition-colors hover:bg-warning/25"
           >
             Vu
           </button>

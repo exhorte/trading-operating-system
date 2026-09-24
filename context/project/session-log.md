@@ -6,6 +6,41 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-24 (**refonte visuelle du cockpit sur shadcn/ui — ADR 0012** ; T12 commité)
+
+Demande : améliorer le dashboard d'après une maquette
+(`05_screenchot/dashboar.jpg`) — icônes modernes et lisibles, Settings en
+bas de la barre latérale, cartes qui remplissent l'espace, barre du haut
+réduite au seul compte, palette discrète, bibliothèque shadcn/ui.
+
+**T12 d'abord commité** (`1e8b19b`, sur accord) pour que la refonte ait son
+propre commit. **Décision de l'utilisateur** : l'arrêt d'urgence va en bas
+de la barre latérale (options : barre latérale / menu du compte / Command
+Center seul).
+
+**Livré** : shadcn/ui installé par sa CLI (jamais `init`, qui aurait réécrit
+les jetons) ; jetons renommés dans 40 fichiers (`muted`/`accent`
+entraient en conflit avec shadcn) ; `Card` → `Panel` dans 27 fichiers ;
+nouvelle coque (barre latérale repliable, en-tête titre + compte) ; Command
+Center, Pré-vol et Positions recomposés ; champs, boutons et barres au
+format shadcn. **Rien de sécurité n'a été retiré, tout a été placé** :
+conformité (T07) en tête du Command Center, publication/blackout (T03) et
+arrêt d'urgence (T02a) en bas de la barre latérale sur tout écran, liaison
+et persistance sur la pastille du compte. ADR 0012 amende l'ADR 0003
+(dépendances front, densité).
+
+**Défaut trouvé en vérifiant, corrigé** : `useJournalWindow` transformait un
+refus (503) en historique vide — donc 100 % de conformité affichés base
+arrêtée, contraire à son propre contrat. Vu à l'écran : la base TradingOS a
+été arrêtée en cours de session (arrêt propre, code 0) au profit de
+`e-commerce-db-1` — pas par moi ; la vérification a continué en mock, et les
+états d'échec ont pu être vus pour de vrai.
+
+Gates : `tsc`, `eslint`, `next build` propres ; 303 tests Vitest. Lenteur de
+la machine notée (build 2 min 40 ; hydratation en dev jusqu'à 30 s).
+
+---
+
 ## 2026-09-23 (**T12 incrément 2 — écrans Account et Settings ; environnement réel préparé ; l'agent EA-05 n'a jamais tourné dans le terminal**)
 
 Demandes : « la partie connexion aux comptes propfirm ou FTMO et celui d'un

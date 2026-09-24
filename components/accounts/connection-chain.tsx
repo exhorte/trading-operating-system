@@ -5,7 +5,7 @@ import { useCockpit } from "@/lib/realtime/provider";
 import type { ActiveProfile } from "@/lib/accounts/active-profile";
 import { formatAge } from "@/lib/format";
 import type { ConnectionState } from "@/lib/contracts/enums";
-import { Card } from "@/components/ui/card";
+import { Panel } from "@/components/ui/panel";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 
 interface Link {
@@ -103,21 +103,21 @@ export function ConnectionChain({ profile }: { profile: ActiveProfile | null }) 
   ];
 
   return (
-    <Card title="Liaison MT5">
+    <Panel title="Liaison MT5">
       <ul className="flex flex-col">
         {links.map((link) => (
           <li
             key={link.label}
             className="grid grid-cols-[minmax(0,11rem)_auto_minmax(0,1fr)] items-center gap-3 border-t border-border py-1.5 text-xs first:border-t-0 first:pt-0"
           >
-            <span className="text-muted">{link.label}</span>
+            <span className="text-muted-foreground">{link.label}</span>
             <StatusPill tone={link.tone}>{link.state}</StatusPill>
-            <span className="truncate text-[11px] text-muted" title={link.detail}>
+            <span className="truncate text-xs text-muted-foreground" title={link.detail}>
               {link.detail}
             </span>
           </li>
         ))}
       </ul>
-    </Card>
+    </Panel>
   );
 }

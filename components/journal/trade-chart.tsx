@@ -20,7 +20,7 @@ export interface TradeChartProps {
 
 const MARKER_COLOR: Record<TradeChartMarker["tone"], string> = {
   entry: "var(--info)",
-  exit: "var(--accent)",
+  exit: "var(--chart-2)",
   stop: "var(--loss)",
   target: "var(--profit)",
 };
@@ -36,7 +36,7 @@ export function TradeChart({ candles, context, markers, width = 720, height = 32
   if (candles.length === 0) {
     return (
       <div
-        className="flex items-center justify-center text-xs text-muted"
+        className="flex items-center justify-center text-xs text-muted-foreground"
         style={{ width, height }}
       >
         No candles in the captured window.
@@ -54,7 +54,7 @@ export function TradeChart({ candles, context, markers, width = 720, height = 32
 
   return (
     <svg width={width} height={height} role="img" aria-label="Trade capture chart">
-      <rect x={0} y={0} width={width} height={height} fill="var(--surface)" />
+      <rect x={0} y={0} width={width} height={height} fill="var(--card)" />
 
       {context?.activeFairValueGaps.map((fvg) => (
         <rect
