@@ -425,3 +425,53 @@ explicite.
   `const` à `MODE_OBSERVE` (ligne 64), jamais affectée ailleurs. Rien ne rend
   `CONFIRM` atteignable. L'attache sur un graphique et `InpAccountId` restent
   à l'utilisateur, dans MT5 — aucun identifiant ne passe par l'application.
+
+- 2026-09-24 — **première connexion réelle, étape 1 du README passée —
+  après correction d'un bug de framing présent depuis le premier commit.**
+  Terminal Exness démo, `EURUSDm`, mode `OBSERVE`. Trois obstacles
+  successifs, chacun lu dans les journaux de MT5, les logs de la Gateway et
+  la base avant d'être traité :
+
+  1. **Refus au démarrage** (13:09 et 13:17, heure locale) : presets à
+     `InpMagicNumber=0` — la garde d'`OnInit` a fait son travail. Preset
+     `ea1.set` à 1001 ensuite.
+  2. **`SocketConnect` en 4014** (`ERR_FUNCTION_NOT_ALLOWED`) : la liste
+     « Allow WebRequest for listed URL » du terminal était vide
+     (`config\common.ini`, `WebRequestUrl=`). Refus avant tout accès
+     réseau — la Gateway écoutait bien (une adresse autorisée sans serveur
+     aurait donné 5272). `127.0.0.1` ajouté par l'utilisateur (réglage de
+     sécurité du terminal) ; pris à chaud par les instances déjà lancées.
+     Écrit dans le README (prérequis 4).
+  3. **Connexion TCP établie, aucun message lu.** `SendRawLine` appelait
+     `StringToCharArray(…, 0, StringLen(withNewline), CP_UTF8)` : avec un
+     compte explicite, aucun 0 final n'est copié (doc MQL5 : seul le compte
+     par défaut `-1` le copie), donc `written - 1` retirait le `\n`. La
+     Gateway lit ligne par ligne (`ReadLineAsync`) : `hello` et heartbeats
+     s'empilaient sans jamais former une ligne — aucun « MT5 execution agent
+     connected », aucun heartbeat `mt5-execution-agent-1001` en base, malgré
+     deux connexions TCP ouvertes. Correctif : compte `-1` (copie et compte
+     le 0, en octets UTF-8). Ce code date de `0a7af59` (2026-09-12) :
+     **aucune version de cet agent n'avait jamais pu être lue par la
+     Gateway** — la vérification consignée le 2026-09-12 ne pouvait pas
+     passer l'étape 1, ce qui confirme l'entrée du 2026-09-23.
+
+  **Vérifié après réattache** (une compilation headless ne recharge pas un
+  EA déjà attaché — README mis à jour) : `/health` `agentConnected: true` ;
+  log Gateway « MT5 execution agent connected » (16:10:03 UTC) ; une
+  enveloppe `agent.connected` pour `mt5-execution-agent-1001` ;
+  `agent.heartbeat` à 12/min, soit une instance à 5 s ; une seule connexion
+  TCP. Tables d'exécution toujours vides — aucune commande envoyée, aucune
+  position ouverte : **étapes 2 à 4 restent à faire.**
+
+  Deux instances ont tourné ensemble un moment (XAUUSDm et EURUSDm, même
+  preset) ; celle de XAUUSDm a été retirée. Côté Gateway,
+  `_writersByAccountId` est indexé par compte et le `finally` de
+  `HandleClientAsync` désinscrit par clé sans vérifier que c'est sa propre
+  connexion : deux instances, ou une reconnexion rapide, font afficher
+  l'agent déconnecté alors qu'il ne l'est pas — non corrigé, tâche proposée
+  à part. README : une instance par terminal.
+
+  **Barrière relue dans le code après correctif** : un seul `OrderSend`
+  (ligne 538, `ExecuteOrder`), garde `if(g_mode != MODE_CONFIRM)` en
+  première instruction (ligne 514), `g_mode` `const` à `MODE_OBSERVE`
+  (ligne 64), jamais affectée. Gate MetaEditor : `0 errors, 0 warnings`.

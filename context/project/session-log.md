@@ -6,6 +6,42 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-24, suite (**EA-05 connecté pour la première fois** — bug de framing corrigé)
+
+Demandes : relancer la base TradingOS et arrêter `e-commerce-db-1` ;
+expliquer l'erreur 4014 à l'attache de l'agent ; vérifier sa connexion,
+corriger, recompiler ; commit + push.
+
+**Base** : `e-commerce-db-1` arrêté (code 0), `tradingos-timescaledb`
+relancé, sain en 6 s. Arrêté depuis 11:19 UTC (3 h 33), le backend s'est
+reconnecté seul. `PersistenceWriter` a perdu 1362 événements en un seul bloc
+au début de la coupure (11:19–11:28 UTC : données de marché et snapshots —
+aucune position ouverte, aucun trade ce jour-là) ; les ~9 000 suivants,
+restés en file, ont été écrits.
+
+**EA-05, trois obstacles successifs, détail dans sa fiche** : presets à
+`InpMagicNumber=0` (refus attendu) ; `SocketConnect` en 4014 — liste
+d'adresses autorisées de MT5 vide, `127.0.0.1` ajouté par l'utilisateur ;
+puis connexion TCP établie sans qu'un seul message soit lu : `SendRawLine`
+retirait le `\n` de chaque ligne, depuis le premier commit de l'agent
+(2026-09-12). Corrigé ; après réattache, **étape 1 du README passée pour la
+première fois, avec traces** (agent reconnu par la Gateway, heartbeats en
+base). Ce bug rendait impossible la vérification consignée le 2026-09-12 —
+le constat « non corroborée » du 2026-09-23 est confirmé.
+
+**Trouvé, non corrigé (tâches proposées à part)** : `/health.dbError` n'est
+jamais effacé après rétablissement ; `Mt5AgentServer` désinscrit un agent
+par clé de compte sans vérifier que c'est sa connexion (deux instances — le
+cas s'est produit — ou reconnexion rapide ⇒ agent affiché déconnecté).
+
+Docs : README de l'agent (prérequis 4014, une instance par terminal,
+recompilation ⇒ réattacher, étape 1 corrigée — l'EA n'affiche que son
+premier échec, un onglet Experts muet ne prouve rien), runbook (bascule du
+port 5433, perte au début d'une coupure de base).
+
+Gates : MetaEditor `0 errors, 0 warnings`. Seul le `.mq5` a changé côté code
+— gates TS/C#/Python non relancées, rien de leur périmètre n'a bougé.
+
 ## 2026-09-24 (**refonte visuelle du cockpit sur shadcn/ui — ADR 0012** ; T12 commité)
 
 Demande : améliorer le dashboard d'après une maquette

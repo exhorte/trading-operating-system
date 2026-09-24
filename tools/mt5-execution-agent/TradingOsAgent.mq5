@@ -292,8 +292,12 @@ bool SendRawLine(const string line)
    }
    string withNewline = line + "\n";
    uchar data[];
-   int written = StringToCharArray(withNewline, data, 0, StringLen(withNewline), CP_UTF8);
-   int len = written - 1; // StringToCharArray appends a trailing terminator; exclude it from the wire
+   // count -1: copies the terminating 0 and counts it, in UTF-8 bytes. An
+   // explicit StringLen() count copies no terminator, so the "- 1" below
+   // stripped the "\n" instead and the Gateway, which reads line by line,
+   // never saw a single message (EA-05 fiche, 2026-09-24).
+   int written = StringToCharArray(withNewline, data, 0, -1, CP_UTF8);
+   int len = written - 1; // exclude the terminating 0 from the wire
    if(len <= 0)
    {
       return false;

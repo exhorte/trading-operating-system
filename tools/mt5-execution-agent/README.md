@@ -49,6 +49,14 @@ retry from the agent.
    `Mt5AgentServer.cs`'s doc comment for why.
 3. Every symbol in `InpAllowedSymbolsCsv` visible in **Market Watch**
    (right-click → Show All if needed).
+4. The Gateway address — `127.0.0.1`, the `InpGatewayHost` value — added in
+   **Tools → Options → Expert Advisors → Allow WebRequest for listed URL**.
+   MT5 checks `SocketConnect` against that list: with the address missing
+   the EA logs `initial connection to 127.0.0.1:9765 failed (error 4014)`
+   (`ERR_FUNCTION_NOT_ALLOWED`), refused before any network attempt — an
+   allowed address with nothing listening gives 5272 instead. The setting
+   is terminal-wide and applies to EAs already running (verified
+   2026-09-24).
 
 ## Install
 
@@ -57,8 +65,14 @@ retry from the agent.
    button finds it. Preserve the `Include/` subfolder relative to the
    `.mq5` file.
 2. Open `TradingOsAgent.mq5` in MetaEditor and compile (F7), or run the
-   headless gate (see `context/governance/quality_gates.md`).
-3. Attach the compiled EA to any chart. **Every input below is required —
+   headless gate (see `context/governance/quality_gates.md`). After a
+   headless compile, an EA already attached keeps running the old code
+   until it is removed and attached again (verified 2026-09-24).
+3. Attach the compiled EA to **one** chart — one instance per terminal: a
+   second instance with the same preset registers for the same account.
+   `Allow Algo Trading` can stay unchecked while the mode is `OBSERVE`
+   (sockets and position reads do not need it), which adds a terminal-side
+   barrier on top of the code's. **Every input below is required —
    the EA refuses to start (`INIT_PARAMETERS_INCORRECT`) if `InpAccountId`
    is empty or `InpMagicNumber` is not positive.**
 
@@ -83,9 +97,13 @@ Each step below corresponds to one increment in
 
 1. **Connexion et heartbeat.** Start the Gateway, attach the EA. Check
    `GET http://localhost:5080/health` — `agentConnected` should turn `true`,
-   and the Gateway log should show `MT5 execution agent connected`. The
-   EA's own `Journal`/`Experts` tab in MetaTrader should show no connection
-   errors after the first retry.
+   and the Gateway log should show `MT5 execution agent connected`. The EA
+   prints only its *first* connection failure — retries (every second) are
+   silent, and so is success — so a quiet `Experts` tab proves nothing.
+   The database should also hold one `agent.connected` envelope for
+   `mt5-execution-agent-<magic>` and ~12 `agent.heartbeat` per minute at
+   `InpHeartbeatSeconds=5` (twice that means two instances are attached).
+   Passed for the first time on 2026-09-24 (Exness demo, `EURUSDm`).
 2. **Réception et accusés.** Send a test `execution.order` through the
    cockpit's command path (same shape `CockpitHub.SubmitCommand` already
    uses for the Python observer). Confirm `execution.ack` (`ACCEPTED`) then
