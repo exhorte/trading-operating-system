@@ -35,11 +35,19 @@ import type {
   RiskLockoutEnabledPayload,
 } from "@/lib/contracts/events";
 import { clearedByForAck, KILL_SWITCH_REASON } from "@/lib/risk";
+import { fetchAccountSettings } from "@/lib/accounts/settings-api";
 import type { RealtimeClient } from "./client";
 import type { CockpitStore } from "./store";
 
 function makeId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** A plausible trading-day anchor for the scripted account: today, 00:00
+ *  UTC. Real anchors are server midnight, Gateway-resolved (T02a). */
+function mockDayAnchor(): string {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
 }
 
 const TICK_INTERVAL_MS = 1_500;
@@ -120,6 +128,22 @@ export class MockRealtimeClient implements RealtimeClient {
     );
   }
 
+  refreshAccountSettings(): void {
+    fetchAccountSettings()
+      .then((ledger) => {
+        if (!this.stopped) {
+          this.store.hydrate({ accountSettings: ledger, accountSettingsError: null });
+        }
+      })
+      .catch((error: unknown) => {
+        if (!this.stopped) {
+          this.store.hydrate({
+            accountSettingsError: error instanceof Error ? error.message : "Lecture impossible.",
+          });
+        }
+      });
+  }
+
   private goOnline(initial: boolean): void {
     this.store.setConnectionState("connected");
     this.heartbeatsSuspended = false;
@@ -144,7 +168,12 @@ export class MockRealtimeClient implements RealtimeClient {
       // preflight verdict is demonstrable. Real mode reads this from
       // Mt5AgentServer.IsConnected, never from mockAgents().
       executionAgentConnected: true,
+      dayAnchorStartsAtUtc: mockDayAnchor(),
     });
+    // T12 incrément 2: the settings ledger is real even here — like the
+    // journal screens, Account and Settings read the backend over HTTP, and
+    // say so when it is not running.
+    this.refreshAccountSettings();
 
     if (initial) {
       this.every(TICK_INTERVAL_MS, () => this.emitTick());

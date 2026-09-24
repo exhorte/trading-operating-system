@@ -7,6 +7,8 @@ export type IconName =
   | "shield"
   | "report"
   | "cpu"
+  | "wallet"
+  | "gear"
   | "flask";
 
 export interface NavItem {
@@ -17,7 +19,7 @@ export interface NavItem {
 }
 
 /**
- * Nine screens, all of which carry something.
+ * Eleven screens, all of which carry something.
  *
  * Until 2026-09-20 there were ten and five of them were "not built yet"
  * placeholders — a navigation that advertises screens with nothing behind
@@ -28,8 +30,11 @@ export interface NavItem {
  *   /settings — no auth, no backend switch, no strategy parameter to set
  *   /replay   — needs the analytics pipeline (ADR 0011), not started
  *
- * Both come back when they have content. See
- * context/frontend/information_architecture.md.
+ * Both come back when they have content. /settings did, in two steps:
+ * /comptes (T12, 2026-09-21) showed the account profile read-only; since
+ * T12 incrément 2 (2026-09-23) that became Account (what is connected, under
+ * which rules) and Settings (the account settings ledger and the connection
+ * procedure). See context/frontend/information_architecture.md.
  */
 export const NAV_ITEMS: NavItem[] = [
   { label: "Command Center", href: "/", icon: "grid", section: "operate" },
@@ -40,6 +45,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Trades Journal", href: "/journal", icon: "book", section: "analyze" },
   { label: "Analyse de compte", href: "/analyse", icon: "report", section: "analyze" },
   { label: "Setups (S01)", href: "/setups", icon: "flask", section: "analyze" },
+  { label: "Account", href: "/account", icon: "wallet", section: "system" },
+  { label: "Settings", href: "/settings", icon: "gear", section: "system" },
   { label: "Agents & Audit", href: "/agents", icon: "cpu", section: "system" },
 ];
 

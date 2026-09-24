@@ -19,4 +19,11 @@ export interface RealtimeClient {
   triggerKillSwitch(): void;
   /** T02a: the trader's own record of having closed positions manually. */
   acknowledgeLockout(lockoutId: string): void;
+  /**
+   * T12 incrément 2: re-read the account settings ledger into the store.
+   * The backend client also does it on every accounts.settings.changed; the
+   * Settings screen calls this after its own write so the mock source —
+   * which receives no backend events — stays current too.
+   */
+  refreshAccountSettings(): void;
 }

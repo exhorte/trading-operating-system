@@ -48,6 +48,7 @@ builder.Services.AddSingleton(new SetupProposalRepository(connectionString));
 builder.Services.AddSingleton(new ExecutionDivergenceRepository(connectionString));
 builder.Services.AddSingleton(new JournalRepository(connectionString));
 builder.Services.AddSingleton(new RiskLockoutHistoryRepository(connectionString));
+builder.Services.AddSingleton(new AccountSettingsRepository(connectionString));
 builder.Services.AddHttpClient("fred");
 builder.Services.AddHostedService<GatewayBridgeService>();
 builder.Services.AddHostedService<NewsCalendarService>();
@@ -244,6 +245,8 @@ app.MapGet("/api/execution/divergence", async (
         return Results.Problem(detail: $"{ex.GetType().Name}: {ex.Message}", statusCode: 503);
     }
 });
+// T12 incrément 2: the Settings screen's ledger — see AccountSettingsEndpoints.
+app.MapAccountSettingsEndpoints();
 app.MapHub<CockpitHub>("/hub/cockpit");
 
 app.Run(listenUrl);

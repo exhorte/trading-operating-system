@@ -20,6 +20,20 @@ describe("toBrokerSymbol / toCanonicalSymbol", () => {
   it("does not register the alternate XAUUSD247m broker name", () => {
     expect(toCanonicalSymbol("XAUUSD247m")).toBeNull();
   });
+
+  // T12: FTMO names instruments by their canonical code. Before this, every
+  // FTMO trade resolved to null and the compliance size check skipped it.
+  it("accepts FTMO's naming, which is the canonical code itself", () => {
+    expect(toCanonicalSymbol("XAUUSD")).toBe("XAUUSD");
+    expect(toCanonicalSymbol("EURUSD")).toBe("EURUSD");
+    expect(toCanonicalSymbol("GBPUSD")).toBe("GBPUSD");
+  });
+
+  // The alias only reads; the name this system sends orders under is still
+  // the measured Exness one.
+  it("keeps the Exness name as the broker-side name", () => {
+    expect(toBrokerSymbol("XAUUSD")).toBe("XAUUSDm");
+  });
 });
 
 describe("symbolMetadata", () => {

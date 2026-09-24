@@ -23,6 +23,7 @@ import {
   toRiskStatusReadModel,
 } from "@/lib/contracts/projections";
 import { mockCandles } from "@/lib/mock/candles";
+import { ACTIVE_FTMO_CHALLENGE } from "@/lib/accounts/ftmo";
 
 /**
  * The account the mock snapshot presents.
@@ -46,6 +47,29 @@ const MOCK_ACCOUNT_ID = process.env.NEXT_PUBLIC_MOCK_ACCOUNT_ID ?? "account-001"
  *  scripted while the journal-side screens turn real. */
 const IS_REAL_ACCOUNT = MOCK_ACCOUNT_ID !== "account-001";
 
+/**
+ * The mock account *is* the FTMO challenge this cockpit is configured for
+ * (T12). It used to present itself as a 100k challenge while the configured
+ * challenge is 10 000 $ — the account screen would then have reported a
+ * profit target "reached" at +91 000 $. Every absolute figure below was
+ * written for 100k and is scaled to the default size (a challenge saved from
+ * Settings does not rescale the script — it is a fixture, not an account);
+ * percentages (drawdown, open risk) are ratios and come out unchanged, so the
+ * default mock state stays "Armé".
+ */
+const CHALLENGE_SIZE = ACTIVE_FTMO_CHALLENGE.accountSize;
+const SCALE = CHALLENGE_SIZE / 100_000;
+
+/** A 100k-account dollar figure, scaled and rounded to the cent. */
+function usd(amountAt100k: number): number {
+  return Math.round(amountAt100k * SCALE * 100) / 100;
+}
+
+/** A 100k-account lot size, scaled and kept on the 0.01 volume step. */
+function lots(volumeAt100k: number): number {
+  return Math.max(0.01, Math.round(volumeAt100k * SCALE * 100) / 100);
+}
+
 const now = () => new Date();
 
 function isoMinutesAgo(minutes: number): string {
@@ -55,12 +79,14 @@ function isoMinutesAgo(minutes: number): string {
 export function mockAccount(): AccountSummary {
   return {
     accountId: MOCK_ACCOUNT_ID,
-    label: IS_REAL_ACCOUNT ? "Compte réel — flux simulé" : "FTMO Challenge 100k",
+    label: IS_REAL_ACCOUNT
+      ? "Compte réel — flux simulé"
+      : `FTMO Challenge ${CHALLENGE_SIZE / 1000}k`,
     broker: IS_REAL_ACCOUNT ? "override .env.local" : "FTMO-Demo",
     currency: "USD",
-    balance: 101_240.5,
-    equity: 101_512.3,
-    dailyPnl: 271.8,
+    balance: usd(101_240.5),
+    equity: usd(101_512.3),
+    dailyPnl: usd(271.8),
     dailyDrawdownPercent: 0.9,
     totalDrawdownPercent: 2.4,
     openRiskPercent: 1.0,
@@ -74,12 +100,12 @@ export function mockPositions(): Position[] {
       accountId: MOCK_ACCOUNT_ID,
       symbol: "XAUUSD",
       side: "buy",
-      volume: 0.2,
+      volume: lots(0.2),
       entryPrice: 3308.4,
       currentPrice: 3312.1,
       stopLoss: 3295.0,
       takeProfit: 3335.0,
-      unrealizedPnl: 74.0,
+      unrealizedPnl: usd(74.0),
       rMultiple: 0.28,
       strategyId: "ict-silver-bullet-v1",
       openedAt: isoMinutesAgo(42),
@@ -89,12 +115,12 @@ export function mockPositions(): Position[] {
       accountId: MOCK_ACCOUNT_ID,
       symbol: "XAUUSD",
       side: "buy",
-      volume: 0.1,
+      volume: lots(0.1),
       entryPrice: 3310.9,
       currentPrice: 3312.1,
       stopLoss: 3301.5,
       takeProfit: 3329.0,
-      unrealizedPnl: 12.0,
+      unrealizedPnl: usd(12.0),
       rMultiple: 0.13,
       strategyId: "ict-fvg-continuation-v1",
       openedAt: isoMinutesAgo(15),
@@ -138,8 +164,8 @@ export function mockRiskContext(
   }));
   const state = evaluateRiskState({
     policy,
-    initialBalance: 100_000,
-    dayStartEquity: 102_400, // ~0.9% intraday loss vs current equity
+    initialBalance: CHALLENGE_SIZE,
+    dayStartEquity: usd(102_400), // ~0.9% intraday loss vs current equity
     equity: account.equity,
     balance: account.balance,
     positions,
@@ -203,7 +229,7 @@ export function mockExecutionReports(): ExecutionReport[] {
       symbol: "XAUUSD",
       side: "buy",
       status: "filled",
-      detail: "0.10 lot @ 3310.90, TRADE_RETCODE_DONE",
+      detail: `${lots(0.1).toFixed(2)} lot @ 3310.90, TRADE_RETCODE_DONE`,
       reportedAt: isoMinutesAgo(15),
     },
     {

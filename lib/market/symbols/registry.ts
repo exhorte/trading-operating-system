@@ -80,8 +80,23 @@ const REGISTRY: Record<string, BrokerSymbolEntry> = {
   },
 };
 
+/**
+ * Broker name -> canonical symbol. Each canonical code is also accepted as a
+ * broker name of its own (T12): FTMO names its instruments exactly that way —
+ * `XAUUSD`, not `XAUUSDm` (MetriX export, « Résultats par instrument »).
+ * Without this, every FTMO trade resolved to `null` and the compliance size
+ * check skipped it silently.
+ *
+ * The metadata stays the Exness measurement. For the size check that is the
+ * same economic value per lot — 100 oz of gold, 100 000 units of currency —
+ * whatever each broker's tick convention; FTMO's own specs are unmeasured
+ * (`list_symbols.py` on an FTMO terminal, the way Exness was measured).
+ */
 const BY_BROKER_NAME: Record<string, SymbolCode> = Object.fromEntries(
-  Object.values(REGISTRY).map((entry) => [entry.brokerName, entry.canonical]),
+  Object.values(REGISTRY).flatMap((entry) => [
+    [entry.brokerName, entry.canonical],
+    [entry.canonical, entry.canonical],
+  ]),
 );
 
 /** The broker-side name this terminal uses for a canonical symbol, or null

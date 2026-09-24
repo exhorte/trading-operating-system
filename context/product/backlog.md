@@ -56,7 +56,7 @@ Généré avant l'ouverture : niveaux (PDH/PDL, high/low asiatique, extrêmes de
 **T11 — Multi-compte natif** · 1–2 sem · valeur 3
 Plomberie : descendre le scope `workspace / account / connection` dans l'enveloppe, le hub SignalR, le schéma TimescaleDB et le store frontend. Un observer par compte, réconciliation par compte. Valeur propre faible, prérequis de T12.
 
-**T12 — Prop Firm Control Center** · 1–2 sem · valeur 5 · dépend de T11
+**T12 — Prop Firm Control Center** · 1–2 sem · valeur 5 · dépend de T11 (pour le multi-compte seulement) · **incrément 1 livré le 2026-09-21** — un compte à la fois ; **incrément 2 livré le 2026-09-23** — écrans Account et Settings, registre de paramètres sous verrou anti-tilt ; voir la fiche
 Le trou le plus net de l'open source d'après l'audit du 2026-09-03. Registre de comptes (broker, firme, phase 1/2/funded), règles par firme, profit target, daily DD, max DD, jours minimum, échéance de payout, kill switch global, lockout par compte.
 
 **T13 — Simulateur de règles pré-trade** · 1–2 j · valeur 4 · dépend de T12

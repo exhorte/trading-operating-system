@@ -21,6 +21,7 @@ const CockpitStoreContext = createContext<CockpitStore | null>(null);
 interface RealtimeActions {
   triggerKillSwitch: () => void;
   acknowledgeLockout: (lockoutId: string) => void;
+  refreshAccountSettings: () => void;
 }
 
 const RealtimeActionsContext = createContext<RealtimeActions | null>(null);
@@ -58,6 +59,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     () => ({
       triggerKillSwitch: () => clientRef.current?.triggerKillSwitch(),
       acknowledgeLockout: (lockoutId) => clientRef.current?.acknowledgeLockout(lockoutId),
+      refreshAccountSettings: () => clientRef.current?.refreshAccountSettings(),
     }),
     [],
   );
@@ -85,6 +87,11 @@ export function useTriggerKillSwitch(): () => void {
 /** T02a: acknowledge having closed positions manually. */
 export function useAcknowledgeLockout(): (lockoutId: string) => void {
   return useRealtimeActions().acknowledgeLockout;
+}
+
+/** T12 incrément 2: re-read the account settings ledger after a write. */
+export function useRefreshAccountSettings(): () => void {
+  return useRealtimeActions().refreshAccountSettings;
 }
 
 /** T02c: dismiss a live lockout-violation notice — local to this tab, not a

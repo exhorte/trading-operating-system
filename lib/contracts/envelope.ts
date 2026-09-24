@@ -77,7 +77,11 @@ export type EventType =
   | "execution.agent.connection"
   // T03: Gateway-only — the backend polls FRED and owns the calendar cache;
   // never client-published.
-  | "market.calendar.updated";
+  | "market.calendar.updated"
+  // T12 incrément 2: backend-only — emitted by the HTTP endpoint that wrote
+  // the account settings ledger, which is also where the anti-tilt rule is
+  // decided; a dashboard cannot publish one (no PublishEvent whitelist entry).
+  | "accounts.settings.changed";
 
 export interface Envelope<TPayload = unknown> {
   messageId: string;

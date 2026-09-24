@@ -30,6 +30,14 @@ import {
   isLockoutExpired,
   KILL_SWITCH_REASON,
 } from "@/lib/risk";
+import { resolveActiveProfile } from "@/lib/accounts/active-profile";
+import {
+  DEFAULT_ACCOUNT_SETTINGS,
+  nextDayAnchor,
+  resolveAccountSettings,
+  type DayAnchorState,
+} from "@/lib/accounts/settings";
+import { fetchAccountSettings } from "@/lib/accounts/settings-api";
 import { makeEnvelope } from "@/lib/mock/envelope";
 import { toMarketContextReadModel, toRiskStatusReadModel } from "@/lib/contracts/projections";
 import type { Envelope } from "@/lib/contracts/envelope";
@@ -103,6 +111,10 @@ export class SignalRRealtimeClient implements RealtimeClient {
   /** T02a: the current trading day's anchor (server midnight, resolved by the
    *  Gateway) — null until the first risk.day_anchor.resolved arrives. */
   private dayAnchorStartsAtUtc: string | null = null;
+
+  /** T12 incrément 2: the anchor published to the store for settings
+   *  resolution, and whose it is — see nextDayAnchor. */
+  private publishedAnchor: DayAnchorState | null = null;
 
   /** T02a: real open-count since the day anchor, hydrated from /api/risk/today
    *  and kept current by re-hydrating on every journal.position.opened (T05:
@@ -230,7 +242,46 @@ export class SignalRRealtimeClient implements RealtimeClient {
     }
     // T03: not account-scoped (the FRED calendar is global) — always attempted.
     await this.hydrateCalendar();
+    // T12 incrément 2: before the first risk computation, so the configured
+    // challenge/reference apply from the first tick rather than the defaults.
+    await this.hydrateAccountSettings();
     this.recomputeRisk();
+  }
+
+  /**
+   * T12 incrément 2: the account settings ledger (GET /api/account-settings),
+   * on every connect/reconnect and every accounts.settings.changed. A failed
+   * read keeps the last ledger read successfully — silently falling back to
+   * the code's defaults would swap the trader's configured reference for
+   * another one mid-session.
+   */
+  private async hydrateAccountSettings(): Promise<void> {
+    try {
+      const ledger = await fetchAccountSettings();
+      this.store.hydrate({ accountSettings: ledger, accountSettingsError: null });
+    } catch (error) {
+      this.store.hydrate({
+        accountSettingsError: error instanceof Error ? error.message : "Lecture impossible.",
+      });
+    }
+  }
+
+  refreshAccountSettings(): void {
+    void this.hydrateAccountSettings().then(() => this.recomputeRisk());
+  }
+
+  /**
+   * T12 incrément 2: the anchor settings deferred to "the next trading day"
+   * resolve against — the same one the daily loss uses. Fed by the anchor
+   * event itself and by /api/risk/today, never stepping back within one
+   * account (nextDayAnchor: the database row can lag the event).
+   */
+  private publishDayAnchor(accountId: string, startsAtUtc: string | null): void {
+    const next = nextDayAnchor(this.publishedAnchor, { accountId, startsAtUtc });
+    this.publishedAnchor = next;
+    if (this.store.getSnapshot().dayAnchorStartsAtUtc !== next.startsAtUtc) {
+      this.store.hydrate({ dayAnchorStartsAtUtc: next.startsAtUtc });
+    }
   }
 
   /**
@@ -275,6 +326,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
         this.baselineEquity = data.dayStartEquity;
       }
       this.store.hydrate({ activeLockout: data.activeLockout });
+      this.publishDayAnchor(accountId, data.dayAnchorStartsAtUtc);
     } catch {
       // Best-effort: live events and the per-tab baseline fallback still work.
     }
@@ -331,8 +383,20 @@ export class SignalRRealtimeClient implements RealtimeClient {
       case "risk.day_anchor.resolved": {
         const { accountId, startsAtUtc } = envelope.payload as DayAnchorResolvedPayload;
         if (startsAtUtc !== this.dayAnchorStartsAtUtc) {
-          void this.hydrateRiskToday(accountId);
+          // T12 incrément 2: the event carries the anchor — publish it now,
+          // so settings deferred to this new day take effect without waiting
+          // for the database row hydrateRiskToday reads back (written
+          // asynchronously), then recompute once hydrated.
+          this.publishDayAnchor(accountId, startsAtUtc);
+          void this.hydrateRiskToday(accountId).then(() => this.recomputeRisk());
         }
+        break;
+      }
+      // T12 incrément 2: backend-originated, after every write to the
+      // settings ledger — re-read it rather than patch it, same pattern as
+      // journal.trade_closed.
+      case "accounts.settings.changed": {
+        this.refreshAccountSettings();
         break;
       }
       // T02b: Gateway-resolved fact (only the observer's deal history knows
@@ -385,12 +449,27 @@ export class SignalRRealtimeClient implements RealtimeClient {
    *  consecutive-loss streak (T02b). The lockout ledger — not this
    *  computation — decides "locked right now" (see applyActiveLockout). */
   private recomputeRisk(): void {
-    const { account, positions, activeLockout, upcomingReleases, executionAgentConnected } =
-      this.store.getSnapshot();
+    const {
+      account,
+      positions,
+      activeLockout,
+      upcomingReleases,
+      executionAgentConnected,
+      accountSettings,
+      dayAnchorStartsAtUtc,
+    } = this.store.getSnapshot();
     if (!account || this.baselineBalance === null || this.baselineEquity === null) {
       return;
     }
-    const policy = defaultRiskPolicy(account.accountId);
+    // T12: the terminal's firm decides which rules and which reference
+    // balance apply. Unrecognised broker -> the pre-T12 behaviour, unchanged.
+    // T12 incrément 2: with the settings in effect today — a change deferred
+    // to the next trading day stays out until its anchor has started.
+    const settings = accountSettings
+      ? resolveAccountSettings(accountSettings.versions, dayAnchorStartsAtUtc).settings
+      : DEFAULT_ACCOUNT_SETTINGS;
+    const active = resolveActiveProfile(account, settings);
+    const policy = active?.riskPolicy ?? defaultRiskPolicy(account.accountId);
     const spreadPoints =
       this.lastAsk !== null && this.lastBid !== null
         ? Math.round((this.lastAsk - this.lastBid) / 0.01)
@@ -408,7 +487,15 @@ export class SignalRRealtimeClient implements RealtimeClient {
     const agentConnected = executionAgentConnected;
     const computed = evaluateRiskState({
       policy,
-      initialBalance: this.baselineBalance,
+      // T12 fix. Overall loss was measured from `baselineBalance` — the
+      // balance when this tab last (re)connected, reset on every resync. A
+      // prop firm measures it from the account's initial size, fixed for the
+      // whole challenge: on a 10 000 $ FTMO account reopened at 9 400 $, the
+      // gate allowed a floor of 8 460 $ while FTMO had already closed the
+      // account at 9 000 $. The profile's reference wins whenever it exists.
+      // Daily loss never had this flaw: `baselineEquity` below is the
+      // persisted start-of-day equity (T02a, hydrateRiskToday).
+      initialBalance: active?.referenceBalance ?? this.baselineBalance,
       dayStartEquity: this.baselineEquity,
       equity: account.equity,
       balance: account.balance,

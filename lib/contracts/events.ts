@@ -255,6 +255,22 @@ export interface CalendarUpdatedPayload {
 }
 
 /**
+ * T12 incrément 2: backend-originated only (AccountSettingsEndpoints.cs), on
+ * every write to the account settings ledger. Clients re-read the ledger
+ * rather than patching it from this payload — the same re-hydrate pattern as
+ * journal.trade_closed. `settings` and `deferralReasons` ride along for the
+ * audit trail (`envelopes`), not for the client.
+ */
+export interface AccountSettingsChangedPayload {
+  versionId: string;
+  firm: "ftmo" | "exness";
+  action: "requested" | "cancelled";
+  deferred: boolean;
+  settings: unknown;
+  deferralReasons: unknown;
+}
+
+/**
  * Exhaustive EventType → payload registry. The future SignalR client and the
  * mock client both conform to this map; adding an EventType without a payload
  * here is a compile error.
@@ -306,6 +322,7 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "journal.lockout_violated": LockoutViolatedPayload;
   "execution.agent.connection": ExecutionAgentConnectionPayload;
   "market.calendar.updated": CalendarUpdatedPayload;
+  "accounts.settings.changed": AccountSettingsChangedPayload;
 }
 
 /** An envelope whose payload type is derived from its event type. */

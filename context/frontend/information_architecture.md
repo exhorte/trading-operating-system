@@ -40,12 +40,16 @@ chaque fois pour le réapprendre.
 | Trades Journal | Qu'est-ce que j'ai fait, et est-ce que je l'ai bien fait ? | inchangé |
 | Setups (S01) | Le détecteur voit-il ce que je vois ? | inchangé |
 | Analyse de compte | Que disent mes données de mon process ? | créé |
+| Account | Qu'est-ce qui est branché, maillon par maillon, et sous quelles règles ? | créé (T12, 2026-09-21 comme `/comptes` ; renommé et élargi le 2026-09-23) |
+| Settings | Comment chaque compte est configuré et branché ? | revenu (T12 incrément 2, 2026-09-23) |
 | Agents & Audit | Qu'a fait le système, et est-il en vie ? | rempli |
 
-Neuf écrans, tous porteurs. Deux ont été retirés : `/settings` (rien à
-configurer — pas d'auth, pas de bascule backend, pas de paramètre de
-stratégie) et `/replay` (attend le pipeline analytics, ADR 0011). Ils
-reviennent quand ils ont de la matière.
+Onze écrans, tous porteurs. Deux avaient été retirés le 2026-09-20 :
+`/settings` (rien à configurer — pas d'auth, pas de bascule backend, pas de
+paramètre de stratégie) et `/replay` (attend le pipeline analytics,
+ADR 0011). `/settings` est revenu le 2026-09-23 avec de la matière : le
+registre des paramètres de compte et la procédure de connexion MT5.
+`/replay` attend toujours.
 
 ## Ce que le Command Center garde, et pourquoi
 
@@ -167,3 +171,40 @@ conforme, 0 verrou » à **33 % hors cadre et cinq verrous réels** — le kill
 switch du 2026-09-15 et les quatre « Daily loss guard » du 2026-09-14, soit
 exactement la trace des deux incidents de Vague 1. Un écran de discipline
 qui affiche 100 % parce qu'il n'a rien à lire est pire qu'un écran vide.
+
+## Comptes (`/comptes`, T12, 2026-09-21)
+
+`/settings` avait été retiré faute de contenu ; il revient sous le nom de ce
+qu'il contient, dès qu'il y a un profil de compte à montrer. Il **affiche** —
+compte reconnu, règles appliquées en % et en dollars, référence de calcul,
+objectifs du challenge avec la provenance de chaque chiffre — et **n'édite
+rien** (ADR 0007) : le profil se change dans `lib/accounts/`, par un commit.
+
+Aucune connexion n'en part : l'observer suit le terminal MT5 ouvert, et
+l'écran rapporte ce que le nom de son broker a permis de reconnaître. Détail :
+`context/product/tools/T12-prop-firm-control-center.md`.
+
+## Account et Settings (T12 incrément 2, 2026-09-23)
+
+`/comptes` devient **Account** (`/account`, redirection temporaire depuis
+l'ancienne adresse) et **Settings** revient (`/settings`) — deux questions,
+deux écrans :
+
+- **Account** — « qu'est-ce qui est branché ». La chaîne de liaison maillon
+  par maillon (hub, observer, compte transmis, profil reconnu, agent EA-05,
+  mode), pour que « non connecté » dise *quel* maillon manque ; puis les deux
+  comptes du trader côte à côte, FTMO et Exness, branchés ou non ; règles et
+  objectifs du compte branché (les cartes de `/comptes`, déplacées dans
+  `components/accounts/`). N'édite rien.
+- **Settings** — « comment c'est configuré ». Les *faits* d'un compte, et eux
+  seuls, s'éditent : challenge FTMO (type, taille, phase), capital de
+  référence Exness, texte de reconnaissance du broker. Chaque changement va
+  dans un registre en ajout seul côté backend ; **le backend décide au moment
+  d'écrire** s'il s'applique tout de suite (aucune séance en cours) ou au
+  prochain jour de trading — l'écran annonce la décision, il ne la prend pas
+  (ADR 0007). Les *règles* (pourcentages FTMO, limites de discipline) sont
+  affichées en lecture seule : elles changent par un commit. Plus la
+  procédure de connexion MT5 par compte, et l'historique des changements.
+
+Aucun des deux ne demande d'identifiant : MT5 se connecte, le cockpit suit
+(ADR 0003).

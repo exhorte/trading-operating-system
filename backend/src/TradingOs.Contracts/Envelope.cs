@@ -67,6 +67,11 @@ public static class EventTypes
     /// broadcast on every refresh cycle regardless of whether the list
     /// changed (same idempotent-recheck pattern as RiskDayAnchorResolved).</summary>
     public const string MarketCalendarUpdated = "market.calendar.updated";
+    /// <summary>T12 incrément 2: backend-originated — emitted by the HTTP
+    /// endpoint that wrote the account settings ledger, never client-published
+    /// (no PublishEvent whitelist entry): the anti-tilt rule is decided where
+    /// the change is persisted, so a dashboard cannot announce one itself.</summary>
+    public const string AccountsSettingsChanged = "accounts.settings.changed";
     /// <summary>EA-06: the state machine's UNKNOWN state resolving to
     /// RECONCILED — see Mt5ReconciledMessage's doc comment.</summary>
     public const string ExecutionReconciled = "execution.reconciled";

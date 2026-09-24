@@ -65,6 +65,12 @@ recompilé — `dotnet build` reste propre, mais `dotnet test`/`dotnet run`/le
 déterministe, pas une vérification en cours). Un conteneur Linux n'est pas
 soumis à cette politique Windows.
 
+**Mise à jour du 2026-09-23** : Smart App Control est désormais **désactivé**
+sur cette machine (`VerifiedAndReputablePolicyState = 0` sous
+`HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy`, lu ce jour) — `dotnet
+test` passe en natif (58/58). Docker reste le chemin par défaut du backend ;
+rien n'oblige plus à s'en passer pour les tests.
+
 **Option native** (fonctionne tant que Smart App Control ne bloque pas) :
 
 ```bash
@@ -90,13 +96,22 @@ du réseau compose, pas le 5433 publié côté hôte.
 
 ## 3. Observer MT5 — Windows uniquement
 
-Prérequis : terminal MT5 **ouvert et connecté** au compte de démonstration. L'observer s'attache au terminal déjà authentifié — **aucun identifiant n'est demandé ni accepté nulle part.**
+Prérequis : terminal MT5 **ouvert et connecté** au compte voulu — FTMO ou Exness, un à la fois (T12). L'observer s'attache au terminal déjà authentifié — **aucun identifiant n'est demandé ni accepté nulle part.**
 
 ```bash
 cd tools/mt5-observer
 pip install -r requirements.txt
-python mt5_observer.py
+python mt5_observer.py --symbol XAUUSDm   # terminal Exness
+python mt5_observer.py --symbol XAUUSD    # terminal FTMO
 ```
+
+**Le symbole dépend du terminal** (T12 incrément 2) : Exness suffixe `m`, FTMO
+utilise le nom canonique. Le défaut du script est `XAUUSDm` : lancé tel quel
+sur un terminal FTMO, il s'arrête sur « symbol not found ». Pour changer de
+compte, changer de compte dans MT5 **puis relancer l'observer** — son premier
+message (`hello`) porte le nom du broker, qui décide du profil appliqué.
+`python probe_terminal.py` dit, en lecture seule, à quel compte le terminal
+est connecté et quel symbole observer.
 
 Lecture seule, mode `observe`. Le script ne contient aucun appel de trade. Il diffuse sur `ws://localhost:8765`, que le gateway .NET consomme.
 
@@ -175,6 +190,24 @@ vérifié que les deux processus tournent et que `event_at` avance.
 
 ## Ordre de démarrage complet
 
+**En une commande depuis le 2026-09-23**, MT5 ouvert et connecté au compte
+voulu, depuis `04_code` :
+
+```powershell
+pwsh -File scripts\start-live.ps1                     # base, backend, observer, cockpit
+pwsh -File scripts\start-live.ps1 -WithSetupPipeline  # + exportateur et worker S01
+```
+
+Le script fait les étapes ci-dessous dans l'ordre et s'arrête avec un message
+clair à la première qui manque : Docker, port 5433 pris par un autre
+conteneur (il ne l'arrête jamais lui-même), base `healthy`, backend et base
+joignables, MT5 ouvert, compte détecté (`probe_terminal.py`), observer
+(re)lancé sur le symbole de CE terminal, backend qui reçoit bien le compte.
+Il ne fait jamais : se connecter à un broker, demander un identifiant,
+ouvrir MT5, attacher l'agent EA-05 (il imprime les paramètres à saisir).
+
+À la main :
+
 ```
 docker compose up -d --no-deps timescaledb backend   (ou dotnet run pour le backend, si Smart App Control le permet)
   → python tools/mt5-observer/mt5_observer.py         (Windows, MT5 ouvert)
@@ -190,7 +223,10 @@ observer, exportateur et worker sont à relancer — **rien ne les supervise**.
 
 ## Points de fragilité connus
 
-- **Smart App Control (Windows) bloque `dotnet run`/`dotnet test`** sur cette machine depuis le 2026-09-17 — voir section 2 ci-dessus. Docker contourne le problème plutôt que de le résoudre (la politique reste active pour tout binaire .NET natif) ; `dotnet build` reste toujours utilisable pour vérifier la compilation.
+- ~~**Smart App Control (Windows) bloque `dotnet run`/`dotnet test`**~~ — levé : désactivé sur la machine au 2026-09-23, `dotnet test` passe en natif (section 2).
+- **Port 5433 partagé avec un autre projet** (constaté le 2026-09-23) : le conteneur `e-commerce-db-1` publie aussi `5433` et démarre tout seul (`restart: unless-stopped`). Quand il tourne, `tradingos-timescaledb` ne peut pas démarrer. `start-live.ps1` le détecte et s'arrête sans y toucher ; c'est au trader de choisir lequel tourne.
+- **Un seul `next dev` par dossier** (Next 16) : la préversion mock (3001) et le cockpit backend (3000) ne peuvent pas tourner en même temps — le second s'arrête sur « Another next dev server is already running ».
+- **Agent EA-05 installé par jonction** (2026-09-23) : `MQL5\Experts\TradingOsAgent` dans le dossier de données du terminal pointe vers `tools/mt5-execution-agent` — MT5 voit toujours la version compilée du dépôt. Recompiler (gate MetaEditor, `quality_gates.md`) après chaque modification du `.mq5`, puis réattacher l'EA. Retirer la jonction suffit à le désinstaller.
 - **Rien ne supervise le pipeline S01** (exportateur + worker, section 5) : deux processus lancés à la main, qui ne survivent pas de façon prévisible à une fin de session ni à un redémarrage de la machine. Le critère de réussite de S01 mesure un échantillon de séances ; chaque arrêt silencieux en perd. Question ouverte dans `state.md`.
 - **Stall de l'observer** — observé une fois le 2026-07-28 à 14:03 sur une collecte longue. Si le problème revient, la piste retenue est la conteneurisation via `gmag11/MetaTrader5-Docker` (MIT), éventuellement avec `lucas-campagna/mt5linux`.
 - **Fins de ligne** — le dépôt a été cloné avec des fins de ligne CRLF alors que l'index git est en LF, ce qui faisait apparaître 267 fichiers comme modifiés. Corrigé par `git config core.autocrlf true` dans ce clone. Si un `git status` affiche à nouveau tout le dépôt comme modifié, c'est ce réglage qu'il faut vérifier en premier — **surtout ne pas commiter la différence**.

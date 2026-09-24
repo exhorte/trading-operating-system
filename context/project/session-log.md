@@ -6,6 +6,101 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-23 (**T12 incrément 2 — écrans Account et Settings ; environnement réel préparé ; l'agent EA-05 n'a jamais tourné dans le terminal**)
+
+Demandes : « la partie connexion aux comptes propfirm ou FTMO et celui d'un
+broker ou Exness à travers deux nouvelles interfaces Account et Settings »,
+puis en cours de route « met en place l'environnement pour recevoir mes
+données réelles des deux côtés pour se connecter et rendre l'EA
+opérationnel ». Fiches : T12 (incrément 2), EA-05 (entrée du jour).
+
+**Frontières posées avant tout code** : « connexion » ne sera jamais un
+formulaire d'identifiants (ADR 0003, `.claude/CLAUDE.md`) ; « EA
+opérationnel » = agent EA-05 connecté en mode observe — rendre `CONFIRM`
+atteignable reste EA-07, pas déduit d'une demande générale.
+
+**Account & Settings.** La décision T12 n°6 (configuration par commit,
+tranchée à l'ingénierie) est révisée par l'utilisateur : les *faits* d'un
+compte — challenge FTMO, capital de référence Exness, reconnaissance du
+broker — s'éditent dans Settings, sous un verrou anti-tilt décidé par le
+backend au moment d'écrire (immédiat seulement si aucune séance n'est en
+cours, sur aucun compte ; sinon au prochain jour de trading). Les *règles*
+restent dans le code. Vérifié en réel : écriture reportée, annulation,
+diffusion d'un onglet à l'autre, refus 400/404/409 ; données de test
+supprimées ensuite. Deux défauts vus à l'écran, corrigés.
+
+**Une affirmation de ma propre fiche, corrigée dans la session** : « aucune
+course » sur l'ancre du jour était faux — l'ancre venait de la base, écrite
+de façon asynchrone. Elle vient maintenant de l'événement et ne recule jamais
+au sein d'un compte (`nextDayAnchor`, testé). Le même mécanisme touche
+probablement T02a (compteur de trades lu contre l'ancre de la veille à minuit
+serveur → faux verrou « max trades » possible) : plausible, **non vérifié**,
+signalé à part.
+
+**Environnement réel** : `scripts/start-live.ps1` (base, backend, observer
+sur le symbole du terminal détecté par `probe_terminal.py`, cockpit ; S01 en
+option) — exécuté jusqu'à l'étape MT5, fermé. Agent EA-05 installé par
+jonction dans le terminal, recompilé 0/0, barrière relue dans le code.
+
+**Trouvé en le préparant — inconfortable, vérifié deux fois** :
+`TradingOsAgent` n'a jamais été chargé dans ce terminal (journaux MT5 du
+18/05 au 18/09 : seuls deux EA tiers, en juillet), et la base n'a aucune
+trace du chemin d'exécution depuis sa création (0 commande, accusé, rapport,
+scan). La vérification réelle d'EA-05 du 2026-09-12, consignée sur
+déclaration, n'est pas corroborée : à refaire.
+
+**Machine** : Smart App Control désactivé — `dotnet test` passe en natif ;
+`e-commerce-db-1` (autre projet) partage le port 5433 avec TradingOS —
+arrêté pour la vérification, le choix de celui qui tourne revient à
+l'utilisateur.
+
+Gates : `tsc`, `eslint`, `next build` propres ; **303 tests** Vitest (+34) ;
+`dotnet build` 0/0, **`dotnet test` 58/58** (+24) ; Python 23/23 (+6) ;
+MetaEditor 0/0. Non commité.
+
+---
+
+## 2026-09-21 (**T12 incrément 1 — profils FTMO / Exness, et une faille du Risk Engine corrigée**)
+
+Demande : « une configuration interne de connexion propfirm FTMO ou un compte
+direct Exness ». Fiche : `context/product/tools/T12-prop-firm-control-center.md`.
+
+**Ce que « connexion » veut dire ici, établi avant tout code** : l'observer
+appelle `mt5.initialize()` sans identifiant et suit le terminal que le trader
+a ouvert. Aucun mot de passe broker n'a sa place dans l'application — ni
+utile, ni permis (`.claude/CLAUDE.md`). Le cockpit reconnaît la firme au nom
+du broker que MT5 transmet ; aucun numéro de compte n'entre dans le code.
+
+**Faille trouvée en lisant le code, pas en la cherchant** : la perte max
+était mesurée depuis le solde au moment où le cockpit s'était connecté,
+remis à zéro à chaque resynchro. Chez FTMO elle se mesure depuis la taille du
+challenge, fixe. Sur 10 000 $, −600 $ le jour 1 puis cockpit rouvert : le
+gate autorisait un plancher à 8 460 $ au lieu de 9 000 $. Corrigé dans
+`recomputeRisk` ; la perte journalière n'avait pas ce défaut (ancre T02a).
+C'est la règle qui a clôturé le challenge 511333949 — compte jamais relié à
+ce système, l'outil n'y est pour rien, mais il ne l'aurait pas empêché.
+
+Trois décisions validées : un compte à la fois (le multi-compte simultané
+reste T11) ; gabarit FTMO 2-Step 10 000 $, règles **sourcées par les exports
+MetriX de l'utilisateur** (EA-04 les avait laissées en `TODO` faute de
+source) ; Exness en direct à 5 %/10 %, choix de l'utilisateur contre une
+recommandation à 3 %/8 %, appliqué tel quel.
+
+**Vérifié contre FTMO lui-même** : les quatre journées réelles de 511333949
+(« Résumé quotidien ») redonnent exactement les quatre verdicts de FTMO. Deux
+autres trous bouchés au passage : les trades `XAUUSD` (nommage FTMO)
+sautaient en silence le contrôle de taille ; le mock se disait « 100k » face
+à un challenge configuré à 10 000 $.
+
+**Non vu à l'écran** : le tableau des objectifs rempli — backend et base à
+l'arrêt toute la session (`Exited (255)`, non relancés sans accord). Vus :
+les états « non reconnu » et FTMO de `/comptes`, et le Command Center.
+
+Gates : `tsc`, `eslint`, `next build` propres, **269 tests** (+22). Non
+commité.
+
+---
+
 ## 2026-09-20 (suite — **écran « Analyse de compte » livré** : le modèle FTMO adapté, discipline en tête, sans conseil)
 
 Enchaîné sur la refonte d'architecture ci-dessous, sur demande directe

@@ -279,3 +279,28 @@ CREATE TABLE IF NOT EXISTS position_scans (
 );
 CREATE INDEX IF NOT EXISTS idx_position_scans_external
     ON position_scans (account_id) WHERE is_external;
+
+-- T12 incrément 2: the account settings ledger, written from the cockpit's
+-- Settings screen (FTMO challenge, Exness reference capital, broker
+-- recognition text). Append-only like risk_lockouts: a change is a new row,
+-- never an UPDATE of the previous one, so "which settings applied on which
+-- day" stays answerable. The only mutation allowed is stamping cancelled_at
+-- on a deferred change that has not taken effect anywhere yet
+-- (AccountSettingsRepository.TryCancelAsync).
+--
+-- deferred = true: the change was requested mid-session (a trade since the
+-- day anchor, an open position, an active lockout, or no live account to
+-- check — AccountSettingsGuard) and applies from the first trading-day
+-- anchor that starts after requested_at. Rules are never loosened mid-session
+-- (ADR 0007). The resolution itself is lib/accounts/settings.ts.
+CREATE TABLE IF NOT EXISTS account_settings (
+    version_id       text PRIMARY KEY,
+    firm             text NOT NULL,          -- "ftmo" | "exness"
+    settings         jsonb NOT NULL,
+    requested_at     timestamptz NOT NULL,
+    deferred         boolean NOT NULL,
+    deferral_reasons jsonb NOT NULL,         -- AccountSettingsGuard reasons, [] when applied at once
+    cancelled_at     timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_account_settings_firm_time
+    ON account_settings (firm, requested_at DESC);

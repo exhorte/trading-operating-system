@@ -36,6 +36,7 @@ import type {
 } from "@/lib/contracts/events";
 import type { UpcomingRelease } from "@/lib/domain/risk";
 import type { ActiveLockout } from "@/lib/risk/lockout";
+import type { AccountSettingsLedger } from "@/lib/accounts/settings";
 
 export interface CockpitSnapshot {
   connection: ConnectionState;
@@ -78,6 +79,24 @@ export interface CockpitSnapshot {
    * Engine's connectionGate (T09) approved orders on it until 2026-09-18.
    */
   executionAgentConnected: boolean;
+  /**
+   * T12 incrément 2: the account settings ledger as last read from the
+   * backend — null until the first read succeeds. Resolve it with
+   * `resolveAccountSettings` against `dayAnchorStartsAtUtc`; never read a
+   * version's settings directly, a deferred one may not be in effect yet.
+   */
+  accountSettings: AccountSettingsLedger | null;
+  /** Why the last read of the ledger failed, or null. The last ledger read
+   *  successfully stays in place meanwhile — stale beats the code's defaults
+   *  silently replacing what the trader configured. */
+  accountSettingsError: string | null;
+  /**
+   * T02a: start of the current trading day of the account being traded
+   * (server midnight, Gateway-resolved), or null while unknown. Published
+   * here since T12 incrément 2: it decides which deferred settings are in
+   * effect, on the risk engine's side and on the screens alike.
+   */
+  dayAnchorStartsAtUtc: string | null;
 }
 
 export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
@@ -99,6 +118,9 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   // Fail closed: "no agent" until the hub says otherwise, never an optimistic
   // default that would let the gate pass before anything is known.
   executionAgentConnected: false,
+  accountSettings: null,
+  accountSettingsError: null,
+  dayAnchorStartsAtUtc: null,
 };
 
 const MAX_FEED_LENGTH = 20;

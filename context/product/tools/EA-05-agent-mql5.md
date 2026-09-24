@@ -389,3 +389,39 @@ explicite.
   restent hérités des incréments 2–5 ; les critères propres à l'exécution
   (un vrai fill, un vrai refus, un vrai `UNKNOWN` après crash) ne pourront
   être vérifiés qu'au moment d'EA-07, jamais avant.
+
+- 2026-09-23 — **aucune trace de la vérification réelle du 2026-09-12 ;
+  agent installé dans le terminal, à re-vérifier.** Trouvé en préparant
+  l'environnement réel demandé par l'utilisateur (« rendre l'EA
+  opérationnel »), vérifié avant d'être écrit :
+
+  - **Terminal** (seule installation, `C:\Program Files\MetaTrader 5`,
+    dossier de données `D0E8209F…`) : `TradingOsAgent` absent de
+    `MQL5\Experts` ; aucun journal du terminal (2026-05-18 → 2026-09-18) ne
+    montre son chargement — seuls deux EA tiers y ont tourné,
+    `Ultimate_ICT_Gold_Scalper_v4.0` (2–10/07) et `K Trade Assistant MT5`
+    (10/07). `metaeditor.log` ne montre que des compilations headless depuis
+    le dépôt (12, 15, 16/09).
+  - **Base** : depuis sa création (12/07), zéro ligne dans
+    `execution_commands`, `command_acks`, `execution_reports`,
+    `command_reconciliations`, `position_scans`, et zéro enveloppe
+    `execution.*`. Les étapes 2 à 4 de la procédure du README en auraient
+    laissé.
+
+  L'entrée du 2026-09-12 (« vérifiés par l'utilisateur contre un vrai
+  terminal, tout est vert ») consignait sa déclaration ; elle n'est
+  corroborée ni côté terminal ni côté backend. Soit la vérification a eu lieu
+  ailleurs (autre installation, depuis supprimée), soit elle n'a pas eu lieu —
+  à refaire dans les deux cas, procédure du README, étapes 1 à 4. Aucune
+  conséquence sur EA-07 (fermé, préconditions non remplies), mais ses
+  préconditions supposent que cette base a tourné.
+
+  **Fait ce jour, mode observe uniquement** : jonction
+  `MQL5\Experts\TradingOsAgent` → `tools/mt5-execution-agent` (MT5 voit la
+  version du dépôt ; retirer la jonction désinstalle) ; recompilation
+  headless `0 errors, 0 warnings`. **Barrière relue dans le code avant
+  installation** : un seul `OrderSend` (ligne 534, `ExecuteOrder`), précédé
+  du garde `if(g_mode != MODE_CONFIRM)` (ligne 510) ; `g_mode` est une
+  `const` à `MODE_OBSERVE` (ligne 64), jamais affectée ailleurs. Rien ne rend
+  `CONFIRM` atteignable. L'attache sur un graphique et `InpAccountId` restent
+  à l'utilisateur, dans MT5 — aucun identifiant ne passe par l'application.
