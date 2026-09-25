@@ -14,9 +14,10 @@ describe("connection procedure", () => {
     expect(observerCommand("exness")).toBe("python tools/mt5-observer/mt5_observer.py --symbol XAUUSDm");
   });
 
+  // XAUUSD + EURUSD since 2026-09-25 (user decision); GBPUSD set aside.
   it("gives the EA-05 agent its whitelist in the terminal's own names", () => {
-    expect(agentAllowedSymbols("exness")).toBe("EURUSDm,GBPUSDm");
-    expect(agentAllowedSymbols("ftmo")).toBe("EURUSD,GBPUSD");
+    expect(agentAllowedSymbols("exness")).toBe("XAUUSDm,EURUSDm");
+    expect(agentAllowedSymbols("ftmo")).toBe("XAUUSD,EURUSD");
   });
 
   // ADR 0010: one magic number per account, never shared.

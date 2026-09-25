@@ -72,9 +72,11 @@ function resolveCostInputs(canonical: string): { costThreshold: number; commissi
   };
 }
 
+// GBPUSD set aside on 2026-09-25 (user decision: XAUUSD and EURUSD are the
+// pairs worked). XAUUSD is not added here: S01 keeps it out of scope until its
+// thresholds are ATR-relative (S01 fiche, v1 = EURUSD/GBPUSD).
 const SYMBOLS = [
   { canonical: "EURUSD", jsonlName: "m1_eurusd.jsonl", spreadName: "spread_eurusd.json" },
-  { canonical: "GBPUSD", jsonlName: "m1_gbpusd.jsonl", spreadName: "spread_gbpusd.json" },
 ];
 
 interface JsonCandle {

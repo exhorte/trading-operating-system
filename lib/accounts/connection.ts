@@ -30,9 +30,11 @@ export function observerCommand(firm: Firm): string {
 }
 
 /** `InpAllowedSymbolsCsv` of the EA-05 agent for this firm's terminal — the
- *  S01 pair, in that terminal's names (the input's default is Exness's). */
+ *  pairs the trader works, in that terminal's names (the input's default is
+ *  Exness's). XAUUSD and EURUSD since 2026-09-25 (user decision; GBPUSD set
+ *  aside for later). */
 export function agentAllowedSymbols(firm: Firm): string {
-  return (["EURUSD", "GBPUSD"] as const).map((symbol) => terminalSymbol(firm, symbol)).join(",");
+  return (["XAUUSD", "EURUSD"] as const).map((symbol) => terminalSymbol(firm, symbol)).join(",");
 }
 
 /**

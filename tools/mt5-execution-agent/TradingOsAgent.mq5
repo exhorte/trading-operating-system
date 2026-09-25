@@ -43,7 +43,7 @@ input int    InpHeartbeatSeconds  = 5;
 input double InpMaxVolumePerOrder = 1.0;         // lots — local barrier, last line of defense, never a decision
 input int    InpMaxOpenPositions  = 3;           // local barrier — counts ALL positions on this terminal, deliberately including external ones (EA-06 fiche decision: attribute via EXTERNAL_POSITION/WARN, never loosen this count)
 input int    InpMaxSpreadPoints   = 50;          // local barrier, re-checked at validation time, not just at proposal time
-input string InpAllowedSymbolsCsv = "EURUSDm,GBPUSDm"; // local whitelist — broker-side names (context/domain/symbols-broker.md)
+input string InpAllowedSymbolsCsv = "XAUUSDm,EURUSDm"; // local whitelist — broker-side names (context/domain/symbols-broker.md); XAUUSD + EURUSD since 2026-09-25, GBPUSD set aside
 input int    InpMaxSlippagePoints = 10;          // EA-05 inc. 6: MqlTradeRequest.deviation — a bound on the fill, never a decision
 input int    InpReconciliationLookbackDays = 7;  // EA-06: how far back HistorySelect searches to resolve an UNKNOWN commandId
 

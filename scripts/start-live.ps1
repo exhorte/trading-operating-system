@@ -183,7 +183,9 @@ if ($WithSetupPipeline) {
     if (Get-ProcessesByCommandLine "*export_m1_candles*") {
         Note "exportateur déjà en route — une seule instance, laissé tel quel"
     } else {
-        Start-Window "Trading OS - exportateur M1" "python tools/mt5-observer/export_m1_candles.py --symbols EURUSD GBPUSD --out-dir tools/mt5-observer"
+        # EURUSD only: GBPUSD set aside (2026-09-25), XAUUSD outside S01's
+        # scope until its thresholds are ATR-relative (S01 fiche).
+        Start-Window "Trading OS - exportateur M1" "python tools/mt5-observer/export_m1_candles.py --symbols EURUSD --out-dir tools/mt5-observer"
         Ok "exportateur lancé (--out-dir tools/mt5-observer, le dossier que lit le worker)"
     }
     if (Get-ProcessesByCommandLine "*run-setup-detection*") {
@@ -203,7 +205,7 @@ if ($healthy -and $healthy.agentConnected) {
     Ok "agent EA-05 connecté (mode observe)"
 } else {
     $magic = switch ($probe.firm) { "ftmo" { "2001" } "exness" { "1001" } default { "un nombre propre à ce compte" } }
-    $allowed = switch ($probe.firm) { "ftmo" { "EURUSD,GBPUSD" } default { "EURUSDm,GBPUSDm" } }
+    $allowed = switch ($probe.firm) { "ftmo" { "XAUUSD,EURUSD" } default { "XAUUSDm,EURUSDm" } }
     Warn "agent EA-05 non connecté. Dans MT5 : Navigateur → Expert Advisors → TradingOsAgent, glisse-le sur un graphique, puis :"
     Note "InpAccountId = $($probe.login)   (à saisir toi-même dans MT5)"
     Note "InpMagicNumber = $magic   (unique par compte — jamais celui de l'autre)"

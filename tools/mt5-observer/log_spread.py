@@ -17,7 +17,7 @@ mt5.symbol_info() pattern) but is a fully separate, read-only process:
   - safe to run alongside mt5_observer.py — both only read ticks.
 
 Usage (Windows, terminal open and logged into the demo account):
-    python log_spread.py --symbols EURUSD GBPUSD --out spread_log.jsonl
+    python log_spread.py --symbols XAUUSD EURUSD --out spread_log.jsonl
 
 Broker symbol names can carry a suffix (e.g. EURUSDm on Exness). Pass the
 canonical name (EURUSD); resolve_broker_symbol() finds the tradeable symbol
@@ -79,7 +79,7 @@ def sample(symbol: str) -> dict | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Throwaway MT5 spread logger (Phase 0)")
-    parser.add_argument("--symbols", nargs="+", default=["EURUSD", "GBPUSD"])
+    parser.add_argument("--symbols", nargs="+", default=["XAUUSD", "EURUSD"])
     parser.add_argument("--out", default="spread_log.jsonl")
     parser.add_argument("--interval", type=float, default=SAMPLE_INTERVAL_SECONDS)
     args = parser.parse_args()

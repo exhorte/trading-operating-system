@@ -1,5 +1,7 @@
 """
-Periodic candle export for EA-02 — EURUSD and GBPUSD, read-only.
+Periodic candle export for EA-02 — EURUSD, read-only (GBPUSD set aside on
+2026-09-25; XAUUSD is outside S01's scope until its thresholds are
+ATR-relative — S01 fiche).
 
 Despite the file name (kept: it is the documented entry point in the runbook
 and EA-02's fiche), this exports M1 *and* the higher timeframes S01 needs —
@@ -24,7 +26,7 @@ which defaults to this one — passing `--out-dir .` from the repo root
 instead writes a second copy nothing reads, while the worker keeps
 evaluating a frozen snapshot:
     python tools/mt5-observer/export_m1_candles.py \
-        --symbols EURUSD GBPUSD --out-dir tools/mt5-observer
+        --symbols EURUSD --out-dir tools/mt5-observer
 """
 
 from __future__ import annotations
@@ -127,7 +129,7 @@ def export_symbol(broker_name: str, bars: int, out_path: Path, timeframe: str = 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Periodic M1 candle export for EA-02 (read-only)")
-    parser.add_argument("--symbols", nargs="+", default=["EURUSD", "GBPUSD"])
+    parser.add_argument("--symbols", nargs="+", default=["EURUSD"])
     parser.add_argument("--bars", type=int, default=DEFAULT_BARS)
     parser.add_argument("--interval", type=float, default=DEFAULT_INTERVAL_SECONDS)
     parser.add_argument("--out-dir", default=".")
