@@ -38,6 +38,35 @@ public class PersistenceMapperTests
     }
 
     [Fact]
+    public void A_rejection_maps_whether_it_carries_an_ack_or_a_report()
+    {
+        // The Gateway and the agent's ack REJECTED carry an ack; the agent's
+        // report REJECTED travels under the same type with a report. Reading
+        // only "ack" threw on the second shape, and the writer took that for a
+        // database outage.
+        var ack = Assert.IsType<AckRow>(PersistenceMapper.ToTypedRow("execution.command.rejected",
+            """{"ack":{"commandId":"cmd-1","agentId":"gateway","status":"rejected","reason":"agent unreachable","receivedAt":"2026-09-25T10:00:00.000Z"}}"""));
+        Assert.Equal("rejected", ack.Status);
+
+        var report = Assert.IsType<ReportRow>(PersistenceMapper.ToTypedRow("execution.command.rejected",
+            """{"report":{"reportId":"r2","commandId":"cmd-2","correlationId":"cmd-2","accountId":"acc-1","agentId":"mt5-execution-agent-1001","symbol":"EURUSDm","side":"buy","status":"rejected","detail":"SYMBOL_NOT_ALLOWED","reportedAt":"2026-09-25T10:00:01.000Z"}}"""));
+        Assert.Equal("cmd-2", report.CommandId);
+        Assert.Equal("SYMBOL_NOT_ALLOWED", report.Detail);
+    }
+
+    [Theory]
+    [InlineData("execution.order.submitted")]
+    [InlineData("execution.order.filled")]
+    [InlineData("execution.order.partially_filled")]
+    [InlineData("execution.order.failed")]
+    public void Real_execution_outcomes_map_to_report_rows(string type)
+    {
+        var report = Assert.IsType<ReportRow>(PersistenceMapper.ToTypedRow(type,
+            """{"report":{"reportId":"r3","commandId":"cmd-3","correlationId":"cmd-3","accountId":"acc-1","agentId":"mt5-execution-agent-1001","symbol":"EURUSDm","side":"sell","status":"filled","detail":"FILLED 0.01","reportedAt":"2026-09-25T10:00:02.000Z"}}"""));
+        Assert.Equal("cmd-3", report.CommandId);
+    }
+
+    [Fact]
     public void Unmapped_types_return_null_but_still_audit()
     {
         Assert.Null(PersistenceMapper.ToTypedRow("agent.heartbeat", """{"agentId":"a","latencyMs":10}"""));

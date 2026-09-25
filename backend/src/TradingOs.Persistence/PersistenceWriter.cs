@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using System.Threading.Channels;
 using Dapper;
 using Npgsql;
@@ -16,8 +17,18 @@ public sealed class PersistenceStatus
 
     public int Queued { get; internal set; }
 
-    /// <summary>Last persistence error message (diagnostics), null when healthy.</summary>
+    /// <summary>Last database error message (diagnostics), null when healthy —
+    /// cleared by the next successful write (until 2026-09-25 only a schema
+    /// retry cleared it, so /health kept showing an outage long over).</summary>
     public string? LastError { get; internal set; }
+
+    /// <summary>Envelopes stored in the audit table without their typed row
+    /// because the mapper could not read the payload — a contract defect, not
+    /// a database outage, so it neither drops the envelope nor marks the DB
+    /// down.</summary>
+    public long Unmapped { get; internal set; }
+
+    public string? LastMappingError { get; internal set; }
 }
 
 /// <summary>
@@ -92,13 +103,34 @@ public sealed class PersistenceWriter
         await foreach (var evt in _channel.Reader.ReadAllAsync(ct))
         {
             Status.Queued = _channel.Reader.Count;
+
+            // Pure, and done before touching the DB: a payload the mapper can't
+            // read must not be mistaken for an outage (it used to throw inside
+            // the write, mark the DB down and drop the event).
+            object? row = null;
+            string? mappingError = null;
+            try
+            {
+                row = PersistenceMapper.ToTypedRow(evt.Type, evt.PayloadJson);
+            }
+            catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+            {
+                mappingError = $"map({evt.Type}): {ex.Message}";
+            }
+
             try
             {
                 await using var conn = new NpgsqlConnection(_connectionString);
                 await conn.OpenAsync(ct);
-                await WriteAsync(conn, evt);
+                await WriteAsync(conn, evt, row);
                 Status.DbUp = true;
                 Status.Written += 1;
+                Status.LastError = null;
+                if (mappingError is not null)
+                {
+                    Status.Unmapped += 1;
+                    Status.LastMappingError = mappingError;
+                }
             }
             catch (OperationCanceledException)
             {
@@ -123,7 +155,7 @@ public sealed class PersistenceWriter
         }
     }
 
-    private static async Task WriteAsync(NpgsqlConnection conn, PersistedEvent evt)
+    private static async Task WriteAsync(NpgsqlConnection conn, PersistedEvent evt, object? row)
     {
         // Complete audit trail first — every envelope lands here.
         await conn.ExecuteAsync(
@@ -134,7 +166,6 @@ public sealed class PersistenceWriter
             """,
             evt);
 
-        var row = PersistenceMapper.ToTypedRow(evt.Type, evt.PayloadJson);
         var sql = row switch
         {
             CandleRow => """

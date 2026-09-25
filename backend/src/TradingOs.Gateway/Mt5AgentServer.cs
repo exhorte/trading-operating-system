@@ -27,7 +27,21 @@ namespace TradingOs.Gateway;
 /// (decision recorded in context/product/tools/EA-05-agent-mql5.md). The
 /// JSON message SHAPES are unchanged (lib/contracts/mt5-wire.ts / Mt5Wire.cs)
 /// — only the framing differs from mt5_wire_protocol.md's original "WSS"
-/// wording.
+/// wording. Lines are written as UTF-8 WITHOUT a byte-order mark: a
+/// `StreamWriter` over a non-seekable NetworkStream with `Encoding.UTF8`
+/// writes EF BB BF before its first line, which would have prefixed the
+/// first command ever sent to the agent.
+///
+/// Registry (2026-09-25): one registration per accountId, owned by the
+/// connection whose agent.hello made it. A closing connection only ever
+/// removes its OWN registration — the old code removed by key, so a second
+/// instance or a quick reconnect left a live agent reported disconnected.
+/// A second hello for an account whose agent is alive is refused and its
+/// connection closed (ADR 0010: one agent per environment). A connection
+/// silent for longer than <paramref name="staleAfter"/> is a dead agent
+/// (terminal crash, half-open TCP): the watchdog closes it, and a new hello
+/// for its account replaces it at once. The agent heartbeats every
+/// InpHeartbeatSeconds (default 5), so the 30 s default is six missed beats.
 ///
 /// Distinct and NEVER merged with Mt5ObserverClient (ADR 0010: "deux
 /// processus, deux responsabilités, jamais fusionnés"). The Python observer
@@ -35,34 +49,61 @@ namespace TradingOs.Gateway;
 /// WebSocket; this class exists only for the execution agent's connection,
 /// heartbeat, command delivery, and ack/report receipt.
 ///
-/// Like Mt5ObserverClient, this class is integration-tested against a real
-/// terminal, not unit-tested — the same precedent this codebase already
-/// sets for socket-handling classes (Mt5WireTranslator carries the tested
-/// pure logic both classes call into).
+/// Loopback socket tests cover the registry and the framing
+/// (Mt5AgentServerTests); the behaviour against a real terminal is still
+/// verified by hand (tools/mt5-execution-agent/README.md).
 /// </summary>
-public sealed class Mt5AgentServer(int port, IPAddress? bindAddress = null)
+public sealed class Mt5AgentServer(
+    int port,
+    IPAddress? bindAddress = null,
+    TimeSpan? staleAfter = null,
+    TimeSpan? watchdogPeriod = null)
 {
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
     private readonly object _lock = new();
-    private readonly Dictionary<string, StreamWriter> _writersByAccountId = new();
+    private readonly Dictionary<string, AgentConnection> _byAccountId = new();
+    private readonly HashSet<AgentConnection> _open = new();
+    private readonly TimeSpan _staleAfter = staleAfter ?? TimeSpan.FromSeconds(30);
+    private readonly TaskCompletionSource<int> _listening = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TcpListener? _listener;
 
     /// <summary>Translated envelope ready to broadcast (type + camelCase payload object).</summary>
     public event Action<string, object>? EnvelopeReady;
 
-    /// <summary>An agent connected (true) or its connection was lost (false).</summary>
+    /// <summary>Raised after every registry change with whether at least one
+    /// agent is still registered — true on each accepted hello, the aggregate
+    /// when a registered connection goes away. Never raised for a connection
+    /// that was never registered (a refused duplicate, a silent socket).</summary>
     public event Action<bool>? ConnectionChanged;
 
-    public Mt5HelloMessage? Hello { get; private set; }
+    /// <summary>A hello refused because another live connection already
+    /// serves that account — carries the refused hello's agentId.</summary>
+    public event Action<string>? DuplicateAgentRefused;
 
-    /// <summary>True when at least one agent connection is currently open.</summary>
+    /// <summary>Completes with the bound port once the listener has started.</summary>
+    public Task<int> Listening => _listening.Task;
+
+    /// <summary>True when at least one agent connection is currently registered.</summary>
     public bool IsConnected
     {
         get
         {
             lock (_lock)
             {
-                return _writersByAccountId.Count > 0;
+                return _byAccountId.Count > 0;
             }
+        }
+    }
+
+    /// <summary>The hello of the agent currently registered for
+    /// <paramref name="accountId"/> — per account, never "whichever agent
+    /// said hello last".</summary>
+    public Mt5HelloMessage? GetHello(string accountId)
+    {
+        lock (_lock)
+        {
+            return _byAccountId.TryGetValue(accountId, out var connection) ? connection.Hello : null;
         }
     }
 
@@ -74,30 +115,35 @@ public sealed class Mt5AgentServer(int port, IPAddress? bindAddress = null)
     /// </summary>
     public async Task<bool> SendCommandAsync(string accountId, string json, CancellationToken ct)
     {
-        StreamWriter? writer;
+        AgentConnection? connection;
         lock (_lock)
         {
-            _writersByAccountId.TryGetValue(accountId, out writer);
+            _byAccountId.TryGetValue(accountId, out connection);
         }
-        if (writer is null)
-        {
-            return false;
-        }
-        try
-        {
-            await writer.WriteLineAsync(json.AsMemory(), ct);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+        return connection is not null && await connection.TryWriteLineAsync(json, ct);
     }
+
+    /// <summary>Wire report status → the event type lib/contracts/events.ts
+    /// declares for it. Anything else (REJECTED — the agent sends an ack
+    /// REJECTED just before it — or an unknown status) keeps travelling as
+    /// execution.command.rejected, as it always has.</summary>
+    public static string ReportEventType(string status) => status switch
+    {
+        "SIMULATED" => EventTypes.ExecutionOrderSimulated,
+        "SUBMITTED" => EventTypes.ExecutionOrderSubmitted,
+        "FILLED" => EventTypes.ExecutionOrderFilled,
+        "PARTIALLY_FILLED" => EventTypes.ExecutionOrderPartiallyFilled,
+        "FAILED" => EventTypes.ExecutionOrderFailed,
+        _ => EventTypes.ExecutionCommandRejected,
+    };
 
     public async Task RunAsync(CancellationToken ct)
     {
         _listener = new TcpListener(bindAddress ?? IPAddress.Loopback, port);
         _listener.Start();
+        _listening.TrySetResult(((IPEndPoint)_listener.LocalEndpoint).Port);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var watchdog = WatchdogAsync(stop.Token);
         try
         {
             while (!ct.IsCancellationRequested)
@@ -116,7 +162,41 @@ public sealed class Mt5AgentServer(int port, IPAddress? bindAddress = null)
         }
         finally
         {
+            stop.Cancel();
             _listener.Stop();
+            await watchdog;
+        }
+    }
+
+    /// <summary>Closes every connection silent for longer than staleAfter —
+    /// registered or not — so a dead agent stops counting as connected and a
+    /// half-open socket never holds an account.</summary>
+    private async Task WatchdogAsync(CancellationToken ct)
+    {
+        var period = watchdogPeriod ?? _staleAfter / 2;
+        if (watchdogPeriod is null && period > TimeSpan.FromSeconds(5))
+        {
+            period = TimeSpan.FromSeconds(5);
+        }
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(period, ct);
+                List<AgentConnection> silent;
+                lock (_lock)
+                {
+                    silent = _open.Where(c => c.IsSilentFor(_staleAfter)).ToList();
+                }
+                foreach (var connection in silent)
+                {
+                    connection.Close(); // its read loop ends; HandleClientAsync unregisters it
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // shutting down
         }
     }
 
@@ -124,24 +204,24 @@ public sealed class Mt5AgentServer(int port, IPAddress? bindAddress = null)
     {
         using var _client = client;
         await using var stream = client.GetStream();
-        var writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true, NewLine = "\n" };
+        var connection = new AgentConnection(client, new StreamWriter(stream, Utf8NoBom) { AutoFlush = true, NewLine = "\n" });
         using var reader = new StreamReader(stream, Encoding.UTF8);
-        string? accountId = null;
+        lock (_lock)
+        {
+            _open.Add(connection);
+        }
 
         try
         {
-            while (!ct.IsCancellationRequested)
+            while (!ct.IsCancellationRequested && !connection.IsClosed)
             {
                 var line = await reader.ReadLineAsync(ct);
                 if (line is null)
                 {
                     break; // agent closed the connection
                 }
-                var seenAccountId = Handle(line, writer);
-                if (seenAccountId is not null)
-                {
-                    accountId = seenAccountId;
-                }
+                connection.Touch();
+                Handle(line, connection);
             }
         }
         catch (OperationCanceledException)
@@ -150,26 +230,33 @@ public sealed class Mt5AgentServer(int port, IPAddress? bindAddress = null)
         }
         catch
         {
-            // malformed frame or dropped connection: close and let the agent
-            // reconnect — never crash the gateway.
+            // malformed frame, dropped connection, or closed by the watchdog /
+            // a refused hello: close and let the agent reconnect — never crash
+            // the gateway.
         }
         finally
         {
-            if (accountId is not null)
+            bool removed;
+            bool stillConnected;
+            lock (_lock)
             {
-                lock (_lock)
-                {
-                    _writersByAccountId.Remove(accountId);
-                }
+                _open.Remove(connection);
+                removed = connection.AccountId is { } accountId
+                    && _byAccountId.TryGetValue(accountId, out var current)
+                    && ReferenceEquals(current, connection)
+                    && _byAccountId.Remove(accountId);
+                stillConnected = _byAccountId.Count > 0;
             }
-            ConnectionChanged?.Invoke(false);
+            connection.Close();
+            if (removed)
+            {
+                ConnectionChanged?.Invoke(stillConnected);
+            }
         }
     }
 
-    /// <summary>Handles one incoming line. Returns the accountId when the
-    /// message identifies one (agent.hello), so the caller can track which
-    /// connection just closed.</summary>
-    private string? Handle(string json, StreamWriter writer)
+    /// <summary>Handles one incoming line.</summary>
+    private void Handle(string json, AgentConnection connection)
     {
         Mt5Message? message;
         try
@@ -178,65 +265,154 @@ public sealed class Mt5AgentServer(int port, IPAddress? bindAddress = null)
         }
         catch
         {
-            return null; // malformed frame: drop, never crash the gateway
+            return; // malformed frame: drop, never crash the gateway
         }
 
+        var agentId = connection.Hello?.AgentId ?? "mt5-execution-agent";
         switch (message)
         {
             case Mt5HelloMessage hello:
-            {
-                lock (_lock)
-                {
-                    _writersByAccountId[hello.AccountId] = writer;
-                }
-                Hello = hello;
-                ConnectionChanged?.Invoke(true);
-                EnvelopeReady?.Invoke(EventTypes.AgentConnected, new { agentId = hello.AgentId });
-                return hello.AccountId;
-            }
+                Register(hello, connection);
+                return;
             case Mt5HeartbeatMessage heartbeat:
-            {
                 EnvelopeReady?.Invoke(EventTypes.AgentHeartbeat, new AgentHeartbeatPayload(heartbeat.AgentId, heartbeat.LatencyMs));
-                return null;
-            }
+                return;
             case Mt5AckMessage ack:
             {
-                var agentId = Hello?.AgentId ?? "mt5-execution-agent";
                 var mapped = Mt5WireTranslator.ToCommandAck(ack, agentId);
                 var type = mapped.Status is "accepted" or "duplicate"
                     ? EventTypes.ExecutionCommandAcknowledged
                     : EventTypes.ExecutionCommandRejected;
                 EnvelopeReady?.Invoke(type, new CommandAckPayload(mapped));
-                return null;
+                return;
             }
             case Mt5ReportMessage report:
             {
-                var agentId = Hello?.AgentId ?? "mt5-execution-agent";
                 var mapped = Mt5WireTranslator.ToExecutionReport(report, agentId);
-                // This build only ever reports SIMULATED — OrderSend does not
-                // exist yet (EA-05 increment 6, pending explicit approval).
-                var type = report.Status == "SIMULATED"
-                    ? EventTypes.ExecutionOrderSimulated
-                    : EventTypes.ExecutionCommandRejected;
-                EnvelopeReady?.Invoke(type, new ExecutionReportPayload(mapped));
-                return null;
+                EnvelopeReady?.Invoke(ReportEventType(report.Status), new ExecutionReportPayload(mapped));
+                return;
             }
             case Mt5ReconciledMessage reconciled:
             {
-                var agentId = Hello?.AgentId ?? "mt5-execution-agent";
                 var mapped = Mt5WireTranslator.ToReconciled(reconciled, agentId);
                 EnvelopeReady?.Invoke(EventTypes.ExecutionReconciled, new ReconciledPayload(mapped));
-                return null;
+                return;
             }
             case Mt5PositionScannedMessage scanned:
             {
-                var agentId = Hello?.AgentId ?? "mt5-execution-agent";
                 var mapped = Mt5WireTranslator.ToPositionScanned(scanned, agentId);
                 EnvelopeReady?.Invoke(EventTypes.ExecutionPositionScan, new PositionScannedPayload(mapped));
-                return null;
+                return;
             }
             default:
-                return null; // unknown/unused types are ignored in this slice
+                return; // unknown/unused types are ignored in this slice
+        }
+    }
+
+    private void Register(Mt5HelloMessage hello, AgentConnection connection)
+    {
+        AgentConnection? replaced = null;
+        bool accepted;
+        bool gaveUpPrevious = false;
+        bool stillConnected;
+        lock (_lock)
+        {
+            // A connection re-announcing itself under another account (the
+            // terminal switched accounts) gives up its previous registration.
+            if (connection.AccountId is { } previous && previous != hello.AccountId
+                && _byAccountId.TryGetValue(previous, out var own) && ReferenceEquals(own, connection))
+            {
+                _byAccountId.Remove(previous);
+                gaveUpPrevious = true;
+            }
+
+            if (_byAccountId.TryGetValue(hello.AccountId, out var existing) && !ReferenceEquals(existing, connection))
+            {
+                accepted = existing.IsSilentFor(_staleAfter);
+                if (accepted)
+                {
+                    replaced = existing;
+                }
+            }
+            else
+            {
+                accepted = true;
+            }
+
+            if (accepted)
+            {
+                _byAccountId[hello.AccountId] = connection;
+                connection.AccountId = hello.AccountId;
+                connection.Hello = hello;
+            }
+            stillConnected = _byAccountId.Count > 0;
+        }
+
+        if (!accepted)
+        {
+            DuplicateAgentRefused?.Invoke(hello.AgentId);
+            connection.Close();
+            if (gaveUpPrevious)
+            {
+                ConnectionChanged?.Invoke(stillConnected);
+            }
+            return;
+        }
+
+        replaced?.Close(); // its own finally finds it no longer registered: no removal, no event
+        ConnectionChanged?.Invoke(true);
+        EnvelopeReady?.Invoke(EventTypes.AgentConnected, new { agentId = hello.AgentId });
+    }
+
+    /// <summary>One agent socket: its writer (serialized — concurrent hub
+    /// invocations must not interleave lines), its registration, and when it
+    /// last said anything. AccountId and Hello are guarded by the server's
+    /// lock.</summary>
+    private sealed class AgentConnection(TcpClient client, StreamWriter writer)
+    {
+        private readonly SemaphoreSlim _writeLock = new(1, 1);
+        private long _lastSeen = Environment.TickCount64;
+        private int _closed;
+
+        public string? AccountId { get; set; }
+
+        public Mt5HelloMessage? Hello { get; set; }
+
+        public bool IsClosed => Volatile.Read(ref _closed) == 1;
+
+        public void Touch() => Interlocked.Exchange(ref _lastSeen, Environment.TickCount64);
+
+        public bool IsSilentFor(TimeSpan span) =>
+            Environment.TickCount64 - Interlocked.Read(ref _lastSeen) > (long)span.TotalMilliseconds;
+
+        public async Task<bool> TryWriteLineAsync(string line, CancellationToken ct)
+        {
+            if (IsClosed)
+            {
+                return false;
+            }
+            await _writeLock.WaitAsync(ct);
+            try
+            {
+                await writer.WriteLineAsync(line.AsMemory(), ct);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                _writeLock.Release();
+            }
+        }
+
+        public void Close()
+        {
+            if (Interlocked.Exchange(ref _closed, 1) == 0)
+            {
+                client.Close();
+            }
         }
     }
 }

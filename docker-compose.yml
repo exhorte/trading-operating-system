@@ -9,7 +9,10 @@ services:
     container_name: tradingos-timescaledb
     ports:
       # 5433 on the host: avoids colliding with any locally installed Postgres.
-      - "5433:5432"
+      # Loopback only — published on 0.0.0.0 until 2026-09-25, which let any
+      # device on the LAN read and write the trading database with the dev
+      # password below.
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_DB: tradingos
       POSTGRES_USER: tradingos
@@ -60,7 +63,14 @@ services:
       Fred__ApiKey: "${FRED_API_KEY:-}"
 
 volumes:
+  # Same story as the network below: the data volume was created under the
+  # compose project that first ran this service. Declaring it external by that
+  # exact name is what keeps a recreate from this directory on the real data —
+  # otherwise compose mounts `04_code_tradingos-pgdata` (it exists, stale) and
+  # TradingOS silently starts on the wrong database (checked live 2026-09-25).
   tradingos-pgdata:
+    name: trading_operating_system_algorithmique_tradingos-pgdata
+    external: true
 
 networks:
   # timescaledb already exists on this network (created before this file

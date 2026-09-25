@@ -46,6 +46,13 @@ public static class EventTypes
     public const string ExecutionCommandAcknowledged = "execution.command.acknowledged";
     public const string ExecutionCommandRejected = "execution.command.rejected";
     public const string ExecutionOrderSimulated = "execution.order.simulated";
+    /// <summary>Real outcomes (lib/contracts/events.ts declares all four with
+    /// an ExecutionReportPayload). Mirrored 2026-09-25: until then every
+    /// non-SIMULATED report reached the cockpit typed as a rejection.</summary>
+    public const string ExecutionOrderSubmitted = "execution.order.submitted";
+    public const string ExecutionOrderFilled = "execution.order.filled";
+    public const string ExecutionOrderPartiallyFilled = "execution.order.partially_filled";
+    public const string ExecutionOrderFailed = "execution.order.failed";
     /// <summary>T02a: Gateway-originated (needs the MT5 terminal's server-time
     /// offset), never client-published — no PublishEvent whitelist entry.</summary>
     public const string RiskDayAnchorResolved = "risk.day_anchor.resolved";

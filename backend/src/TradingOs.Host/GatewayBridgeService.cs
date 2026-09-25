@@ -79,6 +79,21 @@ public sealed class GatewayBridgeService(
             _ = hub.Clients.All.SendAsync("event", envelope, stoppingToken);
             Persist(writer, envelope);
         };
+        // ADR 0010: one agent per environment. A refused duplicate retries
+        // every second, so the warning is throttled to one a minute.
+        long? lastDuplicateWarning = null;
+        agentServer.DuplicateAgentRefused += agentId =>
+        {
+            var now = Environment.TickCount64;
+            if (lastDuplicateWarning is { } last && now - last < 60_000)
+            {
+                return;
+            }
+            lastDuplicateWarning = now;
+            logger.LogWarning(
+                "MT5 execution agent {AgentId} refused: another live agent already serves this account — one agent per terminal (ADR 0010)",
+                agentId);
+        };
 
         // Drain the persistence channel alongside both connections.
         await Task.WhenAll(

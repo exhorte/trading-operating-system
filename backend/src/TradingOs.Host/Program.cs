@@ -37,7 +37,14 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddSingleton<GatewayState>();
 builder.Services.AddSingleton(sp => new Mt5ObserverClient(sp.GetRequiredService<GatewayState>(), observerUrl));
-builder.Services.AddSingleton(new Mt5AgentServer(agentPort, agentBindAny ? IPAddress.Any : IPAddress.Loopback));
+// Silence after which an execution agent counts as dead (terminal crash,
+// half-open TCP) and stops holding its account — the agent heartbeats every
+// InpHeartbeatSeconds (default 5), so keep this well above that.
+var agentStaleSeconds = builder.Configuration.GetValue<int?>("Cockpit:AgentStaleSeconds") ?? 30;
+builder.Services.AddSingleton(new Mt5AgentServer(
+    agentPort,
+    agentBindAny ? IPAddress.Any : IPAddress.Loopback,
+    TimeSpan.FromSeconds(agentStaleSeconds)));
 builder.Services.AddSingleton(new PersistenceWriter(connectionString));
 builder.Services.AddSingleton(new AuditRepository(connectionString));
 builder.Services.AddSingleton(new RiskTodayRepository(connectionString));
@@ -69,6 +76,8 @@ app.MapGet("/health", (PersistenceWriter writer, Mt5AgentServer agentServer) => 
     dropped = writer.Status.Dropped,
     queued = writer.Status.Queued,
     dbError = writer.Status.LastError,
+    unmapped = writer.Status.Unmapped,
+    mappingError = writer.Status.LastMappingError,
 }));
 app.MapGet("/api/audit/recent", async (
     AuditRepository audit,

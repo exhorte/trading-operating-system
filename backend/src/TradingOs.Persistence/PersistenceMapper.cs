@@ -48,8 +48,10 @@ public static class PersistenceMapper
             "market.candle.closed" => MapCandle(root.GetProperty("candle")),
             "market.tick" => MapTick(root),
             "execution.command.place_order" => MapCommand(root.GetProperty("command")),
-            "execution.command.acknowledged" or "execution.command.rejected" => MapAck(root.GetProperty("ack")),
-            "execution.order.simulated" => MapReport(root.GetProperty("report")),
+            "execution.command.acknowledged" => MapAck(root.GetProperty("ack")),
+            "execution.command.rejected" => MapAckOrReport(root),
+            "execution.order.simulated" or "execution.order.submitted" or "execution.order.filled"
+                or "execution.order.partially_filled" or "execution.order.failed" => MapReport(root.GetProperty("report")),
             "risk.day_anchor.resolved" => MapDayAnchor(root),
             "risk.day_anchor.equity_observed" => MapDayAnchorEquity(root),
             "journal.position.opened" => MapPositionOpen(root),
@@ -98,6 +100,13 @@ public static class PersistenceMapper
     private static AckRow MapAck(JsonElement a) => new(
         Str(a, "commandId"), Str(a, "agentId"), Str(a, "status"),
         StrOrNull(a, "reason"), Time(a, "receivedAt"));
+
+    /// <summary>execution.command.rejected carries an ack when the Gateway or
+    /// the agent refuses a command, and a report when the agent reports a
+    /// REJECTED outcome (Mt5AgentServer.ReportEventType) — both are real rows.
+    /// Reading only "ack" threw on the second shape.</summary>
+    private static object MapAckOrReport(JsonElement root) =>
+        root.TryGetProperty("ack", out var ack) ? MapAck(ack) : MapReport(root.GetProperty("report"));
 
     private static ReportRow MapReport(JsonElement r) => new(
         Str(r, "reportId"), Str(r, "commandId"), Str(r, "accountId"), Str(r, "agentId"),

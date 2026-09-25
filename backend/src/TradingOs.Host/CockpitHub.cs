@@ -77,10 +77,12 @@ public sealed class CockpitHub(
     /// approval). Broadcasts the command to every dashboard (single source
     /// of truth for the lifecycle), then flattens to the lean wire and
     /// forwards to the execution agent registered for this command's
-    /// account. Hard guard: the agent must report observe mode — an
-    /// absent/unknown mode is refused, never forwarded. EA-05: targets
-    /// Mt5AgentServer (the execution agent), not the read-only observer —
-    /// the two are never merged (ADR 0010).
+    /// account. Hard guard: the agent registered for THAT account must
+    /// report observe mode — no agent, or an absent/unknown mode, is refused,
+    /// never forwarded (until 2026-09-25 the guard read whichever agent had
+    /// said hello last, whatever its account). EA-05: targets Mt5AgentServer
+    /// (the execution agent), not the read-only observer — the two are never
+    /// merged (ADR 0010).
     /// </summary>
     public async Task SubmitCommand(PlaceOrderCommand command)
     {
@@ -92,10 +94,12 @@ public sealed class CockpitHub(
         await Clients.All.SendAsync("event", issued);
         GatewayBridgeService.Persist(writer, issued);
 
-        var mode = agentServer.Hello?.Mode;
+        var mode = agentServer.GetHello(command.AccountId)?.Mode;
         if (mode != "observe")
         {
-            await RejectAsync(command, $"agent mode '{mode ?? "unknown"}' is not observe — command refused");
+            await RejectAsync(command, mode is null
+                ? "no execution agent registered for this account — command refused"
+                : $"agent mode '{mode}' is not observe — command refused");
             return;
         }
 
