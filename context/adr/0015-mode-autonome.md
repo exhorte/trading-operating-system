@@ -1,10 +1,11 @@
 # ADR 0015 — Mode autonome : le Trading OS exécute la stratégie configurée
 
-Date : 2026-09-25. Statut : **proposé** — en attente de l'accord nommé de
-l'utilisateur (« J'approuve l'ADR 0015 »). Supersède la clause « Aucun mode
-AUTO dans ce chantier » de l'ADR 0010. Amende l'ADR 0001 (« l'humain décide
-et déclenche ») et le principe 6 de la charte (« aucun ordre n'est envoyé
-sans qu'un humain l'ait déclenché »).
+Date : 2026-09-25. Statut : **accepté le 2026-09-26** — accord nommé de
+l'utilisateur : « J'approuve l'ADR 0015 » (voir « Accord » en fin
+d'ADR). Supersède la clause « Aucun mode AUTO dans ce chantier » de l'ADR
+0010. Amende l'ADR 0001 (« l'humain décide et déclenche ») et le principe 6
+de la charte (« aucun ordre n'est envoyé sans qu'un humain l'ait
+déclenché »).
 
 ## Contexte
 
@@ -106,3 +107,17 @@ des limites automatiques.**
   `02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`.
 - **Claude ne déclenche jamais lui-même l'autonomie, ni aucun ordre.** Les
   essais sur le compte réel sont faits par l'utilisateur.
+
+## Accord
+
+Le 2026-09-26, dans un même message, l'utilisateur écrit « J'approuve
+l'ADR 0015 », confirme la stratégie (« je confirme S01 ») et donne ses
+premières valeurs de limites pour le compte réel. Les valeurs sont notées
+mot pour mot dans `context/project/session-log.md` (2026-09-26), avec ce
+qui reste à préciser. Elles n'appartiennent pas à cet ADR : elles vivront
+dans la configuration de l'autonomie (incrément I7), compte par compte, et
+peuvent changer sans le remplacer.
+
+Cet accord n'ouvre rien à lui seul : l'autonomie n'existe pas encore dans
+le code. Chaque élargissement se construit dans son incrément (I4 à I8 de
+l'étude), après l'ADR ou la fiche qui le précède.

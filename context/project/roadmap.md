@@ -139,7 +139,7 @@ Hors plateforme, construisibles isolément, sans dépendance à l'avancement des
 
 ## Hors périmètre, volontairement
 
-- Bot d'exécution autonome, générateur de signaux IA, copy-trading.
+- Générateur de signaux IA, copy-trading. (« Bot d'exécution autonome » est sorti de cette liste le 2026-09-26 : l'ADR 0015 autorise l'exécution autonome de la stratégie que l'utilisateur configure lui-même, dans des limites automatiques — jamais d'une stratégie inventée ou optimisée.)
 - Nouvelle recherche d'edge, optimiseur de stratégie, backtester.
 - Scraper ForexFactory.
 - Dashboard de marché temps réel dupliquant MT5.

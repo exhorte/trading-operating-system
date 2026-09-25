@@ -266,7 +266,7 @@ Un bot Telegram ou une notification système en **lecture seule** : DD à 70 % d
 
 ## 7. Ce que je ne recommande pas de construire
 
-- **Un bot d'exécution autonome.** Contredit l'ADR 0001, et le seul candidat de stratégie existant a été sélectionné post-hoc puis abandonné (ADR 0002).
+- ~~**Un bot d'exécution autonome.**~~ Recommandation levée le 2026-09-26 par l'ADR 0015 : l'exécution autonome est autorisée pour la stratégie que l'utilisateur a lui-même formalisée et configurée (S01), dans des limites automatiques. Reste vrai : le candidat de la série 1 est abandonné (ADR 0002), et aucune stratégie n'est inventée ni optimisée pour l'occasion.
 - **Un générateur de signaux IA.** Le point est déjà tranché dans l'audit : sentiment ≠ direction, forecasting ≠ stratégie. Ces modèles restent côté lecture.
 - **Un scraper ForexFactory.** Fragile et juridiquement exposé. FRED règle le besoin réel (voir #3).
 - **Un dashboard de marché temps réel.** Tu as déjà MT5 pour ça, et il est meilleur. Ne reconstruis pas ce que tu regardes déjà ailleurs — construis ce que MT5 ne fait pas : ton process, tes règles, ton historique.

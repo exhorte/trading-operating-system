@@ -1,5 +1,6 @@
 # Charte du projet
 
+Version 3 — 2026-09-26 : principe 6 et « Conséquence à assumer » réécrits par l'ADR 0015 (mode autonome), rien d'autre.
 Version 2 — 2026-09-04. Remplace `development_manifesto.md` et `project_state.md` (série 1, supprimés le 2026-09-04).
 
 ## Ce que ce projet est
@@ -16,7 +17,7 @@ La série 1 du projet (juillet 2026, phases 00 à 13) cherchait un edge : moteur
 
 La raison est écrite dans l'audit du 2026-09-03 et n'a pas changé : le candidat NY AM a été sélectionné post-hoc puis « validé » en reproduisant le même sous-ensemble. Le seul jeu vierge restant était le holdout, lisible une seule fois. Plutôt que dépenser deux jours à obtenir un verdict qui, quel qu'il soit, ne changeait pas la suite du projet, la suite du projet commence maintenant.
 
-**Conséquence à assumer : ce projet ne contient plus aucune prétention de performance.** Aucun module ne dit quoi trader, quand, ni dans quel sens.
+**Conséquence à assumer : ce projet ne contient plus aucune prétention de performance.** Aucun module ne dit quoi trader, quand, ni dans quel sens — à une exception près depuis l'ADR 0015 : la stratégie que l'utilisateur a lui-même formalisée et configurée (S01 aujourd'hui) décide des entrées, dans les limites du Risk Engine. Jamais une IA, jamais une optimisation, et toujours sans prétention de performance.
 
 ## Les quatre goulots que ce projet attaque
 
@@ -39,7 +40,7 @@ La raison est écrite dans l'audit du 2026-09-03 et n'a pas changé : le candida
 ### Trading
 
 5. **L'EA n'est pas le cerveau.** MT5 est un point d'exécution et de télémétrie.
-6. **Aucune décision automatique.** Aucun ordre n'est envoyé sans qu'un humain l'ait déclenché.
+6. **Aucun ordre hors de la stratégie configurée.** Aucun ordre n'est envoyé hors de la stratégie configurée et des limites du Risk Engine. L'humain arme et désarme l'autonomie (ADR 0015).
 7. Pas de martingale, pas de grille de récupération, pas de moyenne à la baisse illimitée.
 8. Toute position a un risque explicite, une invalidation, un stop et une trace d'audit.
 

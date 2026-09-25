@@ -6,6 +6,56 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-26 (**ADR 0015 accepté ; limites du compte réel ; S01 confirmée**)
+
+Reprise au point d'arrêt (étude, « Suivi d'avancement »). Réponse de
+l'utilisateur, mot pour mot :
+1. « J'approuve l'ADR 0015 » ;
+2. limites pour le compte réel : « risque par trade: 0.1% du capital »,
+   « Daily loss 5.0% », « Max drawdown 10.0% », « nombre maximal de
+   trades et de positions, 7 », « spread maximal par symbole, » (sans
+   valeur), « heures de trading : session de London kill zone et de New
+   york am / kill zone » ;
+3. « je confirme S01 ».
+
+**ADR 0015 accepté.** Conséquences écrites : charte v3 (principe 6),
+`.claude/CLAUDE.md` (accords I3 à I8 ; Claude ne déclenche jamais d'ordre),
+roadmap et catalogue (le bot autonome sort des exclusions). Rien
+d'autonome n'existe encore dans le code : `g_mode` reste
+`const MODE_OBSERVE`.
+
+**Lecture des valeurs par Claude**, à corriger si elle est fausse :
+
+| Limite | Valeur | Lecture |
+|---|---|---|
+| Risque par trade | 0,1 % | du solde au moment de l'ordre, comme le calcul de taille actuel |
+| Perte du jour | 5 % | (équité à l'ancre du jour − équité) / capital de référence, comme la gate actuelle |
+| Perte totale | 10 % | (capital de référence − équité) / capital de référence |
+| Trades par jour | 7 | « trades et positions, 7 » lu comme 7 et 7 |
+| Positions ouvertes | 7 | idem |
+| Spread maximal | **manque** | par symbole ; l'autonomie refuse de démarrer sans |
+| Fenêtres | killzones de S01 | Londres 02:00–05:00 et NY AM 07:00–10:00, heure de New York (`lib/setup/preconditions.ts`) |
+| Stratégie | S01 | EURUSD seul ; XAUUSD suppose des seuils relatifs à l'ATR, non décidé |
+
+**Manque aussi le capital de référence du compte réel** (Settings). Il est
+vide pour Exness : les 10 % se mesurent alors depuis le solde au démarrage
+du Risk Engine, un plancher qui glisse. L'autonomie refusera de démarrer
+sans lui.
+
+Spreads mesurés sur ce terminal (démo Exness, symboles `m`) : EURUSDm
+2,0 pips (20 points) sans variation sur 9 h le 2026-09-12, killzone de
+Londres comprise ; XAUUSDm 0,26 $ (260 points à 3 décimales) au p95 sur
+214 000 ticks, killzones comprises. Un compte réel d'un autre type peut
+différer.
+
+**Trouvé en vérifiant** : la gate de spread du cockpit lit le seul symbole
+de l'observateur (l'or, choisi par `start-live`) et calcule
+`(ask − bid) / 0,01` (`lib/realtime/signalr-client.ts:473-476`). Sur
+XAUUSDm, 0,26 $ donne 26, sous la limite de 40. Elle ne dit donc rien
+d'EURUSD, et sur EURUSDm le même calcul donnerait 0 : **ce n'est pas une
+gate par symbole**. À refaire avec le seuil par symbole (I1 dans l'agent,
+puis le Risk Engine côté serveur en I6), l'unité fixée symbole par symbole.
+
 ## 2026-09-25 (**étude connexion/pilotage de l'agent ; I0 côté Gateway**)
 
 Demande : connexion au compte MT5 depuis l'application, bouton pour

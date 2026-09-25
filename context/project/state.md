@@ -194,11 +194,13 @@ ouverts.
   jusqu'à CONFIRM. Ils couvrent I3 à I5.
 - **Compte réel dès I5** (décision de l'utilisateur, 2026-09-25) : plus de
   démo.
-- **Autonomie demandée par l'utilisateur :** l'agent exécute la stratégie
-  configurée (S01) sans validation par ordre, dans des limites automatiques.
-  **ADR 0015 proposé**, en attente de son accord nommé, des valeurs de ses
-  limites et de sa confirmation de la stratégie. I6 à I8 révisés en
-  conséquence.
+- **Autonomie :** l'agent exécutera la stratégie configurée (S01, EURUSD)
+  sans validation par ordre, dans des limites automatiques. **ADR 0015
+  accepté le 2026-09-26** ; limites du compte réel données (0,1 % par
+  trade, 5 % par jour, 10 % au total, 7 trades et 7 positions, killzones
+  de S01), S01 confirmée. Manquent le spread maximal par symbole et le
+  capital de référence (détail : `session-log.md`, 2026-09-26). Rien
+  d'autonome n'existe encore dans le code. I6 à I8 révisés en conséquence.
 - **Paires :** XAUUSD et EURUSD ; GBPUSD mis de côté. Agent rattaché sur
   XAUUSDm avec le nouveau preset.
 
