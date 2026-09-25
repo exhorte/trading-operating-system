@@ -1,6 +1,6 @@
 # État du projet
 
-Dernière mise à jour : 2026-09-25. Instantané seulement — l'historique vit
+Dernière mise à jour : 2026-09-26. Instantané seulement — l'historique vit
 dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
 
 ## En une phrase
@@ -177,7 +177,7 @@ une collecte longue. Piste si ça revient : `gmag11/MetaTrader5-Docker`.
 
 ## Prochaine action
 
-**Connexion et pilotage de l'agent, I0 à I6**
+**Connexion, pilotage de l'agent et autonomie, I0 à I8**
 (`02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`). **Pour
 reprendre**, lire d'abord la section « Suivi d'avancement » en tête de ce
 document : état de chaque incrément, étapes de reprise dans l'ordre, points
@@ -187,16 +187,20 @@ ouverts.
   sur le vrai volume. Restent le hub (jeton, Origin) et `next dev` en
   loopback.
 - **I1 :** durcir l'agent — identité tirée du compte réel, arrêt local,
-  instance unique, seuil de spread par symbole.
-- **I2 :** identification complète du compte.
+  instance unique, seuil de spread par symbole, homme mort.
+- **I2 :** identification complète du compte (compte réel).
 - **Accords donnés le 2026-09-25 :** ADR 0013 (connexion depuis
   l'application), ADR 0014 volet armement, EA-08 (fermeture globale), EA-07
-  jusqu'à CONFIRM. Ils couvrent I3 à I6.
-- **Compte de la première exécution réelle :** à fixer au moment d'I5 et I6
-  (démo d'abord selon les accords, réel directement selon la demande).
-- **Paires :** XAUUSD et EURUSD ; GBPUSD mis de côté.
-- **Hors plan :** pas de mode autonome (aucune logique d'entrée validée) ;
-  les garde-fous contre les bugs restent.
+  jusqu'à CONFIRM. Ils couvrent I3 à I5.
+- **Compte réel dès I5** (décision de l'utilisateur, 2026-09-25) : plus de
+  démo.
+- **Autonomie demandée par l'utilisateur :** l'agent exécute la stratégie
+  configurée (S01) sans validation par ordre, dans des limites automatiques.
+  **ADR 0015 proposé**, en attente de son accord nommé, des valeurs de ses
+  limites et de sa confirmation de la stratégie. I6 à I8 révisés en
+  conséquence.
+- **Paires :** XAUUSD et EURUSD ; GBPUSD mis de côté. Agent rattaché sur
+  XAUUSDm avec le nouveau preset.
 
 Le port 5433 se bascule à la main entre TradingOS et `e-commerce-db-1`
 (runbook). L'environnement réel démarre par `pwsh -File

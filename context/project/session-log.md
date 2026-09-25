@@ -72,6 +72,44 @@ d'I0 à I8, étapes de reprise dans l'ordre, points ouverts. Au moment de
 l'arrêt, la base et le backend tournent, l'agent est connecté,
 l'observateur Python est arrêté.
 
+**Suite, le soir.** Gestes de l'utilisateur, vérifiés à 23:52 :
+- preset passé à `XAUUSDm,EURUSDm` ;
+- agent rattaché, sur un graphique XAUUSDm (une instance, 12 heartbeats
+  par minute) ;
+- copie périmée supprimée.
+
+**Décision de l'utilisateur** : le but de l'agent est une application
+autonome, qui exécute des ordres selon la stratégie configurée, sans son
+intervention. Les garde-fous doivent être cohérents avec l'autonomie. Pour
+I5, le compte réel, « plus de démo ».
+
+Claude révise sa position : il s'agit d'exécuter la stratégie de
+l'utilisateur (S01), pas d'en inventer une. **ADR 0015 rédigé, statut
+proposé.** Il retire, en mode autonome, les garde-fous qui demandent une
+intervention humaine (validation de chaque ordre, bail renouvelé par
+l'onglet). Il garde les limites automatiques : risque par trade, stop chez
+le courtier, pertes maximales qui suspendent l'autonomie, maximums, arrêt
+d'urgence, homme mort, et le Risk Engine côté serveur.
+
+Il attend de l'utilisateur :
+- son accord nommé ;
+- les valeurs de ses limites ;
+- sa confirmation de la stratégie.
+
+Trajectoire révisée, I6 à I8 : Risk Engine côté serveur et taille depuis
+les spécifications du courtier, configuration de la stratégie, puis
+activation (étude, section « Suivi d'avancement »).
+
+**Arrêt de session (2026-09-26, peu après minuit)** : ADR 0015 et ces
+mises à jour sont commités et poussés. Pour reprendre, lire la section
+« Suivi d'avancement » de l'étude. Deux choses sont en attente :
+- de l'utilisateur, sur l'ADR 0015 : son accord nommé, ses limites et sa
+  confirmation de la stratégie ;
+- de Claude : finir I0 (jeton et Origin sur le hub, `next dev` en
+  loopback), puis I1.
+
+L'observateur Python est toujours arrêté.
+
 ## 2026-09-24, suite (**EA-05 connecté pour la première fois** — bug de framing corrigé)
 
 Demandes : relancer la base TradingOS et arrêter `e-commerce-db-1` ;

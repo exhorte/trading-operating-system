@@ -18,6 +18,9 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0010 | Le Trading OS exécute, l'EA est un agent | Accepté |
 | 0011 | Un banc de replay n'est pas un backtester | Accepté |
 | 0012 | Système de design : shadcn/ui | Accepté — amende 0003 (dépendances front, densité) |
+| 0013 | Connexion au compte depuis l'application | Approuvé le 2026-09-25, pas encore rédigé (voir `02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`) |
+| 0014 | Armement de l'agent depuis l'application | Approuvé le 2026-09-25 (volet armement), pas encore rédigé |
+| 0015 | Mode autonome : le Trading OS exécute la stratégie configurée | **Proposé** — en attente de l'accord nommé ; supersède la clause AUTO de 0010, amende 0001 et la charte |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 
