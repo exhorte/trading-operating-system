@@ -1,6 +1,6 @@
 # État du projet
 
-Dernière mise à jour : 2026-09-24. Instantané seulement — l'historique vit
+Dernière mise à jour : 2026-09-25. Instantané seulement — l'historique vit
 dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil.
 
 ## En une phrase
@@ -177,16 +177,32 @@ une collecte longue. Piste si ça revient : `gmag11/MetaTrader5-Docker`.
 
 ## Prochaine action
 
-**Finir la vérification EA-05 (README, étapes 2–4)** — l'étape 1 est
-passée le 2026-09-24 : l'agent est attaché sur `EURUSDm` (Exness démo) et
-reconnu par la Gateway. Restent : une commande de test depuis le cockpit
-(accusé `ACCEPTED` puis rapport `SIMULATED`), les refus de validation
-locale dont `ACCOUNT_MISMATCH` contre un vrai second compte, et le rejeu
-d'un `commandId` après arrêt du terminal. Le port 5433 se bascule à la main
-entre TradingOS et `e-commerce-db-1` (runbook, « Points de fragilité ») ;
-l'environnement réel démarre par `pwsh -File scripts\start-live.ps1`.
-FTMO « en même temps » qu'Exness = T11, non commencé ; le seul compte FTMO
-connu (511333949) est échoué.
+**Connexion et pilotage de l'agent, I0 à I6**
+(`02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`). **Pour
+reprendre**, lire d'abord la section « Suivi d'avancement » en tête de ce
+document : état de chaque incrément, étapes de reprise dans l'ordre, points
+ouverts.
+
+- **I0 :** en cours. Gateway corrigé et déployé ; base liée à `127.0.0.1`
+  sur le vrai volume. Restent le hub (jeton, Origin) et `next dev` en
+  loopback.
+- **I1 :** durcir l'agent — identité tirée du compte réel, arrêt local,
+  instance unique, seuil de spread par symbole.
+- **I2 :** identification complète du compte.
+- **Accords donnés le 2026-09-25 :** ADR 0013 (connexion depuis
+  l'application), ADR 0014 volet armement, EA-08 (fermeture globale), EA-07
+  jusqu'à CONFIRM. Ils couvrent I3 à I6.
+- **Compte de la première exécution réelle :** à fixer au moment d'I5 et I6
+  (démo d'abord selon les accords, réel directement selon la demande).
+- **Paires :** XAUUSD et EURUSD ; GBPUSD mis de côté.
+- **Hors plan :** pas de mode autonome (aucune logique d'entrée validée) ;
+  les garde-fous contre les bugs restent.
+
+Le port 5433 se bascule à la main entre TradingOS et `e-commerce-db-1`
+(runbook). L'environnement réel démarre par `pwsh -File
+scripts\start-live.ps1` (depuis `04_code`). Au 2026-09-25 au soir, la base
+et le backend tournent et l'agent est connecté, mais l'observateur Python
+est arrêté.
 
 **T10 — brief pré-séance automatique (Vague 3)**, suite pré-autorisée
 (« Vague 3 — T09/T10, puis T19 »). Pas encore commencé : les sessions du

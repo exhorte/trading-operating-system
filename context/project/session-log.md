@@ -6,6 +6,72 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-25 (**étude connexion/pilotage de l'agent ; I0 côté Gateway**)
+
+Demande : connexion au compte MT5 depuis l'application, bouton pour
+démarrer l'agent, prise de positions autonome, clôture de toutes les
+positions — « je prends la responsabilité de tous les risques ». Étude de
+conception en lecture seule (16 agents) :
+`02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`. Tout est
+faisable ; chaque élargissement heurte une règle écrite (CLAUDE.md, ADR
+0003, 0010) et demande un accord nommé ; aucune logique d'entrée validée
+n'existe (S01 : 0 proposition). Plan en 9 incréments, I0 à I8.
+
+L'utilisateur a dit « lance de I0 à I8 ». Commencé par I0 (aucune règle à
+changer). Pour I3 à I8, les accords nommés restent à donner (CLAUDE.md :
+un accord « explicite et séparé », qui ne se déduit d'aucune consigne
+générale).
+
+**I0, fait** : trois défauts du Gateway corrigés avant que les étapes 2 et
+3 du README ne les rencontrent (détail dans la fiche EA-05) : BOM devant la
+première commande (prouvé), registre d'agents global, rapports mal typés
+qui mettaient la base « en panne ». `dotnet test` 75/75.
+
+**Gestes Docker, faits par l'utilisateur** (l'outil me les refusait) :
+- base recréée sur le vrai volume, liée à `127.0.0.1` (piège de volume :
+  voir runbook). Vérifié : 26 tables identiques au relevé d'avant ; seules
+  `envelopes` et `news_releases` ont grossi ;
+- backend reconstruit : `/health` montre les nouveaux champs ;
+- agent reconnecté au nouveau code : une instance, 12 heartbeats par minute.
+
+Restent dans I0 : le hub (jeton, Origin) et `next dev` en loopback.
+
+**Accords nommés donnés** (mot pour mot) :
+- « J'approuve l'ADR 0013 (connexion depuis l'application) » ;
+- « J'approuve l'ADR 0014, volet armement » ;
+- « J'autorise EA-08 : fermeture globale, démo Exness d'abord ; je lève la
+  décision du 2026-09-17 » ;
+- « J'autorise EA-07 jusqu'à CONFIRM sur la démo Exness ».
+
+**Paires (décision de l'utilisateur)** : XAUUSD et EURUSD ; GBPUSD mis de
+côté pour plus tard. Appliqué à la liste de l'EA, à `start-live` et au
+relevé de spread. S01 garde EURUSD seul : sa fiche exclut XAUUSD tant que
+ses seuils ne sont pas relatifs à l'ATR. Autre défaut trouvé : un seuil de
+spread unique (`InpMaxSpreadPoints = 50`) refuserait tout ordre XAUUSDm
+(spread normal d'environ 200 points). À traiter par symbole dans I1.
+
+**Argent réel (demande de l'utilisateur)** : passer directement au réel,
+développement et tests sur fonds réels, plus de restriction sur la prise
+de position ni sur le pouvoir de l'agent. Noté comme son intention. Claude
+décline deux choses :
+- un mode qui ouvre des positions seul : aucune logique d'entrée n'existe
+  (S01 n'a jamais rien proposé) et Claude n'invente pas de stratégie ; ce
+  serait l'ADR 0015 le jour où la question se pose ;
+- retirer les garde-fous contre les bugs (volume maximum, stop
+  obligatoire, liste de symboles, instance unique, idempotence) : ils ne
+  changent rien au réalisme des données.
+
+Le compte de la première exécution réelle reste à fixer au moment
+d'I5 et I6 : les accords disent « démo Exness d'abord », la demande dit
+« réel directement ».
+
+**Arrêt de session** : tout est commité et poussé. Pour reprendre, lire la
+section « Suivi d'avancement » en tête de l'étude
+(`02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`) : état
+d'I0 à I8, étapes de reprise dans l'ordre, points ouverts. Au moment de
+l'arrêt, la base et le backend tournent, l'agent est connecté,
+l'observateur Python est arrêté.
+
 ## 2026-09-24, suite (**EA-05 connecté pour la première fois** — bug de framing corrigé)
 
 Demandes : relancer la base TradingOS et arrêter `e-commerce-db-1` ;

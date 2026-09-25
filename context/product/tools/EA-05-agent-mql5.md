@@ -475,3 +475,45 @@ explicite.
   (ligne 538, `ExecuteOrder`), garde `if(g_mode != MODE_CONFIRM)` en
   première instruction (ligne 514), `g_mode` `const` à `MODE_OBSERVE`
   (ligne 64), jamais affectée. Gate MetaEditor : `0 errors, 0 warnings`.
+
+- 2026-09-25 — **côté Gateway, trois défauts qui auraient cassé les étapes
+  2 et 3 du README, corrigés avant qu'elles tournent** (incrément I0 de
+  l'étude `02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`).
+  `.mq5` inchangé, barrière inchangée.
+
+  1. **BOM devant la première commande.** `new StreamWriter(stream,
+     Encoding.UTF8)` sur un `NetworkStream` écrit EF BB BF avant sa première
+     ligne. Prouvé par un test à rebours : avec l'ancien encodage, la ligne
+     reçue commence par `239, 187, 191` ; corrigé
+     (`UTF8Encoding(false)`).
+  2. **Registre global.** Une connexion qui se fermait retirait
+     l'inscription du compte par sa clé, même si un autre agent l'avait
+     prise entre-temps ; le mode lu par `SubmitCommand` était celui du
+     dernier `hello`, quel que soit le compte. Désormais :
+     - une inscription par compte, retirée seulement par sa propre
+       connexion ;
+     - un second agent vivant sur le même compte est refusé, et sa
+       connexion est fermée ;
+     - une connexion muette plus de 30 s (`Cockpit:AgentStaleSeconds`) est
+       fermée par un watchdog, et un nouveau `hello` la remplace aussitôt ;
+       sans ça, un terminal planté aurait laissé l'agent « connecté » pour
+       toujours ;
+     - la garde de `SubmitCommand` lit l'agent du compte visé.
+  3. **Rapports.** Tout rapport non SIMULATED partait typé « commande
+     rejetée ». Le mapper lisait alors un `ack` absent, plantait, et le
+     writer prenait ce plantage pour une panne de base (`db: down`,
+     événement perdu). Maintenant :
+     - FILLED, PARTIALLY_FILLED, FAILED et SUBMITTED ont leurs types
+       (`lib/contracts/events.ts` les déclarait déjà ; le miroir C# ne les
+       avait pas) ;
+     - un rejet se mappe qu'il porte un accusé ou un rapport ;
+     - une charge illisible est comptée à part (`unmapped` sur `/health`)
+       sans marquer la base en panne ;
+     - `dbError` s'efface à la première écriture réussie.
+
+  Tests : `dotnet test` 75/75, dont 17 nouveaux (sockets en boucle locale
+  pour le registre et le framing), trois passages stables. **Non vérifié en
+  réel** : le conteneur backend n'a pas été reconstruit (geste Docker laissé
+  à l'utilisateur). **Resté ouvert** : comment le cockpit affiche un rapport
+  REJECTED reçu sous `execution.command.rejected` (le store attend un
+  accusé) — lecture de `lib/realtime/store.ts` pas faite dans cette session.
