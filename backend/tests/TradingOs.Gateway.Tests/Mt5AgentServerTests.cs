@@ -15,8 +15,11 @@ public class Mt5AgentServerTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
-    private static string Hello(string accountId, string mode = "observe", string agentId = "mt5-execution-agent-1001") =>
-        $$"""{"version":1,"type":"agent.hello","accountId":"{{accountId}}","time":1790000000000,"agentId":"{{agentId}}","symbol":"EURUSDm","broker":"Test Broker","server":"Test-Server","orderTypes":["market"],"minVolume":0.01,"maxVolume":100.00,"volumeStep":0.01,"fillingMode":"IOC","stopsLevelPoints":0,"mode":"{{mode}}","agentVersion":"1.00","serverUtcOffsetMinutes":180}""";
+    /// <summary>I1: the token every hello must carry (TestGateway configures it).</summary>
+    internal const string AgentToken = "test-agent-token";
+
+    internal static string Hello(string accountId, string mode = "observe", string agentId = "mt5-execution-agent-1001", string? token = AgentToken, string extra = "") =>
+        $$"""{"version":1,"type":"agent.hello","accountId":"{{accountId}}","time":1790000000000,"agentId":"{{agentId}}","symbol":"EURUSDm","broker":"Test Broker","server":"Test-Server","orderTypes":["market"],"minVolume":0.01,"maxVolume":100.00,"volumeStep":0.01,"fillingMode":"IOC","stopsLevelPoints":0,"mode":"{{mode}}","agentVersion":"1.00","serverUtcOffsetMinutes":180{{(token is null ? "" : $",\"token\":\"{token}\"")}}{{extra}}}""";
 
     private static string Heartbeat(string accountId) =>
         $$"""{"version":1,"type":"agent.heartbeat","accountId":"{{accountId}}","time":1790000000000,"agentId":"mt5-execution-agent-1001","latencyMs":0}""";
@@ -153,6 +156,122 @@ public class Mt5AgentServerTests
         Assert.Equal(expected, Mt5AgentServer.ReportEventType(status));
     }
 
+    // --- I1 (2026-09-26): agent token, ping, halt, status -------------------
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("wrong-token")]
+    public async Task A_hello_without_the_right_token_is_refused_and_never_registered(string? token)
+    {
+        await using var gateway = await TestGateway.StartAsync();
+        var refusals = new List<string>();
+        gateway.Server.AgentRefused += (_, reason) => { lock (refusals) { refusals.Add(reason); } };
+
+        using var agent = await gateway.ConnectAsync();
+        await agent.SendAsync(Hello("acc-1", token: token));
+
+        Assert.True(await agent.IsClosedByServerAsync());
+        Assert.False(gateway.Server.IsConnected);
+        Assert.Null(gateway.Server.GetHello("acc-1"));
+        lock (refusals)
+        {
+            Assert.Single(refusals);
+            Assert.DoesNotContain(AgentToken, refusals[0]);
+            if (!string.IsNullOrEmpty(token))
+            {
+                Assert.DoesNotContain(token, refusals[0]);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task No_token_configured_refuses_every_agent_even_one_that_sends_a_token()
+    {
+        await using var gateway = await TestGateway.StartAsync(agentToken: "");
+        using var agent = await gateway.ConnectAsync();
+        await agent.SendAsync(Hello("acc-1"));
+
+        Assert.True(await agent.IsClosedByServerAsync());
+        Assert.False(gateway.Server.IsConnected);
+    }
+
+    [Fact]
+    public async Task Pings_go_only_to_agents_that_declare_the_capability()
+    {
+        await using var gateway = await TestGateway.StartAsync(pingInterval: TimeSpan.FromMilliseconds(50));
+        using var modern = await gateway.ConnectAsync();
+        using var legacy = await gateway.ConnectAsync();
+        await modern.SendAsync(Hello("acc-1", extra: ""","capabilities":["ping","halt"]"""));
+        await legacy.SendAsync(Hello("acc-2", agentId: "mt5-execution-agent-2001"));
+        await Eventually(() => gateway.Server.GetHello("acc-1") is not null && gateway.Server.GetHello("acc-2") is not null);
+
+        var line = Encoding.UTF8.GetString(await modern.ReadLineBytesAsync());
+        Assert.Contains("\"type\":\"control.ping\"", line);
+
+        // The legacy agent's first line is the command sent now, not a ping.
+        await Task.Delay(200);
+        Assert.True(await gateway.Server.SendCommandAsync("acc-2", """{"to":"legacy"}""", CancellationToken.None));
+        Assert.Equal(Encoding.UTF8.GetBytes("""{"to":"legacy"}""" + "\n"), await legacy.ReadLineBytesAsync());
+    }
+
+    [Fact]
+    public async Task Halt_reaches_an_agent_that_understands_it_and_nobody_else()
+    {
+        await using var gateway = await TestGateway.StartAsync();
+        using var modern = await gateway.ConnectAsync();
+        using var legacy = await gateway.ConnectAsync();
+        await modern.SendAsync(Hello("acc-1", extra: ""","capabilities":["ping","halt"]"""));
+        await legacy.SendAsync(Hello("acc-2", agentId: "mt5-execution-agent-2001"));
+        await Eventually(() => gateway.Server.GetHello("acc-1") is not null && gateway.Server.GetHello("acc-2") is not null);
+
+        Assert.True(await gateway.Server.SendHaltAsync("acc-1", "emergency stop", CancellationToken.None));
+        var line = Encoding.UTF8.GetString(await modern.ReadLineBytesAsync());
+        Assert.Contains("\"type\":\"control.halt\"", line);
+        Assert.Contains("\"reason\":\"emergency stop\"", line);
+
+        Assert.False(await gateway.Server.SendHaltAsync("acc-2", "emergency stop", CancellationToken.None));
+        Assert.False(await gateway.Server.SendHaltAsync("acc-9", "emergency stop", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Status_is_the_hello_overlaid_by_the_latest_heartbeat_and_refuses_a_halted_agent()
+    {
+        await using var gateway = await TestGateway.StartAsync();
+        using var agent = await gateway.ConnectAsync();
+        await agent.SendAsync(Hello("acc-1", extra:
+            ""","capabilities":["ping","halt"],"identity":"ok","marginMode":"hedging","tradeMode":"demo","terminalTradeAllowed":false,"halted":false,"attachedExperts":[]"""));
+        await Eventually(() => gateway.Server.GetStatus("acc-1") is not null);
+
+        var status = gateway.Server.GetStatus("acc-1")!;
+        Assert.Equal("ok", status.Identity);
+        Assert.Equal("hedging", status.MarginMode);
+        Assert.False(status.TerminalTradeAllowed);
+        Assert.Null(status.CommandRefusal());
+
+        await agent.SendAsync("""{"version":1,"type":"agent.heartbeat","accountId":"acc-1","time":1790000005000,"agentId":"mt5-execution-agent-1001","latencyMs":0,"mode":"observe","identity":"ok","terminalTradeAllowed":true,"halted":true,"gatewaySilentMs":1200,"attachedExperts":["Ultimate_ICT_Gold_Scalper_v4.0"]}""");
+        await Eventually(() => gateway.Server.GetStatus("acc-1")!.Halted == true);
+
+        status = gateway.Server.GetStatus("acc-1")!;
+        Assert.True(status.TerminalTradeAllowed);
+        Assert.Equal(new[] { "Ultimate_ICT_Gold_Scalper_v4.0" }, status.AttachedExperts);
+        Assert.Equal(1200, status.GatewaySilentMs);
+        Assert.StartsWith("HALTED:", status.CommandRefusal());
+    }
+
+    [Fact]
+    public async Task An_identity_mismatch_is_registered_under_the_real_login_but_refuses_commands()
+    {
+        await using var gateway = await TestGateway.StartAsync();
+        using var agent = await gateway.ConnectAsync();
+        await agent.SendAsync(Hello("477029930", extra: ""","identity":"mismatch","expectedAccountId":"12345678" """));
+        await Eventually(() => gateway.Server.GetStatus("477029930") is not null);
+
+        var status = gateway.Server.GetStatus("477029930")!;
+        Assert.Equal("12345678", status.ExpectedAccountId);
+        Assert.StartsWith("IDENTITY_REFUSED:", status.CommandRefusal());
+    }
+
     private static async Task Eventually(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow + Timeout;
@@ -170,9 +289,13 @@ public class Mt5AgentServerTests
     {
         public Mt5AgentServer Server { get; } = server;
 
-        public static async Task<TestGateway> StartAsync(TimeSpan? staleAfter = null, TimeSpan? watchdogPeriod = null)
+        public static async Task<TestGateway> StartAsync(
+            TimeSpan? staleAfter = null,
+            TimeSpan? watchdogPeriod = null,
+            string? agentToken = AgentToken,
+            TimeSpan? pingInterval = null)
         {
-            var server = new Mt5AgentServer(0, IPAddress.Loopback, staleAfter, watchdogPeriod);
+            var server = new Mt5AgentServer(0, IPAddress.Loopback, staleAfter, watchdogPeriod, agentToken, pingInterval);
             var cts = new CancellationTokenSource();
             var run = server.RunAsync(cts.Token);
             var port = await server.Listening.WaitAsync(Timeout);

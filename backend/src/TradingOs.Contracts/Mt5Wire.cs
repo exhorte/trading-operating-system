@@ -9,17 +9,36 @@ namespace TradingOs.Contracts;
 /// </summary>
 public abstract record Mt5Message(int Version, string Type, string AccountId, long Time);
 
+/// <remarks>I1 (2026-09-26): the parameters after ServerUtcOffsetMinutes
+/// come from the execution agent only (the Python observer sends none of
+/// them, so they stay null for it). The agent's hello also carries a
+/// "token", deliberately absent from this record: Mt5AgentServer checks it
+/// on the raw line, and it is never kept, logged or persisted.</remarks>
 public sealed record Mt5HelloMessage(
     int Version, string Type, string AccountId, long Time,
     string AgentId, string Symbol, string Broker, string Server,
     string[] OrderTypes, double MinVolume, double MaxVolume, double VolumeStep,
     string FillingMode, int StopsLevelPoints, string Mode, string AgentVersion,
-    int ServerUtcOffsetMinutes)
+    int ServerUtcOffsetMinutes,
+    string[]? Capabilities = null, string? BuildId = null, string? ModeCeiling = null,
+    string? Identity = null, string? ExpectedAccountId = null, string? TradeMode = null,
+    string? MarginMode = null, bool? FifoClose = null, int? Leverage = null, string? Currency = null,
+    bool? TerminalTradeAllowed = null, bool? ExpertTradeAllowed = null,
+    bool? AccountTradeExpert = null, bool? AccountTradeAllowed = null,
+    bool? Tradable = null, bool? Closable = null, bool? Halted = null,
+    string[]? AttachedExperts = null)
     : Mt5Message(Version, Type, AccountId, Time);
 
+/// <remarks>I1: what can change while an execution agent is connected —
+/// Algo Trading clicked, another EA attached, the halt set on the chart.
+/// Null for the observer's heartbeats.</remarks>
 public sealed record Mt5HeartbeatMessage(
     int Version, string Type, string AccountId, long Time,
-    string AgentId, double LatencyMs)
+    string AgentId, double LatencyMs,
+    string? Mode = null, string? Identity = null,
+    bool? TerminalTradeAllowed = null, bool? ExpertTradeAllowed = null,
+    bool? AccountTradeExpert = null, bool? AccountTradeAllowed = null,
+    bool? Halted = null, long? GatewaySilentMs = null, string[]? AttachedExperts = null)
     : Mt5Message(Version, Type, AccountId, Time);
 
 public sealed record Mt5TickMessage(

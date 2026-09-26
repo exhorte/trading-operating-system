@@ -83,6 +83,19 @@ public sealed class GatewayBridgeService(
             _ = hub.Clients.All.SendAsync("event", envelope, stoppingToken);
             Persist(writer, envelope);
         };
+        // I1: an agent refused for its token retries every second too — one
+        // warning a minute, and the reason never quotes a token.
+        long? lastRefusalWarning = null;
+        agentServer.AgentRefused += (agentId, reason) =>
+        {
+            var now = Environment.TickCount64;
+            if (lastRefusalWarning is { } last && now - last < 60_000)
+            {
+                return;
+            }
+            lastRefusalWarning = now;
+            logger.LogWarning("MT5 execution agent {AgentId} refused: {Reason}", agentId, reason);
+        };
         // ADR 0010: one agent per environment. A refused duplicate retries
         // every second, so the warning is throttled to one a minute.
         long? lastDuplicateWarning = null;

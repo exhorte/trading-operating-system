@@ -129,6 +129,13 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
 
 const MAX_FEED_LENGTH = 20;
 
+/** Newest first, one entry per reportId: since I1 the agent sends its final
+ *  reports again after a reconnection, with the same id (commandId, status,
+ *  time — Mt5WireTranslator.ToExecutionReport). */
+export function withReport(reports: ExecutionReport[], report: ExecutionReport): ExecutionReport[] {
+  return [report, ...reports.filter((existing) => existing.reportId !== report.reportId)].slice(0, MAX_FEED_LENGTH);
+}
+
 export class CockpitStore {
   private snapshot: CockpitSnapshot = EMPTY_COCKPIT_SNAPSHOT;
 
@@ -255,26 +262,26 @@ export class CockpitStore {
       // status by contract — never rendered as a fill. Real EA-05 traffic
       // lands here (Mt5AgentServer -> ExecutionOrderSimulated) as much as
       // anything else that ever reaches this event type.
-      case "execution.order.simulated": {
-        const { report } = envelope.payload as ExecutionReportPayload;
-        this.patch({
-          executionReports: [report, ...this.snapshot.executionReports].slice(
-            0,
-            MAX_FEED_LENGTH,
-          ),
-        });
-        break;
-      }
+      case "execution.order.simulated":
+      case "execution.order.submitted":
       case "execution.order.filled":
+      case "execution.order.partially_filled":
+      case "execution.order.failed":
       case "execution.position.opened":
       case "execution.position.closed": {
         const { report } = envelope.payload as ExecutionReportPayload;
-        this.patch({
-          executionReports: [report, ...this.snapshot.executionReports].slice(
-            0,
-            MAX_FEED_LENGTH,
-          ),
-        });
+        this.patch({ executionReports: withReport(this.snapshot.executionReports, report) });
+        break;
+      }
+      // The agent's REJECTED report travels under this type, next to the
+      // gateway's own rejection acks (Mt5AgentServer.ReportEventType). Until
+      // 2026-09-26 the store ignored it whole: a refused order never reached
+      // the feed. Only a report goes in — an ack is not one.
+      case "execution.command.rejected": {
+        const { report } = envelope.payload as Partial<ExecutionReportPayload>;
+        if (report && typeof report.reportId === "string") {
+          this.patch({ executionReports: withReport(this.snapshot.executionReports, report) });
+        }
         break;
       }
       default:

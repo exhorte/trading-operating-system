@@ -186,6 +186,10 @@ export type ExecutionReportStatus =
   | "filled"
   | "partially_filled"
   | "failed"
+  /** The agent refused the command before any broker call (a local barrier,
+   *  the halt, identity). The Gateway has always emitted it (a REJECTED
+   *  report, lowercased); this union only caught up on 2026-09-26. */
+  | "rejected"
   | "position_opened"
   | "position_modified"
   | "position_closed";

@@ -74,6 +74,25 @@ démarrage de `next dev` après l'ajout de `proxy.ts` a servi 404 partout
 sauf `/`, disparu au redémarrage, jamais revu (noté au runbook). Le jeton
 de l'agent (9765) passe à I1.
 
+**I1 terminé côté code** (détail : fiche EA-05, README de l'agent). Agent
+1.10 : identité tirée du login du terminal (`InpAccountId` facultatif,
+refus sans détacher), halt local persistant (bouton, `control.halt` qui
+ne peut que le poser, fichier), instance unique, spread maximal par symbole
+en unités de prix, jeton de la passerelle lu dans `MQL5\Files`, permissions
+et EA étrangers publiés, store par login, trace d'ordre courte, rapports
+renvoyés à la reconnexion. Passerelle : jeton de l'agent, ping et halt,
+état de l'agent, `SubmitCommand` refuse un agent en halt. Harnais
+`scripts/dev-submit-command.ts`. **Trouvé et corrigé** : les ids courtier
+partaient en nombres alors que le contrat dit chaînes — le rapport du
+premier vrai remplissage aurait été jeté ; la trace `"TradingOS " +
+commandId` dépassait ce qu'un courtier garde (réconciliation aveugle) ; le
+fil du cockpit ignorait les refus. Barrière vérifiée par lecture : un seul
+`OrderSend(`, `g_mode` constante OBSERVE jamais affectée. Gates vertes
+(MetaEditor 0/0, `dotnet test` 109/109, vitest 316/316, unittest 31/31,
+`tsc`, lint, `next build`). **Rien n'est déployé** : le geste de
+l'utilisateur (`start-live -Build`, réattacher l'EA avec
+`InpMaxSpreadCsv`) précède les étapes 2 à 6 du README.
+
 ## 2026-09-25 (**étude connexion/pilotage de l'agent ; I0 côté Gateway**)
 
 Demande : connexion au compte MT5 depuis l'application, bouton pour

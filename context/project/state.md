@@ -188,8 +188,10 @@ ouverts.
   `127.0.0.1` avec contrôle du Host ; vérifié sur une instance isolée. À
   déployer : `pwsh -File scripts\start-live.ps1 -Build`. Le jeton de
   l'agent (9765) passe à I1.
-- **I1 :** durcir l'agent — identité tirée du compte réel, arrêt local,
-  instance unique, seuil de spread par symbole, homme mort.
+- **I1 :** fait côté code le 2026-09-26 — agent 1.10 (identité tirée du
+  login, halt local, instance unique, spread par symbole, jeton, état
+  publié) et passerelle (jeton de l'agent, ping, halt). Barrière intacte.
+  À déployer par l'utilisateur, puis étapes 2 à 6 du README de l'agent.
 - **I2 :** identification complète du compte (compte réel).
 - **Accords donnés le 2026-09-25 :** ADR 0013 (connexion depuis
   l'application), ADR 0014 volet armement, EA-08 (fermeture globale), EA-07

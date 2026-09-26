@@ -44,6 +44,10 @@ var agentBindAny = builder.Configuration.GetValue<bool>("Cockpit:AgentBindAny");
 // guarded surface refuses everything, and the observer refuses this backend.
 var cockpitToken = builder.Configuration["Cockpit:CockpitToken"];
 var observerToken = builder.Configuration["Cockpit:ObserverToken"];
+// I1: the agent token — the MQL5 agent reads it from MQL5\Files
+// (tradingos_agent.token, written there by start-live) and sends it in its
+// hello. Absent = every agent is refused (Mt5AgentServer.TokenRefusal).
+var agentToken = builder.Configuration["Cockpit:AgentToken"];
 
 builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
@@ -62,7 +66,8 @@ var agentStaleSeconds = builder.Configuration.GetValue<int?>("Cockpit:AgentStale
 builder.Services.AddSingleton(new Mt5AgentServer(
     agentPort,
     agentBindAny ? IPAddress.Any : IPAddress.Loopback,
-    TimeSpan.FromSeconds(agentStaleSeconds)));
+    TimeSpan.FromSeconds(agentStaleSeconds),
+    agentToken: agentToken ?? ""));
 builder.Services.AddSingleton(new PersistenceWriter(connectionString));
 builder.Services.AddSingleton(new AuditRepository(connectionString));
 builder.Services.AddSingleton(new RiskTodayRepository(connectionString));
@@ -86,6 +91,12 @@ if (string.IsNullOrEmpty(cockpitToken))
     accessLogger.LogWarning(
         "Cockpit:CockpitToken is not set — the hub and every /api write refuse all requests. " +
         "Run scripts/start-live.ps1 (it writes TRADINGOS_COCKPIT_TOKEN to .env) and recreate this container.");
+}
+if (string.IsNullOrEmpty(agentToken))
+{
+    accessLogger.LogWarning(
+        "Cockpit:AgentToken is not set — every MT5 execution agent is refused. " +
+        "Run scripts/start-live.ps1 (it writes TRADINGOS_AGENT_TOKEN to .env and tradingos_agent.token to MT5) and recreate this container.");
 }
 if (string.IsNullOrEmpty(observerToken))
 {
@@ -120,6 +131,7 @@ app.MapGet("/health", (PersistenceWriter writer, Mt5AgentServer agentServer) => 
     {
         cockpitToken = !string.IsNullOrEmpty(cockpitToken),
         observerToken = !string.IsNullOrEmpty(observerToken),
+        agentToken = !string.IsNullOrEmpty(agentToken),
     },
 }));
 app.MapGet("/api/audit/recent", async (

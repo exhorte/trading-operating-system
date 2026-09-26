@@ -57,6 +57,9 @@ services:
       # committed.
       Cockpit__CockpitToken: "${TRADINGOS_COCKPIT_TOKEN:-}"
       Cockpit__ObserverToken: "${TRADINGOS_OBSERVER_TOKEN:-}"
+      # I1: the MT5 execution agent's token — start-live also writes it to the
+      # terminal's MQL5\Files\tradingos_agent.token, where the agent reads it.
+      Cockpit__AgentToken: "${TRADINGOS_AGENT_TOKEN:-}"
       # The Python observer + MT5 terminal stay on the Windows host, never
       # containerized — host.docker.internal is Docker Desktop's built-in
       # route back to the host (nothing extra to configure on Windows).

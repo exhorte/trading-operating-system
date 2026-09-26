@@ -32,9 +32,10 @@ Ce qui peut piloter le Trading OS sur cette machine, et avec quoi.
 | Observateur (8765) | le backend | jeton de l'observateur ; toute requête avec une Origin (navigateur) refusée |
 | Cockpit Next (3000) | le navigateur | lié à `127.0.0.1` ; `proxy.ts` refuse tout Host hors loopback |
 | Route `/api/cockpit-token` (3000) | les scripts de la page | Host loopback et `Sec-Fetch-Site: same-origin` |
-| Agent EA-05 (9765) | l'EA | **pas encore de jeton** : prévu avec I1 (il faut une entrée côté MQL5) |
+| Agent EA-05 (9765) | l'EA | jeton de l'agent dans le hello depuis I1, lu par l'EA dans `MQL5\Files\tradingos_agent.token` (écrit par `start-live`) ; sans jeton configuré, tout agent refusé |
 
-Les jetons (`TRADINGOS_COCKPIT_TOKEN`, `TRADINGOS_OBSERVER_TOKEN`) vivent dans
+Les jetons (`TRADINGOS_COCKPIT_TOKEN`, `TRADINGOS_OBSERVER_TOKEN`,
+`TRADINGOS_AGENT_TOKEN` depuis I1) vivent dans
 `04_code/.env`, gitignoré, que `scripts/start-live.ps1` complète une fois et
 n'affiche jamais ; `docker compose`, `next dev` et l'observateur le lisent
 eux-mêmes. Sans jeton configuré, chaque porte gardée refuse tout. Le jeton

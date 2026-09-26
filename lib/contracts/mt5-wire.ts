@@ -92,6 +92,35 @@ export interface Mt5HelloMessage extends Mt5Message {
   /** T02a: broker server UTC offset, resolved fresh at every hello — never
    *  hardcoded, since it shifts with DST. Source of the trading-day anchor. */
   serverUtcOffsetMinutes: number;
+  // --- I1 (2026-09-26): execution agent only; absent from the observer's hello.
+  //     The agent also sends a `token`, checked by the Gateway and never kept:
+  //     deliberately not part of this type.
+  /** Control messages the agent understands ("ping", "halt"). */
+  capabilities?: string[];
+  buildId?: string;
+  /** The highest mode this build may ever run in; `mode` is the effective one. */
+  modeCeiling?: Mt5ExecutionMode;
+  /** "ok", or why the agent refuses every command: "mismatch" (terminal on
+   *  another login than the preset expects), "no_account". */
+  identity?: "ok" | "mismatch" | "no_account";
+  expectedAccountId?: string | null;
+  tradeMode?: "demo" | "contest" | "real" | "unknown";
+  marginMode?: "hedging" | "netting" | "exchange" | "unknown";
+  fifoClose?: boolean;
+  leverage?: number;
+  currency?: string;
+  /** The four permissions an order needs — none of them settable by code. */
+  terminalTradeAllowed?: boolean;
+  expertTradeAllowed?: boolean;
+  accountTradeExpert?: boolean;
+  accountTradeAllowed?: boolean;
+  /** Login listed in the agent's InpTradableLogins / InpClosableLogins. */
+  tradable?: boolean;
+  closable?: boolean;
+  /** The agent's local kill switch (chart button, control.halt or a file). */
+  halted?: boolean;
+  /** Every OTHER expert attached in the terminal — Algo Trading arms them all. */
+  attachedExperts?: string[];
 }
 
 export interface Mt5HeartbeatMessage extends Mt5Message {
@@ -99,6 +128,17 @@ export interface Mt5HeartbeatMessage extends Mt5Message {
   agentId: string;
   /** Round-trip latency the agent last measured to the gateway, ms. */
   latencyMs: number;
+  // --- I1: what can change while the execution agent is connected.
+  mode?: Mt5ExecutionMode;
+  identity?: "ok" | "mismatch" | "no_account";
+  terminalTradeAllowed?: boolean;
+  expertTradeAllowed?: boolean;
+  accountTradeExpert?: boolean;
+  accountTradeAllowed?: boolean;
+  halted?: boolean;
+  /** Time since the agent last heard the Gateway (control.ping included). */
+  gatewaySilentMs?: number;
+  attachedExperts?: string[];
 }
 
 export interface Mt5ErrorMessage extends Mt5Message {
@@ -229,6 +269,9 @@ export interface Mt5ReportMessage extends Mt5Message {
   /** Raw MT5 return code, e.g. "TRADE_RETCODE_DONE". */
   brokerRetcode: string | null;
   detail: string;
+  /** I1: a final report sent again after a reconnection, with its original
+   *  time — same report id at the Gateway (commandId:status:time). */
+  replayed?: boolean;
 }
 
 /**

@@ -218,8 +218,11 @@ pwsh -File scripts\start-live.ps1 -WithSetupPipeline  # + exportateur et worker 
 ```
 
 Première étape depuis I0 (2026-09-26) : les jetons locaux
-(`TRADINGOS_COCKPIT_TOKEN`, `TRADINGOS_OBSERVER_TOKEN`) sont ajoutés à
-`.env` s'ils manquent, jamais affichés. Un jeton ajouté change
+(`TRADINGOS_COCKPIT_TOKEN`, `TRADINGOS_OBSERVER_TOKEN`, et depuis I1
+`TRADINGOS_AGENT_TOKEN`) sont ajoutés à `.env` s'ils manquent, jamais
+affichés. Le jeton de l'agent est aussi réécrit à chaque lancement dans
+`MQL5\Files\tradingos_agent.token` du terminal (chemin donné par
+`probe_terminal.py`), où l'agent le lit : un agent sans lui est refusé. Un jeton ajouté change
 l'environnement du service `backend` : `docker compose up` recrée alors le
 conteneur de lui-même. Le script s'arrête si le backend tourne sur une image
 d'avant les jetons (relancer avec `-Build`) ou si le conteneur ne les a pas

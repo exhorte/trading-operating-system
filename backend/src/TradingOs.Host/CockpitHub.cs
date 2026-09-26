@@ -103,6 +103,15 @@ public sealed class CockpitHub(
             return;
         }
 
+        // I1: an agent that says it is halted or not who it should be gets
+        // nothing — it would refuse anyway; this keeps the refusal here.
+        var refusal = agentServer.GetStatus(command.AccountId)?.CommandRefusal();
+        if (refusal is not null)
+        {
+            await RejectAsync(command, refusal);
+            return;
+        }
+
         var lean = Mt5WireTranslator.FlattenPlaceOrder(command);
         var sent = await agentServer.SendCommandAsync(command.AccountId, lean.ToJson(), CancellationToken.None);
         if (!sent)

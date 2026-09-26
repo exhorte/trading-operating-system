@@ -155,11 +155,14 @@ public static class Mt5WireTranslator
     }
 
     /// <summary>Lean execution.report → dashboard report view. SIMULATED maps to
-    /// the dedicated "simulated" status — never to a fill.</summary>
+    /// the dedicated "simulated" status — never to a fill. I1: the id is
+    /// derived from (commandId, status, time) instead of a fresh GUID — the
+    /// agent sends its final reports again after a reconnection with their
+    /// original time, and execution_reports keeps one row per id.</summary>
     public static ExecutionReportView ToExecutionReport(Mt5ReportMessage report, string agentId)
     {
         return new ExecutionReportView(
-            ReportId: Guid.NewGuid().ToString(),
+            ReportId: $"{report.CommandId}:{report.Status}:{report.Time}",
             CommandId: report.CommandId,
             CorrelationId: report.CommandId,
             AccountId: report.AccountId,

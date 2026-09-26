@@ -130,3 +130,45 @@ Outbound (internal `ExecutionCommand` → MT5 lean):
 - The agent refuses any command past its `expiresAt` with status `EXPIRED`.
 - Every `execution.ack` and `execution.report` echoes the originating command `id`; the gateway/engine reconcile reports against intended commands.
 - On reconnect the agent re-sends `agent.hello`, then `account.snapshot` and `positions.snapshot`; the engine reconciles open positions and pending commands before execution is re-enabled. No new command is trusted until reconciliation completes.
+
+## I1 (2026-09-26) — what the execution agent adds
+
+Implemented in `tools/mt5-execution-agent/TradingOsAgent.mq5` and
+`Mt5AgentServer.cs`; TypeScript mirror in `lib/contracts/mt5-wire.ts`.
+
+**`agent.hello`** now also carries: `token` (checked by the Gateway on the
+raw line, never kept — no field for it in `Mt5HelloMessage`),
+`capabilities` (`["ping","halt"]`), `buildId`, `modeCeiling` (the build's
+highest mode; `mode` is the effective one), `identity` (`ok` | `mismatch` |
+`no_account`), `expectedAccountId`, `tradeMode`, `marginMode`
+(`hedging` | `netting` | `exchange`), `fifoClose`, `leverage`, `currency`,
+the four trading permissions (`terminalTradeAllowed`, `expertTradeAllowed`,
+`accountTradeExpert`, `accountTradeAllowed`), `tradable`, `closable`,
+`halted`, `attachedExperts` (every other EA attached in the terminal).
+`accountId` is the terminal's login (`ACCOUNT_LOGIN`), no longer an input.
+
+**`agent.heartbeat`** now also carries what can change while connected:
+`mode`, `identity`, the four permissions, `halted`, `gatewaySilentMs`,
+`attachedExperts`.
+
+**Gateway → agent**: `control.ping` every 5 s to agents that declare
+`ping` (liveness; arming will use it, ADR 0014); `control.halt` with a
+`reason` to agents that declare `halt` — it can only SET the agent's local
+kill switch, never lift it (only a human on the MT5 chart does). Older
+agents get neither.
+
+**`execution.report`**: broker ids and `brokerRetcode` are JSON strings,
+as this contract always said — until I1 the agent sent bare numbers, which
+the Gateway's parser refused (it now accepts both). `replayed: true` marks
+a final report sent again after a reconnection with its original `time`;
+the Gateway's report id is `commandId:status:time`, so a copy of a stored
+report is a no-op. The order comment is a short trace
+(`"TOS " + 16 hex of SHA-256(commandId)`, 20 characters) instead of
+`"TradingOS " + commandId`, which ran past what a broker keeps and would
+have defeated reconciliation.
+
+**Refusal reasons** lead with a code: `HALTED`, `IDENTITY_REFUSED`,
+`ACCOUNT_MISMATCH`, `SYMBOL_MISMATCH`, `ORDER_TYPE_UNSUPPORTED`,
+`VOLUME_LIMIT`, `STOP_MISSING`, `POSITIONS_LIMIT`, `SYMBOL_UNAVAILABLE`,
+`SPREAD_LIMIT_MISSING`, `SPREAD_TOO_WIDE`, and on the (unreachable)
+execution path `LOGIN_NOT_TRADABLE`, `STORE_UNWRITABLE`.

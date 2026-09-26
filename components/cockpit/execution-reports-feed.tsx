@@ -15,6 +15,7 @@ const REPORT_TONES: Record<ExecutionReportStatus, PillTone> = {
   filled: "profit",
   partially_filled: "warning",
   failed: "loss",
+  rejected: "loss",
   position_opened: "profit",
   position_modified: "info",
   position_closed: "muted",

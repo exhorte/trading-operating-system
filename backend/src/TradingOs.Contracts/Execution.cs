@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TradingOs.Contracts;
 
@@ -136,11 +138,19 @@ public sealed record Mt5AckMessage(
     string CommandId, string Status, string? Reason)
     : Mt5Message(Version, Type, AccountId, Time);
 
+/// <remarks>I1: <c>Replayed</c> marks a final report the agent sends again
+/// after a reconnection, with its original time — the Gateway's report id
+/// (commandId, status, time) makes the copy of a report it already has a
+/// no-op.</remarks>
 public sealed record Mt5ReportMessage(
     int Version, string Type, string AccountId, long Time,
     string CommandId, string Status, string Symbol, string Side,
-    string? BrokerOrderId, string? BrokerPositionId,
-    double? FilledVolume, double? AveragePrice, string? BrokerRetcode, string Detail)
+    [property: JsonConverter(typeof(StringOrNumberConverter))] string? BrokerOrderId,
+    [property: JsonConverter(typeof(StringOrNumberConverter))] string? BrokerPositionId,
+    double? FilledVolume, double? AveragePrice,
+    [property: JsonConverter(typeof(StringOrNumberConverter))] string? BrokerRetcode,
+    string Detail,
+    bool? Replayed = null)
     : Mt5Message(Version, Type, AccountId, Time);
 
 // --- EA-06 reconciliation (agent → gateway), mirrors mt5-wire.ts ---
@@ -151,8 +161,10 @@ public sealed record Mt5ReportMessage(
 public sealed record Mt5ReconciledMessage(
     int Version, string Type, string AccountId, long Time,
     string CommandId, string Outcome, string? Symbol, string? Side,
-    string? BrokerOrderId, string? BrokerPositionId,
-    double? FilledVolume, double? AveragePrice, string? BrokerRetcode,
+    [property: JsonConverter(typeof(StringOrNumberConverter))] string? BrokerOrderId,
+    [property: JsonConverter(typeof(StringOrNumberConverter))] string? BrokerPositionId,
+    double? FilledVolume, double? AveragePrice,
+    [property: JsonConverter(typeof(StringOrNumberConverter))] string? BrokerRetcode,
     int Attempts, string Detail)
     : Mt5Message(Version, Type, AccountId, Time);
 
@@ -164,3 +176,39 @@ public sealed record Mt5PositionScannedMessage(
     string BrokerPositionId, string Symbol, string Side, double Volume,
     int MagicNumber, bool IsExternal, string? KnownCommandId)
     : Mt5Message(Version, Type, AccountId, Time);
+
+/// <summary>
+/// I1 (2026-09-26): broker ids and retcodes are strings on the wire
+/// (lib/contracts/mt5-wire.ts — a 64-bit ticket does not survive a
+/// JavaScript number), but until I1 the MQL5 agent sent them as bare
+/// numbers, and the parser refused those: the report of the first real
+/// fill would have been dropped as a malformed frame. The agent now sends
+/// strings; this reads either, so a report is never lost over a type.
+/// </summary>
+public sealed class StringOrNumberConverter : JsonConverter<string?>
+{
+    public override bool HandleNull => true;
+
+    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.TokenType switch
+        {
+            JsonTokenType.Null => null,
+            JsonTokenType.String => reader.GetString(),
+            JsonTokenType.Number => reader.TryGetInt64(out var whole)
+                ? whole.ToString(CultureInfo.InvariantCulture)
+                : reader.GetDouble().ToString(CultureInfo.InvariantCulture),
+            _ => throw new JsonException($"expected a string or a number, got {reader.TokenType}"),
+        };
+
+    public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
+    {
+        if (value is null)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            writer.WriteStringValue(value);
+        }
+    }
+}

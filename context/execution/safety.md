@@ -51,3 +51,22 @@ implémente chaque barrière comme un contrôle local avant `OrderSend`, et par
 EA-06 (réconciliation), qui s'appuie sur le magic number et
 `ACCOUNT_MISMATCH` pour distinguer les positions gérées des positions
 externes.
+
+## État de l'implémentation (2026-09-26, après I1)
+
+| Barrière | Où | Code de refus |
+|---|---|---|
+| Whitelist de symboles | `ValidateOrderCommand`, `InpAllowedSymbolsCsv` | `SYMBOL_MISMATCH` |
+| Volume maximum | `ValidateOrderCommand`, `InpMaxVolumePerOrder` | `VOLUME_LIMIT` |
+| Positions simultanées | `ValidateOrderCommand`, `InpMaxOpenPositions` (toutes positions du terminal) | `POSITIONS_LIMIT` |
+| Stop-loss obligatoire | `ValidateOrderCommand` | `STOP_MISSING` |
+| Spread maximum | `ValidateOrderCommand`, **par symbole en unités de prix** depuis I1 (`InpMaxSpreadCsv`) ; symbole sans entrée = refus | `SPREAD_LIMIT_MISSING`, `SPREAD_TOO_WIDE` |
+| Kill switch local | **Existe depuis I1** : fichier dans `MQL5\Files` (bouton du graphique, `control.halt` qui ne peut que le poser, ou dépôt manuel de `tradingos_halt.flag`) ; levé seulement par un humain sur le graphique ; tient backend éteint | `HALTED` |
+| Compte de la commande ≠ terminal | `HandleOrderCommand`, contre le **login réel** du terminal depuis I1 | `ACCOUNT_MISMATCH` |
+| Identité attendue (nouveau, I1) | `InpAccountId` facultatif ; s'il diffère du login, l'agent reste chargé et refuse tout | `IDENTITY_REFUSED` |
+| Magic number | `InpMagicNumber` > 0, porté par tout ordre ; positions externes signalées (EA-06) | — |
+| Instance unique (nouveau, I1) | variable globale temporaire du terminal + liste des graphiques ; la seconde instance se retire | — |
+
+Toutes ces barrières s'appliquent avant l'accusé `ACCEPTED`, en mode
+`observe` comme ailleurs : une commande refusée ne produit jamais de
+`SIMULATED`.

@@ -70,6 +70,7 @@ def main() -> int:
             return 1
         available = {name: mt5.symbol_info(name) is not None for name in GOLD_CANDIDATES}
         firm = detect_firm(info.company)
+        terminal = mt5.terminal_info()
         print(json.dumps({
             "login": str(info.login),
             "company": info.company,
@@ -79,6 +80,10 @@ def main() -> int:
             "firm": firm,
             "goldSymbols": available,
             "observerSymbol": choose_gold_symbol(firm, available),
+            # I1: where start-live writes the execution agent's token
+            # (<dataPath>\MQL5\Files\tradingos_agent.token) — a folder
+            # path, nothing secret.
+            "dataPath": terminal.data_path if terminal is not None else None,
         }))
         return 0
     finally:

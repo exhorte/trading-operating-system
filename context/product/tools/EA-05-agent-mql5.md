@@ -564,3 +564,61 @@ explicite.
   (geste de l'utilisateur : `pwsh -File scripts\start-live.ps1 -Build`).
   **Reste pour I1** : le jeton de l'agent sur le port 9765 (il faut une
   entrée côté MQL5).
+
+- 2026-09-26 (suite) — **I1 : l'agent durci, `OrderSend` toujours
+  inatteignable** (étude, I1 ; détail dans le README de l'agent et
+  `context/execution/safety.md`, « État de l'implémentation »).
+
+  Agent (`TradingOsAgent.mq5` 1.10, `CommandStore.mqh`) :
+  - **identité tirée du terminal** (`ACCOUNT_LOGIN`, relue chaque seconde) ;
+    `InpAccountId` devient une attente facultative : s'il diffère, l'agent
+    reste chargé et refuse tout (`IDENTITY_REFUSED`), jamais `INIT_FAILED` ;
+    allowlists `InpTradableLogins` / `InpClosableLogins` (vides = aucun) ;
+  - **halt local** persistant (fichier dans `MQL5\Files`) : bouton du
+    graphique, `control.halt` (pose seulement), ou fichier déposé à la main ;
+    levé seulement par un humain sur le graphique ; tient backend éteint ;
+  - **instance unique** par terminal ;
+  - **spread maximal par symbole, en unités de prix** (`InpMaxSpreadCsv`,
+    remplace `InpMaxSpreadPoints`) ; un symbole sans entrée refuse tout ;
+  - **jeton de la passerelle** lu dans `MQL5\Files\tradingos_agent.token`
+    (écrit par `start-live`) ;
+  - hello et heartbeat publient plafond et mode effectif, build, hedging ou
+    netting, FIFO, les quatre permissions, le halt et les EA étrangers
+    attachés ; `control.ping` reçu toutes les 5 s (`gatewaySilentMs`) ;
+  - store par login, écriture en booléen (un `UNKNOWN` non écrit bloque
+    l'ordre), trace d'ordre courte (20 caractères), remplissage lu dans
+    `SYMBOL_FILLING_MODE`, rapports finaux renvoyés à chaque reconnexion,
+    codes de refus en tête de chaque motif.
+
+  Passerelle : jeton de l'agent vérifié sur la ligne brute du hello, jamais
+  gardé (refus fermé sans jeton configuré) ; ping et halt seulement vers les
+  agents qui les déclarent ; état de l'agent (`GetStatus`) ; `SubmitCommand`
+  refuse un agent en halt ou à l'identité refusée ; identifiant de rapport
+  déterministe. Harnais `scripts/dev-submit-command.ts` pour les étapes 2 et
+  3 du README (lancé par l'utilisateur, jamais par Claude sur un agent réel).
+
+  **Trouvé en écrivant I1, corrigé** : l'agent envoyait `brokerOrderId`,
+  `brokerPositionId` et `brokerRetcode` en nombres, alors que le contrat dit
+  chaînes — la passerelle les refusait : **le rapport du premier vrai
+  remplissage aurait été jeté comme trame illisible** (défaut présent depuis
+  l'incrément 6, invisible tant qu'aucun ordre n'a tourné). L'agent envoie
+  des chaînes et la passerelle accepte les deux. Aussi : la trace
+  `"TradingOS " + commandId` dépassait les ~31 caractères qu'un courtier
+  garde, ce qui aurait rendu la réconciliation EA-06 aveugle ; et le fil du
+  cockpit ignorait tout refus (`execution.command.rejected`, point ouvert de
+  l'étude) — il les affiche désormais, sans doublon.
+
+  **Vérifié** : compilation MetaEditor 0 erreur 0 avertissement ; un seul
+  `OrderSend(` (dans `ExecuteOrder`, première instruction = garde de mode),
+  aucun `OrderSendAsync`/`CTrade`/`Trade.mqh`, `g_mode` `const
+  MODE_OBSERVE` jamais affecté, un seul appelant de `ExecuteOrder`, sous
+  `g_mode == MODE_CONFIRM`. `dotnet test` 109/109 (15 nouveaux), vitest
+  (4 nouveaux sur le store), unittest observateur/sonde 31/31. Harnais testé
+  contre une passerelle isolée sans agent : commande partie, refusée par la
+  passerelle ; mauvais jeton ou Origin étrangère : connexion refusée.
+
+  **Non vérifié en réel** (gestes de l'utilisateur) : l'agent attaché tourne
+  encore l'ancien code ; il faut `start-live -Build` (jeton de l'agent,
+  image), réattacher l'EA avec `InpMaxSpreadCsv` renseigné, puis les étapes
+  2 à 6 du README. MT5 lancé à neuf chargerait le nouvel `.ex5` avec l'ancien
+  preset : sans danger (spread non configuré = tout refusé ; mode OBSERVE).

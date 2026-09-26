@@ -15,29 +15,63 @@ code.
   is `CONFIRM`. No execution path reaches a broker without passing that test.
 - **Mode is fixed at `OBSERVE`** for the whole lifetime of this build — a
   compile-time `const`, not an input, not settable by any message this agent
-  handles (`control.set_mode` is logged and ignored, EA-07's job). So the
-  guard above can never pass and the execution body is provably dead code:
-  every accepted command still reports `SIMULATED` today.
-- **Writing that path and being allowed to run it are two separate
-  approvals.** Making `CONFIRM` reachable is EA-07, under the conditions in
-  its own fiche — not a config change here.
+  handles (`control.set_mode` is logged and ignored). So the guard above can
+  never pass and the execution body is provably dead code: every accepted
+  command still reports `SIMULATED` today.
+- **The path opens increment by increment.** The approvals of 2026-09-25/26
+  (ADR 0014 arming, EA-07, EA-08, ADR 0015 autonomy) cover the study's I4 to
+  I8 (`02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`); each
+  widening lands in its own increment, after its ADR or fiche. Not in this
+  build.
 - **Local barriers are a last line of defense, never a decision** (ADR 0007).
   The Risk Engine, upstream, is what actually decides.
 
-## What this build does
+## What this build does (I1, 2026-09-26)
 
-`connect` → `heartbeat` → `receive` → idempotency check → account check →
-expiry check → `validate` (local barriers) → `acknowledge` → then the mode
-fork: `execute` in `CONFIRM` (unreachable here, see Safety) or `report`
-`SIMULATED` in every other mode — which is every run of this build. No
-`reconcile` yet (EA-06).
+`connect` (with the Gateway token) → `hello` → `heartbeat` / `control.ping`
+→ `receive` → idempotency check → **halt** → **identity** → account check
+→ expiry check → `validate` (local barriers) → `acknowledge` → then the
+mode fork: `execute` in `CONFIRM` (unreachable here, see Safety) or `report`
+`SIMULATED` in every other mode — which is every run of this build. EA-06
+reconciliation and position scan run on every connect and heartbeat; final
+reports of the last hour are sent again on every connect.
+
+- **Identity comes from the terminal** (`ACCOUNT_LOGIN`, `ACCOUNT_SERVER`),
+  read at start and re-read every second: the terminal can switch accounts
+  under a running agent. `InpAccountId` is only an optional expectation: if
+  set and different, the agent stays loaded but refuses every command
+  (`IDENTITY_REFUSED`) — never `INIT_FAILED`, which would detach it on each
+  account switch. The `accountId` it announces is the login.
+- **One instance per terminal.** A second `TradingOsAgent` removes itself
+  (`INIT_FAILED`, with a line in the Experts log).
+- **Local halt** — see below.
+- **Hello and heartbeat publish** the mode ceiling and effective mode, the
+  build, `hedging`/`netting`, FIFO, the four trading permissions, the halt,
+  and every other EA attached to this terminal (the Algo Trading button arms
+  them all).
 
 On the execution path, the command is written to disk as `UNKNOWN` *before*
 the broker call and rewritten with the real outcome after, so an agent that
 dies mid-call leaves `UNKNOWN` behind and a replay of that `commandId`
 returns `DUPLICATE` without ever sending a second order (ADR 0010, "jamais
-deux positions"). Resolving an `UNKNOWN` is EA-06's reconciliation, never a
-retry from the agent.
+deux positions"). Since I1, an `UNKNOWN` line that cannot be written stops
+the order (`STORE_UNWRITABLE`). The store is one file per login and magic:
+`MQL5\Files\tradingos_commands_<login>_<magic>.log`.
+
+## Local halt (kill switch)
+
+Works with the backend off: its source of truth is a file in `MQL5\Files`.
+
+- **Set it**: the red **HALT Trading OS agent** button on the chart (one
+  click, no dialog), a `control.halt` from the Gateway, or by hand: create
+  `MQL5\Files\tradingos_halt.flag` (any content) — halts whatever login the
+  terminal is on.
+- **While set**: every new command is refused `HALTED`. It never closes a
+  position (and will never block a close, EA-08).
+- **Lift it**: only a human, on the chart — click the button again (it reads
+  **AGENT HALTED - click to lift**) and confirm, or delete the flag files
+  (`tradingos_halt.flag`, `tradingos_halt_<login>.flag`). The Gateway can set
+  it, never lift it.
 
 ## Prerequisites
 
@@ -47,9 +81,13 @@ retry from the agent.
    for this agent on `Cockpit:AgentPort` (default `9765` — see
    `Program.cs`). This is a **plain TCP** socket, not WebSocket/WSS — see
    `Mt5AgentServer.cs`'s doc comment for why.
-3. Every symbol in `InpAllowedSymbolsCsv` visible in **Market Watch**
+3. **The Gateway token** in `MQL5\Files\tradingos_agent.token` — written by
+   `scripts/start-live.ps1` from `TRADINGOS_AGENT_TOKEN` in `.env` (I1).
+   Never an input: an input lands in the preset and the chart properties.
+   Without it the Gateway refuses the agent (it logs why, once a minute).
+4. Every symbol in `InpAllowedSymbolsCsv` visible in **Market Watch**
    (right-click → Show All if needed).
-4. The Gateway address — `127.0.0.1`, the `InpGatewayHost` value — added in
+5. The Gateway address — `127.0.0.1`, the `InpGatewayHost` value — added in
    **Tools → Options → Expert Advisors → Allow WebRequest for listed URL**.
    MT5 checks `SocketConnect` against that list: with the address missing
    the EA logs `initial connection to 127.0.0.1:9765 failed (error 4014)`
@@ -63,66 +101,73 @@ retry from the agent.
 1. Copy (or symlink) this folder's `.mq5` and `Include/` into the
    terminal's `MQL5/Experts/` data folder — MetaEditor's "Open Data Folder"
    button finds it. Preserve the `Include/` subfolder relative to the
-   `.mq5` file.
+   `.mq5` file. (On this machine: a junction, see the runbook.)
 2. Open `TradingOsAgent.mq5` in MetaEditor and compile (F7), or run the
    headless gate (see `context/governance/quality_gates.md`). After a
    headless compile, an EA already attached keeps running the old code
    until it is removed and attached again (verified 2026-09-24).
-3. Attach the compiled EA to **one** chart — one instance per terminal: a
-   second instance with the same preset registers for the same account.
-   `Allow Algo Trading` can stay unchecked while the mode is `OBSERVE`
-   (sockets and position reads do not need it), which adds a terminal-side
-   barrier on top of the code's. **Every input below is required —
-   the EA refuses to start (`INIT_PARAMETERS_INCORRECT`) if `InpAccountId`
-   is empty or `InpMagicNumber` is not positive.**
+3. Attach the compiled EA to **one** chart. `Allow Algo Trading` can stay
+   unchecked while the mode is `OBSERVE` (sockets and position reads do not
+   need it), which adds a terminal-side barrier on top of the code's.
+   `InpMagicNumber` must be positive or the EA refuses to start
+   (`INIT_PARAMETERS_INCORRECT`).
 
 ## Inputs
 
 | Input | Meaning |
 | --- | --- |
 | `InpGatewayHost` / `InpGatewayPort` | Where the Gateway listens (default `127.0.0.1:9765`). |
-| `InpAccountId` | **Required.** The Trading OS `accountId` this terminal serves. Must match what the Gateway routes commands to — a mismatch is exactly `ACCOUNT_MISMATCH`, by design. |
-| `InpMagicNumber` | **Required, must be unique per environment** (ADR 0010 isolation: one terminal, one agent instance, one magic number per account). Also used to derive the on-disk command-store filename. |
+| `InpAccountId` | **Optional since I1.** The login this terminal is expected to be on. Empty = serve whatever login it is on. Set and different = identity `mismatch`: loaded, every command refused. |
+| `InpMagicNumber` | **Required, must be unique per environment** (ADR 0010 isolation: one terminal, one agent instance, one magic number per account). Also names the command store. |
+| `InpTradableLogins` | I1. CSV of logins on which an order may **ever** reach the broker (CONFIRM only — not in this build). Empty = none. |
+| `InpClosableLogins` | I1. CSV of logins on which a close may ever reach the broker (EA-08, I5 — not in this build). Empty = none. |
 | `InpHeartbeatSeconds` | Heartbeat interval sent to the Gateway. |
 | `InpMaxVolumePerOrder` | Local barrier — lots. |
-| `InpMaxOpenPositions` | Local barrier — counts **all** positions on this terminal; excluding externally-opened ones is EA-06. |
-| `InpMaxSpreadPoints` | Local barrier — re-checked at validation time, not just when a setup was proposed. |
-| `InpAllowedSymbolsCsv` | Local whitelist, **broker-side** names (e.g. `EURUSDm,GBPUSDm` — see `context/domain/symbols-broker.md`). |
-| `InpMaxSlippagePoints` | `MqlTradeRequest.deviation` on the execution path (increment 6) — a bound on an acceptable fill, never a decision. Unused while the mode is `OBSERVE`. |
+| `InpMaxOpenPositions` | Local barrier — counts **all** positions on this terminal, external ones included (EA-06 fiche decision). |
+| `InpMaxSpreadCsv` | I1, replaces `InpMaxSpreadPoints`. Maximum spread **per symbol, in price units**: `EURUSDm=0.00025,XAUUSDm=0.40` (2.5 pips; 40 cents). A symbol with no entry refuses every order (`SPREAD_LIMIT_MISSING`) — no limit is never "unlimited". A single point limit of 50 refused every XAUUSDm order (≈ 260 points at 3 digits). |
+| `InpAllowedSymbolsCsv` | Local whitelist, **broker-side** names (e.g. `XAUUSDm,EURUSDm` — see `context/domain/symbols-broker.md`). Outside it: `SYMBOL_MISMATCH`. |
+| `InpMaxSlippagePoints` | `MqlTradeRequest.deviation` on the execution path — a bound on an acceptable fill, never a decision. Unused while the mode is `OBSERVE`. |
+| `InpReconciliationLookbackDays` | EA-06: how far back history is searched to resolve an `UNKNOWN`. |
+| `InpReportReplayMinutes` | I1: final reports recorded this recently are sent again on every connect (default 60). |
 
-## Verification procedure (do this before moving to the next increment)
+## Verification procedure
 
-Each step below corresponds to one increment in
-`context/product/tools/EA-05-agent-mql5.md`. Do not skip ahead.
+Each step corresponds to an increment in
+`context/product/tools/EA-05-agent-mql5.md`. Commands are sent with the dev
+harness — **run by the trader**, never by Claude against a live agent:
 
-1. **Connexion et heartbeat.** Start the Gateway, attach the EA. Check
-   `GET http://localhost:5080/health` — `agentConnected` should turn `true`,
-   and the Gateway log should show `MT5 execution agent connected`. The EA
-   prints only its *first* connection failure — retries (every second) are
-   silent, and so is success — so a quiet `Experts` tab proves nothing.
-   The database should also hold one `agent.connected` envelope for
+```bash
+npx tsx scripts/dev-submit-command.ts --account <login> --symbol EURUSDm --side buy --volume 0.01 --sl <price> --tp <price>
+```
+
+1. **Connexion et heartbeat.** `GET http://localhost:5080/health` —
+   `agentConnected: true`; the Gateway log shows `MT5 execution agent
+   connected`. The EA prints only its *first* connection failure — retries
+   (every second) are silent, and so is success — so a quiet `Experts` tab
+   proves nothing. The database holds one `agent.connected` envelope for
    `mt5-execution-agent-<magic>` and ~12 `agent.heartbeat` per minute at
-   `InpHeartbeatSeconds=5` (twice that means two instances are attached).
-   Passed for the first time on 2026-09-24 (Exness demo, `EURUSDm`).
-2. **Réception et accusés.** Send a test `execution.order` through the
-   cockpit's command path (same shape `CockpitHub.SubmitCommand` already
-   uses for the Python observer). Confirm `execution.ack` (`ACCEPTED`) then
-   `execution.report` (`SIMULATED`) arrive and are visible in the cockpit —
-   this is the same command loop already validated live against the Python
-   observer stub, now carried by this agent instead.
-3. **Validation locale.** Send a command with a symbol NOT in
-   `InpAllowedSymbolsCsv`, a volume above `InpMaxVolumePerOrder`, no
-   stop-loss, and — most importantly — an `accountId` that does not match
-   `InpAccountId`. Confirm each is `REJECTED` with the right reason, and
-   that `ACCOUNT_MISMATCH` is tested against a **real** second account, not
-   simulated.
+   `InpHeartbeatSeconds=5` (twice that means two instances). Passed for the
+   first time on 2026-09-24 (Exness demo, `EURUSDm`). Since I1: an agent
+   without the token is refused — `docker logs tradingos-backend` says why.
+2. **Réception et accusés.** A valid command through the harness: `ACCEPTED`
+   then `SIMULATED` come back, and appear in the cockpit's execution feed.
+3. **Validation locale.** Through the harness: a symbol outside
+   `InpAllowedSymbolsCsv` (`SYMBOL_MISMATCH`), a volume above
+   `InpMaxVolumePerOrder` (`VOLUME_LIMIT`), `--sl 0` (`STOP_MISSING`), a
+   symbol without `InpMaxSpreadCsv` entry (`SPREAD_LIMIT_MISSING`). Identity:
+   set `InpAccountId` to another login — the agent stays attached, its hello
+   says `identity: mismatch`, every command comes back `IDENTITY_REFUSED`.
+   (A real `ACCOUNT_MISMATCH` needs the Gateway to misroute a command: since
+   I1 the agent registers under its real login, so it is defence in depth.)
 4. **Persistance.** Send a command, note its `commandId`. Kill the MT5
    terminal process (not just the EA) and restart it. Replay the exact same
-   `commandId`. Confirm the response is `DUPLICATE` with the **original**
-   recorded result — never a fresh `SIMULATED`.
-
-Only once all four are confirmed does increment 6 (execution) get written —
-and only with explicit approval, separately, per the fiche.
+   `commandId`. Confirm `DUPLICATE` with the **original** recorded result —
+   never a fresh `SIMULATED`.
+5. **Halt (I1).** Stop the backend; click **HALT** on the chart; start the
+   backend: the heartbeat says `halted: true` and every command comes back
+   `HALTED`. Lift it on the chart (button + confirm).
+6. **Instance unique (I1).** Attach the EA to a second chart: it removes
+   itself, the first keeps running.
 
 ## Known limitations of this build
 
@@ -132,7 +177,12 @@ and only with explicit approval, separately, per the fiche.
   whitelisted symbol regardless.
 - The JSON reader/writer (`Include/JsonLite.mqh`) is a purpose-built
   flat-object scanner, not a general JSON parser — every message this agent
-  handles today is flat (no nested objects/arrays). Do not extend it to a
-  nested payload without rewriting it as a real parser first.
+  **reads** is flat. Do not extend it to a nested payload without rewriting
+  it as a real parser first. (It writes arrays — `attachedExperts` — which
+  the Gateway's real JSON parser reads.)
 - `PositionsTotal()` counts every position on the terminal, not just this
-  agent's own (magic-number filtering for external positions is EA-06).
+  agent's own (EA-06 decision: attribute, never loosen).
+- An `EXTERNAL_POSITION` line is printed on every heartbeat for each
+  position that is not the agent's — noisy when trading by hand alongside.
+- `control.ping` only feeds `gatewaySilentMs` for now; a silent Gateway
+  disarms the agent once arming exists (ADR 0014, I4).

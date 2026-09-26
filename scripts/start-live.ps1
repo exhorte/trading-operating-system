@@ -92,14 +92,25 @@ function Ensure-LocalToken([string]$envPath, [string]$name) {
     return $true
 }
 
-# --- 0. Jetons locaux (I0) ----------------------------------------------------
+function Read-EnvValue([string]$envPath, [string]$name) {
+    # The last "NAME=value" line wins, like docker compose. Never printed.
+    if (-not (Test-Path $envPath)) { return $null }
+    $value = $null
+    foreach ($line in [System.IO.File]::ReadAllLines($envPath)) {
+        if ($line -match "^[ \t]*$([regex]::Escape($name))[ \t]*=[ \t]*(\S+)[ \t]*$") { $value = $Matches[1] }
+    }
+    return $value
+}
+
+# --- 0. Jetons locaux (I0, I1) ------------------------------------------------
 # Secrets partagés entre les processus du Trading OS : le cockpit les présente
-# au hub et aux écritures /api, le backend à l'observateur. docker compose et
-# next dev lisent .env eux-mêmes ; l'observateur aussi.
+# au hub et aux écritures /api, le backend à l'observateur, l'agent MQL5 à la
+# passerelle (I1 — copié à l'étape 3 dans MQL5\Files du terminal). docker
+# compose et next dev lisent .env eux-mêmes ; l'observateur aussi.
 Step "Jetons locaux (.env)"
 $envFile = Join-Path $root ".env"
 $created = @()
-foreach ($tokenName in @("TRADINGOS_COCKPIT_TOKEN", "TRADINGOS_OBSERVER_TOKEN")) {
+foreach ($tokenName in @("TRADINGOS_COCKPIT_TOKEN", "TRADINGOS_OBSERVER_TOKEN", "TRADINGOS_AGENT_TOKEN")) {
     if (Ensure-LocalToken $envFile $tokenName) { $created += $tokenName }
 }
 if ($created) {
@@ -158,11 +169,15 @@ if (-not $healthy.access) {
     Fail ("Le backend tourne sur une image d'avant les jetons (I0) : l'observateur le refuserait. " +
         "Relance avec -Build : pwsh -File scripts\start-live.ps1 -Build")
 }
-if (-not ($healthy.access.cockpitToken -and $healthy.access.observerToken)) {
+if ($null -eq $healthy.access.agentToken) {
+    Fail ("Le backend tourne sur une image d'avant I1 (jeton de l'agent) : " +
+        "relance avec -Build : pwsh -File scripts\start-live.ps1 -Build")
+}
+if (-not ($healthy.access.cockpitToken -and $healthy.access.observerToken -and $healthy.access.agentToken)) {
     Fail ("Le conteneur backend n'a pas reçu les jetons de .env. " +
         "Recrée-le : docker compose up -d --no-deps --force-recreate backend (depuis 04_code), puis relance ce script.")
 }
-Ok "jetons du hub et de l'observateur en place"
+Ok "jetons du hub, de l'observateur et de l'agent en place"
 
 # --- 3. Terminal MT5 et observer ---------------------------------------------
 Step "Terminal MT5"
@@ -187,6 +202,21 @@ if ($probe.tradeMode -eq "real") {
 }
 if (-not $probe.firm) {
     Warn "Ni « ftmo » ni « exness » dans le nom du broker : règles par défaut. Ajuste la reconnaissance dans Settings si c'est l'un de tes comptes."
+}
+
+# I1: the execution agent reads its Gateway token from this terminal's
+# MQL5\Files (never an input: an input lands in the preset and the chart's
+# properties). Rewritten on every run, so .env and the terminal never drift.
+$agentToken = Read-EnvValue $envFile "TRADINGOS_AGENT_TOKEN"
+if (-not $probe.dataPath) {
+    Warn "la sonde n'a pas donné le dossier de données du terminal : jeton de l'agent non écrit."
+} elseif (-not $agentToken) {
+    Warn "TRADINGOS_AGENT_TOKEN absent de .env : jeton de l'agent non écrit."
+} else {
+    $filesDir = Join-Path $probe.dataPath "MQL5\Files"
+    if (-not (Test-Path $filesDir)) { New-Item -ItemType Directory -Path $filesDir | Out-Null }
+    [System.IO.File]::WriteAllText((Join-Path $filesDir "tradingos_agent.token"), $agentToken, [System.Text.Encoding]::ASCII)
+    Ok "jeton de l'agent écrit dans MQL5\Files du terminal (lu par l'agent à chaque connexion)"
 }
 
 $observerSymbol = if ($Symbol) { $Symbol } else { $probe.observerSymbol }
@@ -268,10 +298,12 @@ if ($healthy -and $healthy.agentConnected) {
 } else {
     $magic = switch ($probe.firm) { "ftmo" { "2001" } "exness" { "1001" } default { "un nombre propre à ce compte" } }
     $allowed = switch ($probe.firm) { "ftmo" { "XAUUSD,EURUSD" } default { "XAUUSDm,EURUSDm" } }
-    Warn "agent EA-05 non connecté. Dans MT5 : Navigateur → Expert Advisors → TradingOsAgent, glisse-le sur un graphique, puis :"
-    Note "InpAccountId = $($probe.login)   (à saisir toi-même dans MT5)"
+    Warn "agent EA-05 non connecté. Dans MT5 : Navigateur → Expert Advisors → TradingOsAgent, glisse-le sur UN graphique, puis :"
     Note "InpMagicNumber = $magic   (unique par compte — jamais celui de l'autre)"
     Note "InpAllowedSymbolsCsv = $allowed"
+    Note "InpMaxSpreadCsv = <symbole=spread max en prix, ex. EURUSDm=0.00025>   (vide : tout ordre refusé)"
+    Note "InpAccountId = $($probe.login) ou vide   (facultatif depuis I1 : l'agent lit le login du terminal)"
+    Note "Un agent attaché avant I1 est refusé par la passerelle : retire-le du graphique et rattache-le."
     Note "Relance ce script ou regarde Account : la ligne « Agent d'exécution EA-05 » passe à Connecté."
 }
 Note "Account : http://localhost:3000/account — Settings : http://localhost:3000/settings"

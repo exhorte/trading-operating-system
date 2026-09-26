@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using TradingOs.Contracts;
 
 namespace TradingOs.Gateway;
@@ -49,6 +51,17 @@ namespace TradingOs.Gateway;
 /// WebSocket; this class exists only for the execution agent's connection,
 /// heartbeat, command delivery, and ack/report receipt.
 ///
+/// I1 (2026-09-26): a hello must carry the agent token (the agent reads it
+/// from MQL5\Files, written there by start-live) — any container reaches
+/// this port through host.docker.internal. No token configured = every
+/// hello is refused (fail closed). The token is checked on the raw line and
+/// never kept: Mt5HelloMessage has no field for it. Agents that declare the
+/// "ping" capability receive a control.ping every <paramref name="pingInterval"/>
+/// (the liveness beat that arming will need, ADR 0014); "halt" ones accept
+/// control.halt, which can only SET their local kill switch. The latest
+/// hello and heartbeat of each agent make its status (GetStatus): identity,
+/// the four trading permissions, the halt, other EAs attached.
+///
 /// Loopback socket tests cover the registry and the framing
 /// (Mt5AgentServerTests); the behaviour against a real terminal is still
 /// verified by hand (tools/mt5-execution-agent/README.md).
@@ -57,9 +70,12 @@ public sealed class Mt5AgentServer(
     int port,
     IPAddress? bindAddress = null,
     TimeSpan? staleAfter = null,
-    TimeSpan? watchdogPeriod = null)
+    TimeSpan? watchdogPeriod = null,
+    string? agentToken = null,
+    TimeSpan? pingInterval = null)
 {
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+    private readonly TimeSpan _pingInterval = pingInterval ?? TimeSpan.FromSeconds(5);
 
     private readonly object _lock = new();
     private readonly Dictionary<string, AgentConnection> _byAccountId = new();
@@ -80,6 +96,10 @@ public sealed class Mt5AgentServer(
     /// <summary>A hello refused because another live connection already
     /// serves that account — carries the refused hello's agentId.</summary>
     public event Action<string>? DuplicateAgentRefused;
+
+    /// <summary>I1: a hello refused for its token (missing, wrong, or none
+    /// configured here) — agentId and a reason that never quotes a token.</summary>
+    public event Action<string, string>? AgentRefused;
 
     /// <summary>Completes with the bound port once the listener has started.</summary>
     public Task<int> Listening => _listening.Task;
@@ -106,6 +126,46 @@ public sealed class Mt5AgentServer(
             return _byAccountId.TryGetValue(accountId, out var connection) ? connection.Hello : null;
         }
     }
+
+    /// <summary>I1: the agent registered for <paramref name="accountId"/> as
+    /// its hello and latest heartbeat describe it, or null.</summary>
+    public Mt5AgentStatus? GetStatus(string accountId)
+    {
+        lock (_lock)
+        {
+            return _byAccountId.TryGetValue(accountId, out var connection) && connection.Hello is { } hello
+                ? Mt5AgentStatus.From(hello, connection.LastHeartbeat)
+                : null;
+        }
+    }
+
+    /// <summary>I1: asks the agent of <paramref name="accountId"/> to set its
+    /// local halt. It can only set it — lifting it takes a human on the MT5
+    /// chart. False when no agent that understands control.halt is
+    /// registered for that account.</summary>
+    public async Task<bool> SendHaltAsync(string accountId, string reason, CancellationToken ct)
+    {
+        AgentConnection? connection;
+        lock (_lock)
+        {
+            _byAccountId.TryGetValue(accountId, out connection);
+        }
+        if (connection?.Hello is not { } hello || !HasCapability(hello, "halt"))
+        {
+            return false;
+        }
+        var line = JsonSerializer.Serialize(new
+        {
+            version = 1,
+            type = "control.halt",
+            time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            reason,
+        });
+        return await connection.TryWriteLineAsync(line, ct);
+    }
+
+    private static bool HasCapability(Mt5HelloMessage hello, string capability) =>
+        hello.Capabilities?.Contains(capability, StringComparer.Ordinal) == true;
 
     /// <summary>
     /// Sends one lean command line to the agent registered for
@@ -144,6 +204,7 @@ public sealed class Mt5AgentServer(
         _listening.TrySetResult(((IPEndPoint)_listener.LocalEndpoint).Port);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var watchdog = WatchdogAsync(stop.Token);
+        var pings = PingLoopAsync(stop.Token);
         try
         {
             while (!ct.IsCancellationRequested)
@@ -165,6 +226,42 @@ public sealed class Mt5AgentServer(
             stop.Cancel();
             _listener.Stop();
             await watchdog;
+            await pings;
+        }
+    }
+
+    /// <summary>I1: a control.ping to every registered agent that declared
+    /// the "ping" capability — never to older agents, which would log every
+    /// unknown frame.</summary>
+    private async Task PingLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(_pingInterval, ct);
+                List<AgentConnection> targets;
+                lock (_lock)
+                {
+                    targets = _byAccountId.Values
+                        .Where(c => c.Hello is { } hello && HasCapability(hello, "ping"))
+                        .ToList();
+                }
+                var line = JsonSerializer.Serialize(new
+                {
+                    version = 1,
+                    type = "control.ping",
+                    time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                });
+                foreach (var connection in targets)
+                {
+                    await connection.TryWriteLineAsync(line, ct);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // shutting down
         }
     }
 
@@ -272,9 +369,23 @@ public sealed class Mt5AgentServer(
         switch (message)
         {
             case Mt5HelloMessage hello:
+                var refusal = TokenRefusal(json);
+                if (refusal is not null)
+                {
+                    AgentRefused?.Invoke(hello.AgentId, refusal);
+                    connection.Close();
+                    return;
+                }
                 Register(hello, connection);
                 return;
             case Mt5HeartbeatMessage heartbeat:
+                lock (_lock)
+                {
+                    if (connection.Hello is not null)
+                    {
+                        connection.LastHeartbeat = heartbeat;
+                    }
+                }
                 EnvelopeReady?.Invoke(EventTypes.AgentHeartbeat, new AgentHeartbeatPayload(heartbeat.AgentId, heartbeat.LatencyMs));
                 return;
             case Mt5AckMessage ack:
@@ -307,6 +418,36 @@ public sealed class Mt5AgentServer(
             default:
                 return; // unknown/unused types are ignored in this slice
         }
+    }
+
+    /// <summary>Null when the raw hello carries the configured token; else
+    /// why not. Never quotes either token.</summary>
+    private string? TokenRefusal(string rawHello)
+    {
+        if (string.IsNullOrEmpty(agentToken))
+        {
+            return "no agent token configured on the Gateway (Cockpit:AgentToken) — every agent is refused";
+        }
+        string? presented = null;
+        try
+        {
+            using var doc = JsonDocument.Parse(rawHello);
+            if (doc.RootElement.TryGetProperty("token", out var token) && token.ValueKind == JsonValueKind.String)
+            {
+                presented = token.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+            return "unreadable hello";
+        }
+        if (string.IsNullOrEmpty(presented))
+        {
+            return "hello without a token — agent older than I1, or tradingos_agent.token missing from MQL5\\Files";
+        }
+        return CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(presented), Encoding.UTF8.GetBytes(agentToken))
+            ? null
+            : "wrong agent token — rerun scripts/start-live.ps1 to rewrite tradingos_agent.token";
     }
 
     private void Register(Mt5HelloMessage hello, AgentConnection connection)
@@ -344,6 +485,7 @@ public sealed class Mt5AgentServer(
                 _byAccountId[hello.AccountId] = connection;
                 connection.AccountId = hello.AccountId;
                 connection.Hello = hello;
+                connection.LastHeartbeat = null; // a new hello starts a new status
             }
             stillConnected = _byAccountId.Count > 0;
         }
@@ -377,6 +519,8 @@ public sealed class Mt5AgentServer(
         public string? AccountId { get; set; }
 
         public Mt5HelloMessage? Hello { get; set; }
+
+        public Mt5HeartbeatMessage? LastHeartbeat { get; set; }
 
         public bool IsClosed => Volatile.Read(ref _closed) == 1;
 
