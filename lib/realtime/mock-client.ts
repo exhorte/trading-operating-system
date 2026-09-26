@@ -14,6 +14,7 @@ import { makeEnvelope } from "@/lib/mock/envelope";
 import {
   mockAccount,
   mockAgents,
+  mockExecutionAgentStatus,
   mockAlerts,
   mockExecutionReports,
   mockMarketContext,
@@ -168,6 +169,7 @@ export class MockRealtimeClient implements RealtimeClient {
       // preflight verdict is demonstrable. Real mode reads this from
       // Mt5AgentServer.IsConnected, never from mockAgents().
       executionAgentConnected: true,
+      executionAgentStatus: mockExecutionAgentStatus(),
       dayAnchorStartsAtUtc: mockDayAnchor(),
     });
     // T12 incrément 2: the settings ledger is real even here — like the

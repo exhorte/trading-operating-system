@@ -272,6 +272,57 @@ public class Mt5AgentServerTests
         Assert.StartsWith("IDENTITY_REFUSED:", status.CommandRefusal());
     }
 
+    // --- I2 (2026-09-26): status events ---------------------------------------
+
+    [Fact]
+    public async Task Status_is_announced_on_hello_on_real_changes_only_and_withdrawn_on_disconnect()
+    {
+        await using var gateway = await TestGateway.StartAsync();
+        var events = new List<(string Account, bool? Halted)>();
+        gateway.Server.StatusChanged += (account, status) => { lock (events) { events.Add((account, status?.Halted)); } };
+
+        var agent = await gateway.ConnectAsync();
+        await agent.SendAsync(Hello("acc-1", extra: ""","identity":"ok","halted":false,"attachedExperts":[]"""));
+        await Eventually(() => { lock (events) { return events.Count == 1; } });
+
+        // Same state, only the clocks move: nothing to announce.
+        await agent.SendAsync("""{"version":1,"type":"agent.heartbeat","accountId":"acc-1","time":1,"agentId":"mt5-execution-agent-1001","latencyMs":0,"identity":"ok","halted":false,"gatewaySilentMs":10,"attachedExperts":[]}""");
+        await agent.SendAsync("""{"version":1,"type":"agent.heartbeat","accountId":"acc-1","time":2,"agentId":"mt5-execution-agent-1001","latencyMs":0,"identity":"ok","halted":false,"gatewaySilentMs":20,"attachedExperts":[]}""");
+        // The halt set on the chart: announced once.
+        await agent.SendAsync("""{"version":1,"type":"agent.heartbeat","accountId":"acc-1","time":3,"agentId":"mt5-execution-agent-1001","latencyMs":0,"identity":"ok","halted":true,"gatewaySilentMs":30,"attachedExperts":[]}""");
+        await agent.SendAsync("""{"version":1,"type":"agent.heartbeat","accountId":"acc-1","time":4,"agentId":"mt5-execution-agent-1001","latencyMs":0,"identity":"ok","halted":true,"gatewaySilentMs":40,"attachedExperts":[]}""");
+        await Eventually(() => { lock (events) { return events.Count == 2; } });
+
+        agent.Dispose();
+        await Eventually(() => { lock (events) { return events.Count == 3; } });
+        await Task.Delay(100);
+        lock (events)
+        {
+            Assert.Equal(new (string, bool?)[] { ("acc-1", false), ("acc-1", true), ("acc-1", null) }, events);
+        }
+    }
+
+    [Fact]
+    public async Task A_newly_attached_foreign_expert_is_a_change()
+    {
+        await using var gateway = await TestGateway.StartAsync();
+        var announced = new List<string[]>();
+        gateway.Server.StatusChanged += (_, status) => { lock (announced) { announced.Add(status?.AttachedExperts ?? []); } };
+
+        using var agent = await gateway.ConnectAsync();
+        await agent.SendAsync(Hello("acc-1", extra: ""","attachedExperts":[]"""));
+        await agent.SendAsync("""{"version":1,"type":"agent.heartbeat","accountId":"acc-1","time":1,"agentId":"a","latencyMs":0,"attachedExperts":["Ultimate_ICT_Gold_Scalper_v4.0"]}""");
+        await agent.SendAsync("""{"version":1,"type":"agent.heartbeat","accountId":"acc-1","time":2,"agentId":"a","latencyMs":0,"attachedExperts":["Ultimate_ICT_Gold_Scalper_v4.0"]}""");
+        await Eventually(() => { lock (announced) { return announced.Count == 2; } });
+        await Task.Delay(100);
+
+        lock (announced)
+        {
+            Assert.Equal(2, announced.Count);
+            Assert.Equal(new[] { "Ultimate_ICT_Gold_Scalper_v4.0" }, announced[1]);
+        }
+    }
+
     private static async Task Eventually(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow + Timeout;

@@ -178,6 +178,19 @@ export interface Mt5AccountSnapshotMessage extends Mt5Message {
   margin: number;
   freeMargin: number;
   currency: string;
+  // --- I2 (2026-09-26): MT5's account window, from the observer. Never the
+  //     holder's name (personal data; envelopes are persisted, ADR 0009).
+  server?: string;
+  company?: string;
+  tradeMode?: "demo" | "contest" | "real" | "unknown";
+  leverage?: number;
+  marginMode?: "hedging" | "netting" | "exchange" | "unknown";
+  fifoClose?: boolean;
+  /** Null while no margin is used (MT5 reports 0 then). */
+  marginLevel?: number | null;
+  /** False with an investor (read-only) password. */
+  tradeAllowed?: boolean;
+  tradeExpert?: boolean;
 }
 
 export interface Mt5PositionSnapshot {

@@ -103,13 +103,20 @@ public sealed class GatewayState
     /// say. Defaulting it either way would re-create the exact confusion that
     /// made connectionGate read the observer's link as execution readiness.
     /// </summary>
-    public CockpitSnapshotDto Snapshot(bool executionAgentConnected)
+    /// <remarks>I2: <paramref name="agentStatusFor"/> (Mt5AgentServer.GetStatus)
+    /// adds the execution agent registered for the snapshot's account —
+    /// called outside this lock, so the two never nest.</remarks>
+    public CockpitSnapshotDto Snapshot(bool executionAgentConnected, Func<string, Mt5AgentStatus?>? agentStatusFor = null)
     {
+        CockpitSnapshotDto snapshot;
         lock (_lock)
         {
             var candles = _candles.OrderBy(kv => kv.Key).Select(kv => kv.Value).ToArray();
             var agents = _agent is null ? Array.Empty<AgentStatus>() : [_agent];
-            return new CockpitSnapshotDto(_account, _positions, agents, candles, executionAgentConnected);
+            snapshot = new CockpitSnapshotDto(_account, _positions, agents, candles, executionAgentConnected);
         }
+        return snapshot.Account is { } account && agentStatusFor is not null
+            ? snapshot with { ExecutionAgent = agentStatusFor(account.AccountId) }
+            : snapshot;
     }
 }

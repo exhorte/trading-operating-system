@@ -1,6 +1,4 @@
-using TradingOs.Contracts;
-
-namespace TradingOs.Gateway;
+namespace TradingOs.Contracts;
 
 /// <summary>
 /// I1 (2026-09-26): what the execution agent of one account says about
@@ -10,7 +8,9 @@ namespace TradingOs.Gateway;
 /// which does not publish them. Never carries the agent token.
 ///
 /// Read by CockpitHub.SubmitCommand (a refused identity or a halted agent
-/// gets no command) and, from I2, by the cockpit's account screen.
+/// gets no command) and, since I2, by the cockpit's account screen — in the
+/// hub snapshot and in execution.agent.status (serialized camelCase, mirror:
+/// lib/contracts/snapshots.ts ExecutionAgentStatus).
 /// </summary>
 public sealed record Mt5AgentStatus(
     string AccountId,
@@ -68,4 +68,17 @@ public sealed record Mt5AgentStatus(
         : Identity is not null && Identity != "ok"
             ? $"IDENTITY_REFUSED: the agent reports identity '{Identity}' for login {AccountId}"
             : null;
+
+    /// <summary>I2: same state for the trader — everything but the two
+    /// clocks. What decides whether a heartbeat is worth an
+    /// execution.agent.status event (a record's own equality would compare
+    /// the experts array by reference).</summary>
+    public bool SameStateAs(Mt5AgentStatus other)
+    {
+        // One shared empty array: record equality compares arrays by reference.
+        var none = Array.Empty<string>();
+        return this with { AttachedExperts = none, GatewaySilentMs = null, LastHeartbeatTime = null }
+                == other with { AttachedExperts = none, GatewaySilentMs = null, LastHeartbeatTime = null }
+            && AttachedExperts.SequenceEqual(other.AttachedExperts, StringComparer.Ordinal);
+    }
 }

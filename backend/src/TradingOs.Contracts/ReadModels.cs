@@ -5,6 +5,9 @@ namespace TradingOs.Contracts;
 /// used by the observe path). Serialized camelCase so the TS store consumes
 /// them unchanged.
 /// </summary>
+/// <remarks>I2 (2026-09-26): the parameters after OpenRiskPercent are the
+/// account window of MT5, from the observer's account.snapshot — null when
+/// the observer predates I2. Never the holder's name.</remarks>
 public sealed record AccountSummary(
     string AccountId,
     string Label,
@@ -15,7 +18,17 @@ public sealed record AccountSummary(
     double DailyPnl,
     double DailyDrawdownPercent,
     double TotalDrawdownPercent,
-    double OpenRiskPercent);
+    double OpenRiskPercent,
+    double? Margin = null,
+    double? FreeMargin = null,
+    double? MarginLevel = null,
+    string? Server = null,
+    string? TradeMode = null,
+    int? Leverage = null,
+    string? MarginMode = null,
+    bool? FifoClose = null,
+    bool? TradeAllowed = null,
+    bool? TradeExpert = null);
 
 public sealed record Position(
     string PositionId,
@@ -138,4 +151,11 @@ public sealed record CockpitSnapshotDto(
     Candle[] Candles,
     /// <summary>Mt5AgentServer.IsConnected at hydration time. Agents above is
     /// observer-derived and must never stand in for this (T09 bug).</summary>
-    bool ExecutionAgentConnected);
+    bool ExecutionAgentConnected,
+    /// <summary>I2: the execution agent registered for Account's login, as it
+    /// describes itself — null without one (or before I1).</summary>
+    Mt5AgentStatus? ExecutionAgent = null);
+
+/// <summary>I2: payload of execution.agent.status — null once no agent
+/// serves the account any more.</summary>
+public sealed record ExecutionAgentStatusPayload(Mt5AgentStatus? Status);

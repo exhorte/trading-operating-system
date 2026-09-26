@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeEnvelope } from "@/lib/mock/envelope";
-import type { ExecutionReport } from "@/lib/contracts/snapshots";
+import type { ExecutionAgentStatus, ExecutionReport } from "@/lib/contracts/snapshots";
 import { CockpitStore } from "./store";
 
 function report(overrides: Partial<ExecutionReport> = {}): ExecutionReport {
@@ -18,6 +18,83 @@ function report(overrides: Partial<ExecutionReport> = {}): ExecutionReport {
     ...overrides,
   };
 }
+
+function agentStatus(overrides: Partial<ExecutionAgentStatus> = {}): ExecutionAgentStatus {
+  return {
+    accountId: "477029930",
+    agentId: "mt5-execution-agent-1001",
+    agentVersion: "1.10",
+    buildId: "1.10 2026.09.26 04:00",
+    mode: "observe",
+    modeCeiling: "observe",
+    identity: "ok",
+    expectedAccountId: null,
+    server: "Exness-MT5Trial9",
+    tradeMode: "demo",
+    marginMode: "hedging",
+    fifoClose: false,
+    terminalTradeAllowed: true,
+    expertTradeAllowed: false,
+    accountTradeExpert: true,
+    accountTradeAllowed: true,
+    tradable: false,
+    closable: false,
+    halted: false,
+    attachedExperts: [],
+    gatewaySilentMs: 1000,
+    lastHeartbeatTime: 1790000000000,
+    ...overrides,
+  };
+}
+
+function withAccount(store: CockpitStore, accountId: string): void {
+  store.hydrate({
+    account: {
+      accountId,
+      label: accountId,
+      broker: "Exness",
+      currency: "USD",
+      balance: 1000,
+      equity: 1000,
+      dailyPnl: 0,
+      dailyDrawdownPercent: 0,
+      totalDrawdownPercent: 0,
+      openRiskPercent: 0,
+    },
+  });
+}
+
+describe("CockpitStore — execution agent status (I2)", () => {
+  it("keeps the status of the agent serving the account on screen", () => {
+    const store = new CockpitStore();
+    withAccount(store, "477029930");
+    store.apply(makeEnvelope("execution.agent.status", "mt5-gateway", { status: agentStatus({ halted: true }) }, "477029930"));
+    expect(store.getSnapshot().executionAgentStatus?.halted).toBe(true);
+  });
+
+  it("ignores another login's agent", () => {
+    const store = new CockpitStore();
+    withAccount(store, "477029930");
+    store.apply(makeEnvelope("execution.agent.status", "mt5-gateway", { status: agentStatus({ accountId: "999" }) }, "999"));
+    expect(store.getSnapshot().executionAgentStatus).toBeNull();
+  });
+
+  it("forgets the status when that account's agent goes away, or when no agent is connected", () => {
+    const store = new CockpitStore();
+    withAccount(store, "477029930");
+    store.apply(makeEnvelope("execution.agent.status", "mt5-gateway", { status: agentStatus() }, "477029930"));
+    store.apply(makeEnvelope("execution.agent.status", "mt5-gateway", { status: null }, "999"));
+    expect(store.getSnapshot().executionAgentStatus).not.toBeNull();
+
+    store.apply(makeEnvelope("execution.agent.status", "mt5-gateway", { status: null }, "477029930"));
+    expect(store.getSnapshot().executionAgentStatus).toBeNull();
+
+    store.apply(makeEnvelope("execution.agent.status", "mt5-gateway", { status: agentStatus() }, "477029930"));
+    store.apply(makeEnvelope("execution.agent.connection", "mt5-gateway", { connected: false }));
+    expect(store.getSnapshot().executionAgentStatus).toBeNull();
+    expect(store.getSnapshot().executionAgentConnected).toBe(false);
+  });
+});
 
 describe("CockpitStore — execution report feed", () => {
   it("keeps one entry per report id: a report the agent sends again after a reconnection is not shown twice", () => {

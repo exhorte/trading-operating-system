@@ -310,6 +310,52 @@ class AccessCheckTests(unittest.TestCase):
         asyncio.run(scenario())
 
 
+class BuildAccountTests(unittest.TestCase):
+    """I2 (2026-09-26): the account as MT5's account window shows it — never
+    the holder's name (personal data; envelopes are persisted, ADR 0009)."""
+
+    def account(self, **overrides):
+        values = dict(
+            login=477029930, name="Jeanne Titulaire", server="Exness-MT5Trial9",
+            company="Exness Technologies Ltd", currency="USD", balance=1046.84, equity=1046.84,
+            margin=0.0, margin_free=1046.84, margin_level=0.0, leverage=2000,
+            trade_mode=0, margin_mode=2, fifo_close=False, trade_allowed=True, trade_expert=True,
+        )
+        values.update(overrides)
+        return SimpleNamespace(**values)
+
+    def test_publishes_the_account_window_and_never_the_name(self):
+        with mock.patch.object(observer.mt5, "account_info", return_value=self.account()):
+            msg = observer.build_account()
+        self.assertNotIn("name", msg)
+        self.assertNotIn("Jeanne Titulaire", repr(msg))
+        self.assertEqual(msg["accountId"], "477029930")
+        self.assertEqual(msg["tradeMode"], "demo")
+        self.assertEqual(msg["marginMode"], "hedging")
+        self.assertEqual(msg["leverage"], 2000)
+        self.assertEqual(msg["server"], "Exness-MT5Trial9")
+        self.assertIs(msg["tradeAllowed"], True)
+        self.assertIsNone(msg["marginLevel"])  # no margin used: unknown, never 0
+
+    def test_real_netting_and_an_investor_password(self):
+        with mock.patch.object(observer.mt5, "account_info",
+                               return_value=self.account(trade_mode=2, margin_mode=0, margin=10.0,
+                                                         margin_level=10468.4, trade_allowed=False)):
+            msg = observer.build_account()
+        self.assertEqual(msg["tradeMode"], "real")
+        self.assertEqual(msg["marginMode"], "netting")
+        self.assertEqual(msg["marginLevel"], 10468.4)
+        self.assertIs(msg["tradeAllowed"], False)
+
+    def test_a_login_change_is_detected_only_against_the_starting_login(self):
+        with mock.patch.object(observer, "_started_login", None):
+            self.assertFalse(observer.login_changed(123))
+        with mock.patch.object(observer, "_started_login", 123):
+            self.assertFalse(observer.login_changed(123))
+            self.assertFalse(observer.login_changed(None))
+            self.assertTrue(observer.login_changed(456))
+
+
 class ObserverTokenSourceTests(unittest.TestCase):
     def write_env(self, text, bom=False):
         import tempfile

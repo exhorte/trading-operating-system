@@ -31,7 +31,18 @@ public static class Mt5WireTranslator
             DailyPnl: Math.Round(account.Equity - account.Balance, 2),
             DailyDrawdownPercent: 0,
             TotalDrawdownPercent: 0,
-            OpenRiskPercent: 0);
+            OpenRiskPercent: 0,
+            // I2: MT5's account window, straight through.
+            Margin: account.Margin,
+            FreeMargin: account.FreeMargin,
+            MarginLevel: account.MarginLevel,
+            Server: account.Server,
+            TradeMode: account.TradeMode,
+            Leverage: account.Leverage,
+            MarginMode: account.MarginMode,
+            FifoClose: account.FifoClose,
+            TradeAllowed: account.TradeAllowed,
+            TradeExpert: account.TradeExpert);
     }
 
     public static Position[] ToPositions(Mt5PositionsSnapshotMessage msg, double? lastPrice)

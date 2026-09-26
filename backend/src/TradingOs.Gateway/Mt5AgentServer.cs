@@ -101,6 +101,12 @@ public sealed class Mt5AgentServer(
     /// configured here) — agentId and a reason that never quotes a token.</summary>
     public event Action<string, string>? AgentRefused;
 
+    /// <summary>I2: an account's agent status changed for the trader — a new
+    /// registration, a heartbeat that changes identity, mode, permissions,
+    /// halt or attached experts (never the clocks alone), or null when no
+    /// agent serves the account any more.</summary>
+    public event Action<string, Mt5AgentStatus?>? StatusChanged;
+
     /// <summary>Completes with the bound port once the listener has started.</summary>
     public Task<int> Listening => _listening.Task;
 
@@ -348,6 +354,7 @@ public sealed class Mt5AgentServer(
             if (removed)
             {
                 ConnectionChanged?.Invoke(stillConnected);
+                StatusChanged?.Invoke(connection.AccountId!, null);
             }
         }
     }
@@ -379,14 +386,28 @@ public sealed class Mt5AgentServer(
                 Register(hello, connection);
                 return;
             case Mt5HeartbeatMessage heartbeat:
+                Mt5AgentStatus? changed = null;
+                string? changedAccount = null;
                 lock (_lock)
                 {
-                    if (connection.Hello is not null)
+                    if (connection.Hello is { } registered && connection.AccountId is { } accountId
+                        && _byAccountId.TryGetValue(accountId, out var current) && ReferenceEquals(current, connection))
                     {
                         connection.LastHeartbeat = heartbeat;
+                        var status = Mt5AgentStatus.From(registered, heartbeat);
+                        if (connection.PublishedStatus is null || !status.SameStateAs(connection.PublishedStatus))
+                        {
+                            connection.PublishedStatus = status;
+                            changed = status;
+                            changedAccount = accountId;
+                        }
                     }
                 }
                 EnvelopeReady?.Invoke(EventTypes.AgentHeartbeat, new AgentHeartbeatPayload(heartbeat.AgentId, heartbeat.LatencyMs));
+                if (changed is not null)
+                {
+                    StatusChanged?.Invoke(changedAccount!, changed);
+                }
                 return;
             case Mt5AckMessage ack:
             {
@@ -455,6 +476,7 @@ public sealed class Mt5AgentServer(
         AgentConnection? replaced = null;
         bool accepted;
         bool gaveUpPrevious = false;
+        string? previousAccount = null;
         bool stillConnected;
         lock (_lock)
         {
@@ -465,6 +487,7 @@ public sealed class Mt5AgentServer(
             {
                 _byAccountId.Remove(previous);
                 gaveUpPrevious = true;
+                previousAccount = previous;
             }
 
             if (_byAccountId.TryGetValue(hello.AccountId, out var existing) && !ReferenceEquals(existing, connection))
@@ -486,6 +509,7 @@ public sealed class Mt5AgentServer(
                 connection.AccountId = hello.AccountId;
                 connection.Hello = hello;
                 connection.LastHeartbeat = null; // a new hello starts a new status
+                connection.PublishedStatus = Mt5AgentStatus.From(hello, null);
             }
             stillConnected = _byAccountId.Count > 0;
         }
@@ -497,12 +521,18 @@ public sealed class Mt5AgentServer(
             if (gaveUpPrevious)
             {
                 ConnectionChanged?.Invoke(stillConnected);
+                StatusChanged?.Invoke(previousAccount!, null);
             }
             return;
         }
 
         replaced?.Close(); // its own finally finds it no longer registered: no removal, no event
         ConnectionChanged?.Invoke(true);
+        if (gaveUpPrevious)
+        {
+            StatusChanged?.Invoke(previousAccount!, null);
+        }
+        StatusChanged?.Invoke(hello.AccountId, Mt5AgentStatus.From(hello, null));
         EnvelopeReady?.Invoke(EventTypes.AgentConnected, new { agentId = hello.AgentId });
     }
 
@@ -521,6 +551,9 @@ public sealed class Mt5AgentServer(
         public Mt5HelloMessage? Hello { get; set; }
 
         public Mt5HeartbeatMessage? LastHeartbeat { get; set; }
+
+        /// <summary>I2: the status last announced by StatusChanged.</summary>
+        public Mt5AgentStatus? PublishedStatus { get; set; }
 
         public bool IsClosed => Volatile.Read(ref _closed) == 1;
 

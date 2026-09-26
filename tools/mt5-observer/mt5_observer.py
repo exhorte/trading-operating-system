@@ -127,7 +127,16 @@ def build_hello(symbol: str) -> dict[str, Any]:
     }
 
 
+TRADE_MODES = {0: "demo", 1: "contest", 2: "real"}
+# ACCOUNT_MARGIN_MODE_RETAIL_NETTING = 0, _EXCHANGE = 1, _RETAIL_HEDGING = 2
+MARGIN_MODES = {0: "netting", 1: "exchange", 2: "hedging"}
+
+
 def build_account() -> dict[str, Any] | None:
+    """I2 (2026-09-26): the account as MT5's own account window shows it —
+    type, leverage, hedging or netting, and whether it may trade at all.
+    Deliberately NOT `name`: the holder's name is personal data, and every
+    envelope is persisted and immutable (ADR 0009). A test pins that down."""
     info = mt5.account_info()
     if info is None:
         return None
@@ -141,7 +150,29 @@ def build_account() -> dict[str, Any] | None:
         "margin": info.margin,
         "freeMargin": info.margin_free,
         "currency": info.currency,
+        "server": info.server,
+        "company": info.company,
+        "tradeMode": TRADE_MODES.get(info.trade_mode, "unknown"),
+        "leverage": info.leverage,
+        "marginMode": MARGIN_MODES.get(info.margin_mode, "unknown"),
+        "fifoClose": bool(info.fifo_close),
+        # MT5 reports 0 when no position is open (no margin used): null, not 0.
+        "marginLevel": info.margin_level if info.margin > 0 else None,
+        # False with an investor (read-only) password.
+        "tradeAllowed": bool(info.trade_allowed),
+        "tradeExpert": bool(info.trade_expert),
     }
+
+
+# I2: the login this observer started on. A terminal that switches accounts
+# under a running observer would otherwise stream one account's data under
+# the other's name; exiting (code 3) is what start-live's restart expects.
+LOGIN_CHANGED_EXIT_CODE = 3
+_started_login: int | None = None
+
+
+def login_changed(current_login: int | None) -> bool:
+    return _started_login is not None and current_login is not None and current_login != _started_login
 
 
 def _map_position(p: Any) -> dict[str, Any]:
@@ -547,6 +578,11 @@ async def handler(websocket, symbol: str, candle_count: int) -> None:
 
             now = time.time()
             if now - last_account >= 2:
+                info = mt5.account_info()
+                if login_changed(info.login if info else None):
+                    print(f"[observer] the terminal switched from login {_started_login} to {info.login} — "
+                          f"stopping (exit {LOGIN_CHANGED_EXIT_CODE}); rerun scripts/start-live.ps1 for the new account")
+                    raise SystemExit(LOGIN_CHANGED_EXIT_CODE)
                 await send(build_account())
                 snapshot, opened, closed = poll_positions(symbol)
                 await send(snapshot)
@@ -654,6 +690,8 @@ async def main() -> None:
     mt5.symbol_select(args.symbol, True)
 
     info = mt5.account_info()
+    global _started_login
+    _started_login = info.login
     print(f"[observer] attached to account {info.login} @ {info.company} ({info.server}), "
           f"balance={info.balance} {info.currency}")
     print(f"[observer] READ-ONLY / observe. Serving ws://{args.host}:{args.port} (token required)")

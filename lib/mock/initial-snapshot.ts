@@ -8,6 +8,7 @@ import type {
   AccountSummary,
   AgentStatus,
   CockpitAlert,
+  ExecutionAgentStatus,
   ExecutionReport,
   MarketContext,
   PnlCalendarDay,
@@ -90,6 +91,46 @@ export function mockAccount(): AccountSummary {
     dailyDrawdownPercent: 0.9,
     totalDrawdownPercent: 2.4,
     openRiskPercent: 1.0,
+    // I2: the account window, scripted like the rest.
+    margin: usd(412.0),
+    freeMargin: usd(101_100.3),
+    marginLevel: 24_639,
+    server: IS_REAL_ACCOUNT ? "override .env.local" : "FTMO-Demo",
+    tradeMode: "demo",
+    leverage: 100,
+    marginMode: "hedging",
+    fifoClose: false,
+    tradeAllowed: true,
+    tradeExpert: true,
+  };
+}
+
+/** I2: a scripted execution agent, as an I1 agent describes itself — alone
+ *  in its terminal, halt lifted, observe build. */
+export function mockExecutionAgentStatus(): ExecutionAgentStatus {
+  return {
+    accountId: MOCK_ACCOUNT_ID,
+    agentId: "mt5-execution-agent-mock",
+    agentVersion: "1.10",
+    buildId: "1.10 (mock)",
+    mode: "observe",
+    modeCeiling: "observe",
+    identity: "ok",
+    expectedAccountId: null,
+    server: IS_REAL_ACCOUNT ? "override .env.local" : "FTMO-Demo",
+    tradeMode: "demo",
+    marginMode: "hedging",
+    fifoClose: false,
+    terminalTradeAllowed: false,
+    expertTradeAllowed: false,
+    accountTradeExpert: true,
+    accountTradeAllowed: true,
+    tradable: false,
+    closable: false,
+    halted: false,
+    attachedExperts: [],
+    gatewaySilentMs: 1_000,
+    lastHeartbeatTime: null,
   };
 }
 

@@ -17,6 +17,7 @@ import type { Envelope, EventType } from "./envelope";
 import type {
   AccountSummary,
   CockpitAlert,
+  ExecutionAgentStatus,
   ExecutionReport,
   MarketContext,
   Position,
@@ -241,6 +242,13 @@ export interface ExecutionAgentConnectionPayload {
   connected: boolean;
 }
 
+/** I2: Gateway-originated on each registration and each heartbeat that
+ *  changes the agent's state (never on every beat); null once no agent
+ *  serves the account. */
+export interface ExecutionAgentStatusPayload {
+  status: ExecutionAgentStatus | null;
+}
+
 /**
  * T03: Gateway-originated only — the backend owns the FRED poll + cache
  * (context/product/tools/T03-gate-news.md). Broadcast on every refresh cycle
@@ -321,6 +329,7 @@ export interface EventPayloadMap extends Record<EventType, unknown> {
   "journal.trade_closed": TradeClosedPayload;
   "journal.lockout_violated": LockoutViolatedPayload;
   "execution.agent.connection": ExecutionAgentConnectionPayload;
+  "execution.agent.status": ExecutionAgentStatusPayload;
   "market.calendar.updated": CalendarUpdatedPayload;
   "accounts.settings.changed": AccountSettingsChangedPayload;
 }

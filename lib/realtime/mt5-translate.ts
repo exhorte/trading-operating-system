@@ -50,6 +50,17 @@ export function toAccountSummary(
     dailyDrawdownPercent: 0,
     totalDrawdownPercent: 0,
     openRiskPercent: 0,
+    // I2: MT5's account window, straight through (Mt5WireTranslator.cs).
+    margin: account.margin,
+    freeMargin: account.freeMargin,
+    marginLevel: account.marginLevel ?? null,
+    server: account.server ?? null,
+    tradeMode: account.tradeMode ?? null,
+    leverage: account.leverage ?? null,
+    marginMode: account.marginMode ?? null,
+    fifoClose: account.fifoClose ?? null,
+    tradeAllowed: account.tradeAllowed ?? null,
+    tradeExpert: account.tradeExpert ?? null,
   };
 }
 

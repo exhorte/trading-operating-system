@@ -3,6 +3,15 @@
 import { useEffect, useState } from "react";
 import { useCockpit } from "@/lib/realtime/provider";
 import type { ActiveProfile } from "@/lib/accounts/active-profile";
+import {
+  accountKindLine,
+  agentIdentityLine,
+  foreignExpertsLine,
+  haltLine,
+  modeLine,
+  permissionsLine,
+  type ViewLine,
+} from "@/lib/accounts/agent-view";
 import { formatAge } from "@/lib/format";
 import type { ConnectionState } from "@/lib/contracts/enums";
 import { Panel } from "@/components/ui/panel";
@@ -42,7 +51,7 @@ const HUB_STATES: Record<ConnectionState, { tone: PillTone; state: string; detai
  * to it (ADR 0003).
  */
 export function ConnectionChain({ profile }: { profile: ActiveProfile | null }) {
-  const { connection, environment, account, agents, executionAgentConnected } = useCockpit();
+  const { connection, environment, account, agents, executionAgentConnected, executionAgentStatus } = useCockpit();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 5_000);
@@ -51,6 +60,9 @@ export function ConnectionChain({ profile }: { profile: ActiveProfile | null }) 
 
   const observer = agents[0] ?? null;
   const hub = HUB_STATES[connection];
+  // I2: what the observer and the agent reported about the account and
+  // about the agent itself (lib/accounts/agent-view.ts, tested).
+  const line = (label: string, view: ViewLine): Link => ({ label, ...view });
 
   const links: Link[] = [
     {
@@ -76,6 +88,7 @@ export function ConnectionChain({ profile }: { profile: ActiveProfile | null }) 
       state: account ? account.accountId : "Aucun",
       detail: account ? `broker « ${account.broker} » · ${account.currency}` : "rien tant que l'observer n'est pas attaché",
     },
+    line("Type de compte", accountKindLine(account)),
     {
       label: "Profil reconnu",
       tone: profile ? "profit" : account ? "warning" : "muted",
@@ -91,15 +104,14 @@ export function ConnectionChain({ profile }: { profile: ActiveProfile | null }) 
       tone: executionAgentConnected ? "profit" : "muted",
       state: executionAgentConnected ? "Connecté" : "Non connecté",
       detail: executionAgentConnected
-        ? "TCP 9765 — requis par la gate de connexion du pré-vol"
+        ? `TCP 9765${executionAgentStatus ? ` · ${executionAgentStatus.agentId} ${executionAgentStatus.buildId ?? executionAgentStatus.agentVersion}` : ""} — requis par la gate de connexion du pré-vol`
         : "facultatif pour observer ; la gate de connexion du pré-vol le requiert",
     },
-    {
-      label: "Mode d'exécution",
-      tone: "info",
-      state: "observe",
-      detail: "aucun ordre ne part de ce système (EA-07 fermé)",
-    },
+    line("Login vu par l'agent", agentIdentityLine(executionAgentStatus, account)),
+    line("Permissions de trading", permissionsLine(executionAgentStatus)),
+    line("Autres EA attachés", foreignExpertsLine(executionAgentStatus)),
+    line("Halt local", haltLine(executionAgentStatus)),
+    line("Mode d'exécution", modeLine(executionAgentStatus)),
   ];
 
   return (

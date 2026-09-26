@@ -52,9 +52,14 @@ public sealed record Mt5CandleMessage(
     double Open, double High, double Low, double Close, double Volume, bool Closed)
     : Mt5Message(Version, Type, AccountId, Time);
 
+/// <remarks>I2: the parameters after Currency come from the observer since
+/// 2026-09-26 (MT5's account window); never the holder's name.</remarks>
 public sealed record Mt5AccountSnapshotMessage(
     int Version, string Type, string AccountId, long Time,
-    double Balance, double Equity, double Margin, double FreeMargin, string Currency)
+    double Balance, double Equity, double Margin, double FreeMargin, string Currency,
+    string? Server = null, string? Company = null, string? TradeMode = null, int? Leverage = null,
+    string? MarginMode = null, bool? FifoClose = null, double? MarginLevel = null,
+    bool? TradeAllowed = null, bool? TradeExpert = null)
     : Mt5Message(Version, Type, AccountId, Time);
 
 public sealed record Mt5PositionSnapshot(

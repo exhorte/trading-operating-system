@@ -95,4 +95,8 @@ public static class EventTypes
     /// whitelist entry.
     /// </summary>
     public const string ExecutionAgentConnection = "execution.agent.connection";
+    /// <summary>I2: the execution agent's own account of itself (identity,
+    /// mode, permissions, halt, other EAs attached) — on each hello and each
+    /// heartbeat that changes it, never on every beat. Gateway-originated.</summary>
+    public const string ExecutionAgentStatus = "execution.agent.status";
 }

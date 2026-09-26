@@ -93,6 +93,16 @@ fil du cockpit ignorait les refus. Barrière vérifiée par lecture : un seul
 l'utilisateur (`start-live -Build`, réattacher l'EA avec
 `InpMaxSpreadCsv`) précède les étapes 2 à 6 du README.
 
+**I2 terminé côté code** (détail : fiche T12, incrément 3). L'observateur
+publie type de compte, levier, hedging ou netting et permissions — jamais
+le nom du titulaire (testé) — et s'arrête si le login du terminal change ;
+la passerelle transmet ces champs et l'état de l'agent (instantané du hub,
+`execution.agent.status` sur changement) ; le cockpit se remet à zéro au
+changement de compte ; Account affiche la chaîne complète. Vérifié en
+préversion mock (rendu). Gates vertes (vitest 332/332, `dotnet test`
+116/116, unittest 34/34, `tsc`, lint, `next build`). D13 (réglages par
+compte) reporté à I7.
+
 ## 2026-09-25 (**étude connexion/pilotage de l'agent ; I0 côté Gateway**)
 
 Demande : connexion au compte MT5 depuis l'application, bouton pour

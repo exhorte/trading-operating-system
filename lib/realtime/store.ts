@@ -14,6 +14,7 @@ import type {
   AccountSummary,
   AgentStatus,
   CockpitAlert,
+  ExecutionAgentStatus,
   ExecutionReport,
   MarketContext,
   PnlCalendarDay,
@@ -25,6 +26,7 @@ import type {
   AgentHeartbeatPayload,
   CalendarUpdatedPayload,
   ExecutionAgentConnectionPayload,
+  ExecutionAgentStatusPayload,
   ExecutionReportPayload,
   LockoutViolatedPayload,
   MarketContextUpdatedPayload,
@@ -83,6 +85,13 @@ export interface CockpitSnapshot {
    */
   executionAgentConnected: boolean;
   /**
+   * I2: the execution agent as it describes itself — identity, mode and
+   * ceiling, the four trading permissions, the halt, other EAs attached.
+   * Hydrated from the hub snapshot, kept current by execution.agent.status;
+   * null without an agent for the account (or one older than I1).
+   */
+  executionAgentStatus: ExecutionAgentStatus | null;
+  /**
    * T12 incrément 2: the account settings ledger as last read from the
    * backend — null until the first read succeeds. Resolve it with
    * `resolveAccountSettings` against `dayAnchorStartsAtUtc`; never read a
@@ -122,6 +131,7 @@ export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   // Fail closed: "no agent" until the hub says otherwise, never an optimistic
   // default that would let the gate pass before anything is known.
   executionAgentConnected: false,
+  executionAgentStatus: null,
   accountSettings: null,
   accountSettingsError: null,
   dayAnchorStartsAtUtc: null,
@@ -227,7 +237,25 @@ export class CockpitStore {
       // observer also emits.
       case "execution.agent.connection": {
         const { connected } = envelope.payload as ExecutionAgentConnectionPayload;
-        this.patch({ executionAgentConnected: connected });
+        this.patch(
+          connected
+            ? { executionAgentConnected: true }
+            : { executionAgentConnected: false, executionAgentStatus: null },
+        );
+        break;
+      }
+      // I2: only the agent of the account shown — another login's agent
+      // (a second terminal) is not this screen's business.
+      case "execution.agent.status": {
+        const { status } = envelope.payload as ExecutionAgentStatusPayload;
+        const accountId = this.snapshot.account?.accountId ?? null;
+        if (status === null) {
+          if (accountId === null || envelope.correlationId === accountId) {
+            this.patch({ executionAgentStatus: null });
+          }
+        } else if (accountId === null || status.accountId === accountId) {
+          this.patch({ executionAgentStatus: status });
+        }
         break;
       }
       // T03: Gateway-originated, always the full current list (never a delta) —

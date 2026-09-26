@@ -83,6 +83,19 @@ public sealed class GatewayBridgeService(
             _ = hub.Clients.All.SendAsync("event", envelope, stoppingToken);
             Persist(writer, envelope);
         };
+        // I2: the agent's own account of itself — identity, mode, the four
+        // permissions, the halt, other EAs attached — broadcast and kept on
+        // each change only (a heartbeat that changes nothing says nothing).
+        agentServer.StatusChanged += (accountId, status) =>
+        {
+            var envelope = Envelope<object>.Create(
+                EventTypes.ExecutionAgentStatus,
+                Source,
+                new ExecutionAgentStatusPayload(status),
+                accountId);
+            _ = hub.Clients.All.SendAsync("event", envelope, stoppingToken);
+            Persist(writer, envelope);
+        };
         // I1: an agent refused for its token retries every second too — one
         // warning a minute, and the reason never quotes a token.
         long? lastRefusalWarning = null;

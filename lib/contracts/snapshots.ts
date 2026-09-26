@@ -24,6 +24,52 @@ export interface AccountSummary {
   dailyDrawdownPercent: number;
   totalDrawdownPercent: number;
   openRiskPercent: number;
+  // --- I2 (2026-09-26): MT5's account window — null/absent from an observer
+  //     older than I2 or the mock source. Never the holder's name.
+  margin?: number | null;
+  freeMargin?: number | null;
+  marginLevel?: number | null;
+  server?: string | null;
+  tradeMode?: "demo" | "contest" | "real" | "unknown" | null;
+  leverage?: number | null;
+  marginMode?: "hedging" | "netting" | "exchange" | "unknown" | null;
+  fifoClose?: boolean | null;
+  tradeAllowed?: boolean | null;
+  tradeExpert?: boolean | null;
+}
+
+/**
+ * I2: the EA-05 execution agent as it describes itself (C# Mt5AgentStatus) —
+ * its hello overlaid by its latest heartbeat. Null fields: an agent older
+ * than I1. Never carries the agent token.
+ */
+export interface ExecutionAgentStatus {
+  accountId: string;
+  agentId: string;
+  agentVersion: string;
+  buildId: string | null;
+  /** Effective mode. */
+  mode: "observe" | "paper" | "confirm";
+  /** The highest mode this build may ever run in. */
+  modeCeiling: "observe" | "paper" | "confirm" | null;
+  /** "ok", or why the agent refuses every command. */
+  identity: "ok" | "mismatch" | "no_account" | null;
+  expectedAccountId: string | null;
+  server: string;
+  tradeMode: string | null;
+  marginMode: string | null;
+  fifoClose: boolean | null;
+  terminalTradeAllowed: boolean | null;
+  expertTradeAllowed: boolean | null;
+  accountTradeExpert: boolean | null;
+  accountTradeAllowed: boolean | null;
+  tradable: boolean | null;
+  closable: boolean | null;
+  halted: boolean | null;
+  /** Every OTHER expert attached in the terminal — Algo Trading arms them all. */
+  attachedExperts: string[];
+  gatewaySilentMs: number | null;
+  lastHeartbeatTime: number | null;
 }
 
 export interface Position {

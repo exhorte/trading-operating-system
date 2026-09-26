@@ -57,6 +57,7 @@ import type {
 import type {
   AccountSummary,
   AgentStatus,
+  ExecutionAgentStatus,
   Position,
 } from "@/lib/contracts/snapshots";
 import type { Candle } from "@/lib/domain/market";
@@ -93,6 +94,9 @@ interface HubSnapshot {
   /** Mt5AgentServer.IsConnected. `agents` above is the observer's hello and
    *  never answers for the execution agent — see CockpitSnapshotDto. */
   executionAgentConnected: boolean;
+  /** I2: the execution agent registered for `account`'s login, as it
+   *  describes itself (absent from a backend older than I2). */
+  executionAgent?: ExecutionAgentStatus | null;
 }
 
 export class SignalRRealtimeClient implements RealtimeClient {
@@ -233,6 +237,23 @@ export class SignalRRealtimeClient implements RealtimeClient {
   }
 
   /** Snapshot on connect/reconnect, then the event stream (documented pattern). */
+  /** I2: forget everything that belongs to one account's session. */
+  private resetAccountSession(): void {
+    this.baselineBalance = null;
+    this.baselineEquity = null;
+    this.tradesToday = null;
+    this.consecutiveLosses = null;
+    this.lastConsecutiveLossAt = null;
+    this.store.hydrate({
+      positions: [],
+      activeLockout: null,
+      executionReports: [],
+      executionAgentStatus: null,
+      lockoutViolations: [],
+      risk: null,
+    });
+  }
+
   private async hydrateFromSnapshot(): Promise<void> {
     if (!this.connection) {
       return;
@@ -254,6 +275,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
       positions: snapshot.positions,
       agents: snapshot.agents,
       executionAgentConnected: snapshot.executionAgentConnected,
+      executionAgentStatus: snapshot.executionAgent ?? null,
     });
     this.scheduleContextRecompute();
     if (snapshot.account) {
@@ -373,8 +395,17 @@ export class SignalRRealtimeClient implements RealtimeClient {
         break;
       }
       case "agent.snapshot.account": {
+        const previousAccountId = this.store.getSnapshot().account?.accountId ?? null;
         this.store.apply(envelope);
         const account = this.store.getSnapshot().account;
+        if (account && previousAccountId !== null && account.accountId !== previousAccountId) {
+          // I2: the terminal is on another account now. Nothing of the
+          // previous one's session may carry over — baseline, trades,
+          // streak, lockout, agent: drop it all, then resync from the hub.
+          this.resetAccountSession();
+          void this.hydrateFromSnapshot();
+          break;
+        }
         if (account && this.baselineBalance === null) {
           this.baselineBalance = account.balance;
           this.baselineEquity = account.equity;

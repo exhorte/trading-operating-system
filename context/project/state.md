@@ -192,7 +192,10 @@ ouverts.
   login, halt local, instance unique, spread par symbole, jeton, état
   publié) et passerelle (jeton de l'agent, ping, halt). Barrière intacte.
   À déployer par l'utilisateur, puis étapes 2 à 6 du README de l'agent.
-- **I2 :** identification complète du compte (compte réel).
+- **I2 :** fait côté code le 2026-09-26 — fenêtre compte de MT5 (type,
+  levier, hedging/netting, permissions ; jamais le nom), état de l'agent
+  dans le cockpit, remise à zéro au changement de compte. Réglages par
+  compte (D13) reportés à I7.
 - **Accords donnés le 2026-09-25 :** ADR 0013 (connexion depuis
   l'application), ADR 0014 volet armement, EA-08 (fermeture globale), EA-07
   jusqu'à CONFIRM. Ils couvrent I3 à I5.

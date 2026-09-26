@@ -75,6 +75,9 @@ export type EventType =
   // too, which is exactly how connectionGate ended up reading a market feed
   // as "an order can reach MT5" (T09 bug, fixed 2026-09-18).
   | "execution.agent.connection"
+  // I2: Gateway-only — the execution agent's own account of itself
+  // (identity, mode, permissions, halt, other EAs attached), on change.
+  | "execution.agent.status"
   // T03: Gateway-only — the backend polls FRED and owns the calendar cache;
   // never client-published.
   | "market.calendar.updated"
