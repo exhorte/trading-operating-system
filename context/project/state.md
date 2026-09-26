@@ -19,8 +19,9 @@ L'**agent d'exécution MT5** (ADR 0010) est construit jusqu'au mode
 CONFIRM uniquement : Phase 0 et EA-01 à **EA-06 sont livrés**, un seul
 `OrderSend` existe (EA-05 incrément 6), **structurellement inatteignable
 hors `CONFIRM`** (`g_mode` figé à `OBSERVE`, jamais affecté) — il n'a donc
-jamais tourné contre un broker. Ouvrir `CONFIRM` est EA-07, non démarré,
-non demandé, et ses propres préconditions ne sont pas remplies. **Vague 2
+jamais tourné contre un broker. Ouvrir `CONFIRM` est EA-07 : accordé le
+2026-09-25, pas encore construit (I6 de l'étude) ; l'autonomie (ADR 0015,
+acceptée le 2026-09-26) vient après (I8). **Vague 2
 est livrée** (T06 journal, T07 conformité, T15 serveur MCP, T08 revue
 hebdomadaire) — son propre critère de sortie (taux de conformité affiché
 en haut du cockpit) est rempli. **S01 s'exécute** depuis le 2026-09-18
@@ -198,7 +199,12 @@ ouverts.
   compte (D13) reportés à I7.
 - **Accords donnés le 2026-09-25 :** ADR 0013 (connexion depuis
   l'application), ADR 0014 volet armement, EA-08 (fermeture globale), EA-07
-  jusqu'à CONFIRM. Ils couvrent I3 à I5.
+  jusqu'à CONFIRM ; ADR 0015 le 2026-09-26. **ADR 0013 et 0014 rédigés le
+  2026-09-26**, soumis à relecture ; fiches T13 et EA-08 à écrire avant
+  leur code.
+- **Déploiement en attente (geste de l'utilisateur)** : I0 à I2 sont
+  commités mais pas en service — `pwsh -File scripts\start-live.ps1 -Build`,
+  puis rattacher l'agent avec `InpMaxSpreadCsv` (étude, « Reprendre ici »).
 - **Compte réel dès I5** (décision de l'utilisateur, 2026-09-25) : plus de
   démo.
 - **Autonomie :** l'agent exécutera la stratégie configurée (S01, EURUSD)
