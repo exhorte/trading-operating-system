@@ -40,6 +40,9 @@ import type { AccountSettingsLedger } from "@/lib/accounts/settings";
 
 export interface CockpitSnapshot {
   connection: ConnectionState;
+  /** Why the last hub connection attempt failed, in words the trader can
+   *  act on (I0: a missing cockpit token), or null once connected. */
+  connectionIssue: string | null;
   environment: Environment;
   account: AccountSummary | null;
   positions: Position[];
@@ -101,6 +104,7 @@ export interface CockpitSnapshot {
 
 export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
   connection: "connecting",
+  connectionIssue: null,
   environment: "mock",
   account: null,
   positions: [],

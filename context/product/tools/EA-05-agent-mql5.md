@@ -517,3 +517,50 @@ explicite.
   à l'utilisateur). **Resté ouvert** : comment le cockpit affiche un rapport
   REJECTED reçu sous `execution.command.rejected` (le store attend un
   accusé) — lecture de `lib/realtime/store.ts` pas faite dans cette session.
+
+- 2026-09-26 — **I0 terminé côté hub, cockpit et observateur** : ce qui
+  peut piloter le Trading OS est désormais gardé (étude, I0 ; tableau
+  complet dans `context/security/security_principles.md`, « Surface
+  locale »). `.mq5` inchangé, barrière inchangée.
+
+  - **Hub et écritures `/api`** (`LocalAccessGuard.cs`) : jeton du cockpit
+    **et** Origin autorisée sur chaque requête, poignée de main WebSocket
+    comprise ; WebSockets seuls côté serveur, `skipNegotiation` côté
+    client. Avant, n'importe quelle page web ouverte dans le navigateur
+    pouvait rejoindre le hub et appeler `SubmitCommand` ou publier
+    `risk.lockout.cleared` : CORS ne couvre pas les WebSockets.
+  - `AllowedHosts` limité à `localhost;127.0.0.1` ; jeton masqué dans la
+    console (`RedactingConsoleFormatter.cs`) ; `/health.access` dit si
+    chaque jeton est configuré, jamais sa valeur.
+  - **Cockpit** : `next dev -H 127.0.0.1` (il écoutait sur toutes les
+    interfaces), `proxy.ts` (nom Next 16 du middleware) refuse tout Host
+    hors loopback, `/api/cockpit-token` remet le jeton aux seuls scripts de
+    la page (`Sec-Fetch-Site: same-origin`). Jeton absent : message clair
+    dans le menu du compte.
+  - **Observateur** : jeton exigé sur la poignée de main, navigateurs
+    refusés, refus de démarrer sans jeton. Côté Gateway, une connexion qui
+    n'a jamais abouti n'est plus une déconnexion : l'observateur arrêté
+    faisait écrire un `agent.disconnected` toutes les 3 s en base (point
+    ouvert du 2026-09-25, fermé).
+  - `start-live.ps1` crée les jetons dans `.env` s'ils manquent (jamais
+    affichés), gagne `-Build`, et s'arrête si le backend tourne sur une
+    image d'avant les jetons. Il se lit désormais aussi sous Windows
+    PowerShell 5.1 (BOM ajouté : sans lui, les tirets longs cassaient
+    l'analyse — défaut antérieur).
+
+  Tests : `dotnet test` 94/94 (19 nouveaux), vitest 312/312 (9 nouveaux),
+  unittest de l'observateur 31/31 (dont une vraie poignée de main
+  `websockets`), `tsc`, lint, `next build`. **Vérifié en réel sur une
+  instance isolée** (ports 15080/19765/18765/3002, base volontairement
+  coupée) : 101 avec jeton et Origin ; 403 sans jeton, mauvais jeton,
+  Origin étrangère ou absente ; 400 sur Host forgé ; jeton absent du
+  journal ; observateur réel attaché au terminal, backend accepté avec le
+  jeton et refusé sans ; cockpit dans le navigateur connecté au hub gardé
+  (compte reçu par le hub), puis message « jeton absent » quand il manque.
+  Trouvé et corrigé en testant `start-live` sur des `.env` jetables : une
+  ligne `NOM=` vide suivie d'une autre ligne passait pour un jeton présent.
+
+  **Pas encore déployé** : le conteneur backend tourne sur l'ancienne image
+  (geste de l'utilisateur : `pwsh -File scripts\start-live.ps1 -Build`).
+  **Reste pour I1** : le jeton de l'agent sur le port 9765 (il faut une
+  entrée côté MQL5).

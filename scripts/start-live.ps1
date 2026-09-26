@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Démarre l'environnement réel du Trading OS pour le compte ouvert dans MT5.
 
@@ -7,6 +7,8 @@
   le terminal MT5 que tu as ouvert et connecté, FTMO ou Exness.
 
   Dans l'ordre du runbook (« Ordre de démarrage complet ») :
+    0. jetons locaux (I0) : TRADINGOS_COCKPIT_TOKEN et TRADINGOS_OBSERVER_TOKEN,
+       écrits une fois dans le .env gitignoré s'ils manquent, jamais affichés ;
     1. base TimescaleDB (conteneur tradingos-timescaledb, port 5433) ;
     2. backend .NET (conteneur tradingos-backend, port 5080) ;
     3. observer MT5 en lecture seule, sur le symbole que CE terminal liste
@@ -27,15 +29,22 @@
 .PARAMETER Symbol
   Force le symbole de l'observer au lieu de le déduire du broker.
 
+.PARAMETER Build
+  Reconstruit l'image du backend avant de le démarrer (après une
+  modification du code C#).
+
 .EXAMPLE
   pwsh -File scripts\start-live.ps1
+.EXAMPLE
+  pwsh -File scripts\start-live.ps1 -Build
 .EXAMPLE
   pwsh -File scripts\start-live.ps1 -WithSetupPipeline
 #>
 [CmdletBinding()]
 param(
     [switch]$WithSetupPipeline,
-    [string]$Symbol
+    [string]$Symbol,
+    [switch]$Build
 )
 
 # Native commands (docker, python) report through exit codes, checked one
@@ -65,6 +74,41 @@ function Start-Window([string]$title, [string]$command) {
     Start-Process -FilePath "powershell.exe" -WorkingDirectory $root -ArgumentList @("-NoExit", "-Command", $full) | Out-Null
 }
 
+function Ensure-LocalToken([string]$envPath, [string]$name) {
+    # Returns $true when it had to create the token. Reads .env only to look
+    # for its own key; the file also holds other secrets (FRED key), and
+    # nothing here ever prints a value.
+    $content = if (Test-Path $envPath) { [System.IO.File]::ReadAllText($envPath) } else { "" }
+    # Horizontal blanks only, never \s: an empty "NAME=" line must not borrow
+    # the next line's value and pass for a token.
+    if ($content -match "(?m)^[ \t]*$([regex]::Escape($name))[ \t]*=[ \t]*\S") { return $false }
+    $bytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    # base64url: no character that dotenv or compose would interpret.
+    $token = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    $separator = if ($content.Length -gt 0 -and -not $content.EndsWith("`n")) { [Environment]::NewLine } else { "" }
+    [System.IO.File]::AppendAllText($envPath, "$separator$name=$token" + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
+    return $true
+}
+
+# --- 0. Jetons locaux (I0) ----------------------------------------------------
+# Secrets partagés entre les processus du Trading OS : le cockpit les présente
+# au hub et aux écritures /api, le backend à l'observateur. docker compose et
+# next dev lisent .env eux-mêmes ; l'observateur aussi.
+Step "Jetons locaux (.env)"
+$envFile = Join-Path $root ".env"
+$created = @()
+foreach ($tokenName in @("TRADINGOS_COCKPIT_TOKEN", "TRADINGOS_OBSERVER_TOKEN")) {
+    if (Ensure-LocalToken $envFile $tokenName) { $created += $tokenName }
+}
+if ($created) {
+    Ok ("créé(s) dans .env : " + ($created -join ", ") + " — le backend sera recréé à l'étape 2")
+    Note "un cockpit déjà ouvert relit .env seul ; un observer déjà lancé doit être relancé (étape 3 le fait)"
+} else {
+    Ok "présents dans .env"
+}
+
 # --- 1. Base ------------------------------------------------------------------
 Step "Base TimescaleDB (port 5433)"
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -92,7 +136,11 @@ Ok "tradingos-timescaledb healthy"
 # --- 2. Backend ---------------------------------------------------------------
 Step "Backend ($backend)"
 Push-Location $root
-docker compose up -d --no-deps backend *> $null
+# compose recreates the container by itself when its resolved environment
+# changed — a token just added to .env included.
+$composeArgs = @("compose", "up", "-d", "--no-deps")
+if ($Build) { $composeArgs += "--build"; Note "reconstruction de l'image (quelques minutes)" }
+docker @composeArgs backend *> $null
 $composeExit = $LASTEXITCODE
 Pop-Location
 if ($composeExit -ne 0) { Fail "docker compose up -d --no-deps backend a échoué (runbook §2)." }
@@ -106,6 +154,15 @@ do {
 if (-not $healthy) { Fail "Le backend ne répond pas sur $backend/health après 60 s — docker logs tradingos-backend." }
 if ($healthy.db -ne "ok") { Fail "Backend démarré mais base injoignable : $($healthy.dbError)" }
 Ok "backend en ligne, base ok"
+if (-not $healthy.access) {
+    Fail ("Le backend tourne sur une image d'avant les jetons (I0) : l'observateur le refuserait. " +
+        "Relance avec -Build : pwsh -File scripts\start-live.ps1 -Build")
+}
+if (-not ($healthy.access.cockpitToken -and $healthy.access.observerToken)) {
+    Fail ("Le conteneur backend n'a pas reçu les jetons de .env. " +
+        "Recrée-le : docker compose up -d --no-deps --force-recreate backend (depuis 04_code), puis relance ce script.")
+}
+Ok "jetons du hub et de l'observateur en place"
 
 # --- 3. Terminal MT5 et observer ---------------------------------------------
 Step "Terminal MT5"
@@ -168,8 +225,13 @@ if ($attached) {
 
 # --- 4. Cockpit ---------------------------------------------------------------
 Step "Cockpit (http://localhost:3000)"
-if (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue) {
+$listening = @(Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue)
+if ($listening) {
     Note "quelque chose écoute déjà sur le port 3000 — laissé tel quel"
+    if ($listening | Where-Object { $_.LocalAddress -in @("0.0.0.0", "::") }) {
+        # Started before I0 (package.json now passes -H 127.0.0.1).
+        Warn "il écoute sur toutes les interfaces (réseau local compris) : arrête-le et relance ce script pour le lier à 127.0.0.1."
+    }
 } else {
     # Next 16 refuses a second `next dev` in the same folder: if the mock
     # preview (3001) is running, this window says so and stops.

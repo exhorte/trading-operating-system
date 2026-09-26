@@ -183,9 +183,11 @@ reprendre**, lire d'abord la section « Suivi d'avancement » en tête de ce
 document : état de chaque incrément, étapes de reprise dans l'ordre, points
 ouverts.
 
-- **I0 :** en cours. Gateway corrigé et déployé ; base liée à `127.0.0.1`
-  sur le vrai volume. Restent le hub (jeton, Origin) et `next dev` en
-  loopback.
+- **I0 :** fait côté code le 2026-09-26 — hub, écritures `/api` et
+  observateur gardés par jeton (et Origin pour le hub), cockpit lié à
+  `127.0.0.1` avec contrôle du Host ; vérifié sur une instance isolée. À
+  déployer : `pwsh -File scripts\start-live.ps1 -Build`. Le jeton de
+  l'agent (9765) passe à I1.
 - **I1 :** durcir l'agent — identité tirée du compte réel, arrêt local,
   instance unique, seuil de spread par symbole, homme mort.
 - **I2 :** identification complète du compte (compte réel).

@@ -13,10 +13,12 @@
  */
 
 import {
+  HttpTransportType,
   HubConnection,
   HubConnectionBuilder,
   HubConnectionState,
 } from "@microsoft/signalr";
+import { fetchCockpitToken, isCockpitTokenError } from "@/lib/security/cockpit-token";
 import { analyzeMarketContext, DEFAULT_SESSION_WINDOWS } from "@/lib/analysis";
 import { sessionEnabled, sessionForTimestamp } from "@/lib/analysis/sessions";
 import {
@@ -154,7 +156,15 @@ export class SignalRRealtimeClient implements RealtimeClient {
     this.store.setConnectionState("connecting");
 
     const connection = new HubConnectionBuilder()
-      .withUrl(this.hubUrl)
+      .withUrl(this.hubUrl, {
+        // I0 (2026-09-26): the hub refuses any connection without the
+        // cockpit token and an allowed Origin (LocalAccessGuard.cs).
+        // WebSockets only, no negotiate round-trip: the token rides in the
+        // handshake URL (access_token), fetched fresh on every attempt.
+        transport: HttpTransportType.WebSockets,
+        skipNegotiation: true,
+        accessTokenFactory: () => fetchCockpitToken(),
+      })
       .withAutomaticReconnect()
       .build();
     this.connection = connection;
@@ -163,6 +173,7 @@ export class SignalRRealtimeClient implements RealtimeClient {
     connection.onreconnecting(() => this.store.setConnectionState("reconnecting"));
     connection.onreconnected(() => {
       this.store.setConnectionState("connected");
+      this.store.hydrate({ connectionIssue: null });
       void this.hydrateFromSnapshot();
     });
     connection.onclose(() => {
@@ -175,14 +186,22 @@ export class SignalRRealtimeClient implements RealtimeClient {
       .start()
       .then(() => {
         this.store.setConnectionState("connected");
-        this.store.hydrate({ lastHeartbeatAt: new Date().toISOString() });
+        this.store.hydrate({ lastHeartbeatAt: new Date().toISOString(), connectionIssue: null });
         this.startWatchdog();
         return this.hydrateFromSnapshot();
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         // withAutomaticReconnect only covers established connections; retry
         // the initial connect ourselves.
         if (!this.stopped) {
+          // A browser does not say why a WebSocket handshake failed: a
+          // backend that is down and a refused token look the same here.
+          this.store.hydrate({
+            connectionIssue: isCockpitTokenError(error)
+              ? error.message
+              : "Hub injoignable ou jeton refusé : vérifie que le backend tourne et qu'il a été recréé " +
+                "après l'ajout de TRADINGOS_COCKPIT_TOKEN à .env (scripts/start-live.ps1).",
+          });
           this.store.setConnectionState("reconnecting");
           setTimeout(() => {
             if (!this.stopped) {

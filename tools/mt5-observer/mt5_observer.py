@@ -21,15 +21,27 @@ Usage (Windows, terminal open and logged into your Exness demo):
 
 Then run the backend gateway + the cockpit with NEXT_PUBLIC_REALTIME_SOURCE=backend
 (runbook: context/backend/backend_bootstrap.md).
+
+ACCESS (I0, 2026-09-26): the stream carries the account (balance, positions,
+login). Bound to 127.0.0.1, it is still reachable from every container
+through host.docker.internal, so each handshake must present
+`Authorization: Bearer <TRADINGOS_OBSERVER_TOKEN>` — the backend does — and a
+browser (anything sending an Origin) is refused. The token comes from the
+environment, else from the gitignored 04_code/.env that
+scripts/start-live.ps1 writes; without one, this script refuses to start.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import hmac
 import json
+import os
 import time
 from datetime import datetime, timezone
+from http import HTTPStatus
+from pathlib import Path
 from typing import Any
 
 import MetaTrader5 as mt5
@@ -571,6 +583,54 @@ async def handler(websocket, symbol: str, candle_count: int) -> None:
         print("[observer] cockpit disconnected")
 
 
+TOKEN_ENV = "TRADINGOS_OBSERVER_TOKEN"
+# tools/mt5-observer/ -> 04_code/.env (gitignored; docker compose reads it too).
+DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+
+def read_env_value(path: Path, name: str) -> str | None:
+    """One `NAME=value` from a dotenv file, or None. Never prints anything:
+    the same file holds other secrets (FRED key)."""
+    try:
+        lines = path.read_text(encoding="utf-8-sig").splitlines()
+    except OSError:
+        return None
+    value = None
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, raw = stripped.partition("=")
+        if key.strip() == name:
+            value = raw.strip().strip('"').strip("'") or None  # last one wins, like compose
+    return value
+
+
+def load_observer_token(env: dict[str, str] | None = None, env_file: Path = DEFAULT_ENV_FILE) -> str | None:
+    env = os.environ if env is None else env
+    return env.get(TOKEN_ENV) or read_env_value(env_file, TOKEN_ENV)
+
+
+def make_access_check(expected_token: str):
+    """websockets `process_request`: None lets the handshake proceed, a
+    Response refuses it. Refuses browsers (any Origin — a page cannot hide
+    it) and anything without exactly one matching Bearer token."""
+    expected = expected_token.encode("utf-8")
+
+    def check(connection, request):
+        if request.headers.get_all("Origin"):
+            return connection.respond(HTTPStatus.FORBIDDEN, "browser origins are refused\n")
+        values = request.headers.get_all("Authorization")
+        presented = ""
+        if len(values) == 1 and values[0].startswith("Bearer "):
+            presented = values[0][len("Bearer "):].strip()
+        if not hmac.compare_digest(presented.encode("utf-8"), expected):
+            return connection.respond(HTTPStatus.FORBIDDEN, "invalid observer token\n")
+        return None
+
+    return check
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description="MT5 observe-only producer")
     parser.add_argument("--symbol", default="XAUUSDm", help="broker symbol, e.g. XAUUSDm")
@@ -578,6 +638,11 @@ async def main() -> None:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--candles", type=int, default=120, help="M15 candles to backfill")
     args = parser.parse_args()
+
+    token = load_observer_token()
+    if not token:
+        raise SystemExit(f"[observer] {TOKEN_ENV} is not set (environment or {DEFAULT_ENV_FILE}) — "
+                         f"run scripts/start-live.ps1 once: it writes it to .env for the backend and for this script")
 
     if not mt5.initialize():
         raise SystemExit(f"[observer] mt5.initialize() failed: {mt5.last_error()} "
@@ -591,10 +656,11 @@ async def main() -> None:
     info = mt5.account_info()
     print(f"[observer] attached to account {info.login} @ {info.company} ({info.server}), "
           f"balance={info.balance} {info.currency}")
-    print(f"[observer] READ-ONLY / observe. Serving ws://{args.host}:{args.port}")
+    print(f"[observer] READ-ONLY / observe. Serving ws://{args.host}:{args.port} (token required)")
 
     async with websockets.serve(
-        lambda ws: handler(ws, args.symbol, args.candles), args.host, args.port
+        lambda ws: handler(ws, args.symbol, args.candles), args.host, args.port,
+        process_request=make_access_check(token),
     ):
         await asyncio.Future()  # run forever
 

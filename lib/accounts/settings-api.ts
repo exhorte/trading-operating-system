@@ -9,6 +9,7 @@
  */
 
 import { backendHttpBase } from "@/lib/realtime/backend-url";
+import { fetchCockpitToken } from "@/lib/security/cockpit-token";
 import {
   parseLedger,
   parseSettingsVersion,
@@ -54,12 +55,19 @@ export type SettingsChange =
   | { firm: "ftmo"; settings: FtmoSettings }
   | { firm: "exness"; settings: ExnessSettings };
 
+/** I0 (2026-09-26): every write under /api carries the cockpit token
+ *  (LocalAccessGuard.cs). A missing token throws with its own message. */
+async function authorizationHeader(): Promise<Record<string, string>> {
+  return { Authorization: `Bearer ${await fetchCockpitToken()}` };
+}
+
 export async function requestSettingsChange(change: SettingsChange): Promise<SettingsVersion> {
+  const authorization = await authorizationHeader();
   let res: Response;
   try {
     res = await fetch(`${backendHttpBase()}/api/account-settings`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authorization },
       body: JSON.stringify(change),
     });
   } catch {
@@ -76,11 +84,12 @@ export async function requestSettingsChange(change: SettingsChange): Promise<Set
 }
 
 export async function cancelSettingsChange(versionId: string): Promise<void> {
+  const authorization = await authorizationHeader();
   let res: Response;
   try {
     res = await fetch(
       `${backendHttpBase()}/api/account-settings/${encodeURIComponent(versionId)}/cancel`,
-      { method: "POST" },
+      { method: "POST", headers: authorization },
     );
   } catch {
     throw new Error("Backend injoignable — rien n'a été annulé.");

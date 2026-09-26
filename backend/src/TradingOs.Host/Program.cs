@@ -1,10 +1,18 @@
 using System.Net;
+using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.Extensions.Logging.Console;
 using TradingOs.Contracts;
 using TradingOs.Gateway;
 using TradingOs.Host;
 using TradingOs.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// I0 (2026-09-26): nothing written to the console may carry a token — see
+// RedactingConsoleFormatter.
+builder.Logging.AddConsoleFormatter<RedactingConsoleFormatter, ConsoleFormatterOptions>();
+builder.Services.Configure<ConsoleLoggerOptions>(options =>
+    options.FormatterName = RedactingConsoleFormatter.FormatterName);
 
 // Dashboard origins for local dev; SignalR needs credentials-compatible CORS.
 // Comma-separated since 2026-09-20: the cockpit runs on 3000 in backend mode
@@ -29,6 +37,13 @@ var connectionString = builder.Configuration.GetConnectionString("TradingOs")
 // doesn't change from outside the container.
 var listenUrl = builder.Configuration["Cockpit:ListenUrl"] ?? "http://localhost:5080";
 var agentBindAny = builder.Configuration.GetValue<bool>("Cockpit:AgentBindAny");
+// I0 (2026-09-26): shared secrets, from the gitignored .env beside
+// docker-compose.yml (start-live generates them once). The cockpit token
+// guards the hub and every write under /api (LocalAccessGuard); the observer
+// token is what this backend presents to the Python observer. Absent = the
+// guarded surface refuses everything, and the observer refuses this backend.
+var cockpitToken = builder.Configuration["Cockpit:CockpitToken"];
+var observerToken = builder.Configuration["Cockpit:ObserverToken"];
 
 builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
@@ -36,7 +51,10 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(dashboardOrigins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
 builder.Services.AddSingleton<GatewayState>();
-builder.Services.AddSingleton(sp => new Mt5ObserverClient(sp.GetRequiredService<GatewayState>(), observerUrl));
+builder.Services.AddSingleton(sp => new Mt5ObserverClient(
+    sp.GetRequiredService<GatewayState>(),
+    observerUrl,
+    string.IsNullOrEmpty(observerToken) ? null : observerToken));
 // Silence after which an execution agent counts as dead (terminal crash,
 // half-open TCP) and stops holding its account — the agent heartbeats every
 // InpHeartbeatSeconds (default 5), so keep this well above that.
@@ -62,7 +80,24 @@ builder.Services.AddHostedService<NewsCalendarService>();
 
 var app = builder.Build();
 
+var accessLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TradingOs.Host.LocalAccessGuard");
+if (string.IsNullOrEmpty(cockpitToken))
+{
+    accessLogger.LogWarning(
+        "Cockpit:CockpitToken is not set — the hub and every /api write refuse all requests. " +
+        "Run scripts/start-live.ps1 (it writes TRADINGOS_COCKPIT_TOKEN to .env) and recreate this container.");
+}
+if (string.IsNullOrEmpty(observerToken))
+{
+    accessLogger.LogWarning(
+        "Cockpit:ObserverToken is not set — the Python observer will refuse this backend. " +
+        "Run scripts/start-live.ps1 (it writes TRADINGOS_OBSERVER_TOKEN to .env) and recreate this container.");
+}
+
+// CORS first: it answers preflights and puts its headers on every response,
+// refusals included, so the cockpit can read why a write was refused.
 app.UseCors();
+app.UseLocalAccessGuard(cockpitToken, dashboardOrigins, accessLogger);
 
 // Minimal HTTP surface (backend_plan.md): health + audit export only.
 app.MapGet("/health", (PersistenceWriter writer, Mt5AgentServer agentServer) => Results.Ok(new
@@ -78,6 +113,14 @@ app.MapGet("/health", (PersistenceWriter writer, Mt5AgentServer agentServer) => 
     dbError = writer.Status.LastError,
     unmapped = writer.Status.Unmapped,
     mappingError = writer.Status.LastMappingError,
+    // I0: whether each shared secret is configured — never its value.
+    // start-live reads this to tell an image without the guard from one
+    // whose container missed the .env.
+    access = new
+    {
+        cockpitToken = !string.IsNullOrEmpty(cockpitToken),
+        observerToken = !string.IsNullOrEmpty(observerToken),
+    },
 }));
 app.MapGet("/api/audit/recent", async (
     AuditRepository audit,
@@ -256,6 +299,8 @@ app.MapGet("/api/execution/divergence", async (
 });
 // T12 incrément 2: the Settings screen's ledger — see AccountSettingsEndpoints.
 app.MapAccountSettingsEndpoints();
-app.MapHub<CockpitHub>("/hub/cockpit");
+// WebSockets only (I0): no negotiate round-trip and no long-polling fallback
+// to guard separately — the cockpit connects with skipNegotiation.
+app.MapHub<CockpitHub>("/hub/cockpit", options => options.Transports = HttpTransportType.WebSockets);
 
 app.Run(listenUrl);

@@ -45,8 +45,18 @@ services:
     environment:
       # Container port 5432 (compose network), not the host-mapped 5433 above.
       ConnectionStrings__TradingOs: "Host=timescaledb;Port=5432;Database=tradingos;Username=tradingos;Password=tradingos_dev"
-      # 3000 = backend mode, 3001 = mock preview (.claude/launch.json).
-      Cockpit__DashboardOrigin: "http://localhost:3000,http://localhost:3001"
+      # 3000 = backend mode, 3001 = mock preview (.claude/launch.json). Also
+      # the Origin allow-list of the hub and of /api writes (LocalAccessGuard):
+      # both host spellings, since `next dev` is bound to 127.0.0.1.
+      Cockpit__DashboardOrigin: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
+      # I0 (2026-09-26): shared secrets, substituted from the gitignored `.env`
+      # beside this file — scripts/start-live.ps1 generates them once. The
+      # cockpit token guards the hub and /api writes; the observer token is
+      # presented to the Python observer. Empty = the guarded surface refuses
+      # everything (fail closed). Never inline a value here: this file is
+      # committed.
+      Cockpit__CockpitToken: "${TRADINGOS_COCKPIT_TOKEN:-}"
+      Cockpit__ObserverToken: "${TRADINGOS_OBSERVER_TOKEN:-}"
       # The Python observer + MT5 terminal stay on the Windows host, never
       # containerized — host.docker.internal is Docker Desktop's built-in
       # route back to the host (nothing extra to configure on Windows).

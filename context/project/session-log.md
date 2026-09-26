@@ -56,6 +56,24 @@ d'EURUSD, et sur EURUSDm le même calcul donnerait 0 : **ce n'est pas une
 gate par symbole**. À refaire avec le seuil par symbole (I1 dans l'agent,
 puis le Risk Engine côté serveur en I6), l'unité fixée symbole par symbole.
 
+**I0 terminé côté code** (détail : fiche EA-05 ; tableau des portes :
+`context/security/security_principles.md`). Hub et écritures `/api` :
+jeton du cockpit et Origin autorisée sur chaque requête, WebSockets seuls,
+`AllowedHosts` loopback, jeton masqué dans les logs. Cockpit : `next dev`
+sur `127.0.0.1`, `proxy.ts` refuse tout Host hors loopback, jeton remis
+aux seuls scripts de la page. Observateur : jeton exigé, navigateurs
+refusés ; le Gateway n'écrit plus un `agent.disconnected` toutes les 3 s
+quand l'observateur est arrêté. `start-live.ps1` crée les jetons dans
+`.env` (jamais affichés) et gagne `-Build`. Gates vertes (`dotnet test`
+94/94, vitest 312/312, unittest 31/31, `tsc`, lint, `next build`).
+Vérifié en réel sur une instance isolée, observateur réel compris ; le
+conteneur n'est **pas encore reconstruit** (geste de l'utilisateur).
+Trouvé en chemin : `start-live.ps1` ne se lisait pas sous Windows
+PowerShell 5.1 (UTF-8 sans BOM, défaut antérieur) — corrigé ; un premier
+démarrage de `next dev` après l'ajout de `proxy.ts` a servi 404 partout
+sauf `/`, disparu au redémarrage, jamais revu (noté au runbook). Le jeton
+de l'agent (9765) passe à I1.
+
 ## 2026-09-25 (**étude connexion/pilotage de l'agent ; I0 côté Gateway**)
 
 Demande : connexion au compte MT5 depuis l'application, bouton pour

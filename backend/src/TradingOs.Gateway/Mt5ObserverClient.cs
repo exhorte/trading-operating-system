@@ -14,18 +14,34 @@ namespace TradingOs.Gateway;
 /// so the gateway dials out. The definitive MQL5 agent will invert this
 /// (agent dials the gateway) per ADR 0005; only this class changes then.
 /// Read-only: nothing is ever sent to the producer.
+///
+/// I0 (2026-09-26): the observer demands a token on the handshake
+/// (<c>Authorization: Bearer</c>) — any container could otherwise read the
+/// account through host.docker.internal:8765. And a connection that never
+/// came up is not a disconnection: until then, every failed attempt (one
+/// every 3 s while the observer was down) wrote an agent.disconnected
+/// envelope to the database.
 /// </summary>
-public sealed class Mt5ObserverClient(GatewayState state, string url)
+public sealed class Mt5ObserverClient(
+    GatewayState state,
+    string url,
+    string? token = null,
+    TimeSpan? reconnectDelay = null)
 {
-    private const int ReconnectDelayMs = 3_000;
+    private readonly TimeSpan _reconnectDelay = reconnectDelay ?? TimeSpan.FromSeconds(3);
 
     private ClientWebSocket? _socket;
 
     /// <summary>Translated envelope ready to broadcast (type + camelCase payload object).</summary>
     public event Action<string, object>? EnvelopeReady;
 
-    /// <summary>Producer connection state changed (true = connected).</summary>
+    /// <summary>Producer connection state changed (true = connected). Raised
+    /// on transitions only, never once per failed attempt.</summary>
     public event Action<bool>? ConnectionChanged;
+
+    /// <summary>The first failed attempt of a streak, with the reason (e.g. a
+    /// 403 when the tokens differ) — raised once until a connection succeeds.</summary>
+    public event Action<string>? ConnectionFailed;
 
     /// <summary>True when a command can be delivered to the agent right now.</summary>
     public bool IsConnected => _socket is { State: WebSocketState.Open };
@@ -56,32 +72,50 @@ public sealed class Mt5ObserverClient(GatewayState state, string url)
 
     public async Task RunAsync(CancellationToken ct)
     {
+        var failureReported = false;
         while (!ct.IsCancellationRequested)
         {
+            var connected = false;
+            string? failure = null;
             try
             {
                 using var socket = new ClientWebSocket();
+                if (token is not null)
+                {
+                    socket.Options.SetRequestHeader("Authorization", $"Bearer {token}");
+                }
                 await socket.ConnectAsync(new Uri(url), ct);
                 _socket = socket;
+                connected = true;
+                failureReported = false;
                 ConnectionChanged?.Invoke(true);
                 await ReceiveLoopAsync(socket, ct);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 return;
             }
-            catch
+            catch (Exception ex)
             {
                 // fall through to reconnect
+                failure = ex.Message;
             }
 
             _socket = null;
-            ConnectionChanged?.Invoke(false);
-            state.MarkAgentDisconnected();
-            EnvelopeReady?.Invoke(EventTypes.AgentDisconnected, new { agentId = state.Hello?.AgentId ?? "mt5-observer" });
+            if (connected)
+            {
+                ConnectionChanged?.Invoke(false);
+                state.MarkAgentDisconnected();
+                EnvelopeReady?.Invoke(EventTypes.AgentDisconnected, new { agentId = state.Hello?.AgentId ?? "mt5-observer" });
+            }
+            else if (!failureReported)
+            {
+                failureReported = true;
+                ConnectionFailed?.Invoke(failure ?? "connection failed");
+            }
             try
             {
-                await Task.Delay(ReconnectDelayMs, ct);
+                await Task.Delay(_reconnectDelay, ct);
             }
             catch (OperationCanceledException)
             {

@@ -240,5 +240,103 @@ class DiffPositionIdsTests(unittest.TestCase):
         # ...which is exactly why seed_known_positions never calls this function.
 
 
+class AccessCheckTests(unittest.TestCase):
+    """I0 (2026-09-26): the stream carries the account; any container reaches
+    127.0.0.1:8765 through host.docker.internal. Only the backend's token
+    opens it, and a browser never does."""
+
+    TOKEN = "obs-Token_123"
+
+    def check(self, **headers):
+        from websockets.datastructures import Headers
+
+        connection = SimpleNamespace(respond=lambda status, text: ("refused", int(status), text))
+        request = SimpleNamespace(headers=Headers(**headers) if headers else Headers())
+        return observer.make_access_check(self.TOKEN)(connection, request)
+
+    def check_raw(self, pairs):
+        from websockets.datastructures import Headers
+
+        connection = SimpleNamespace(respond=lambda status, text: ("refused", int(status), text))
+        return observer.make_access_check(self.TOKEN)(connection, SimpleNamespace(headers=Headers(pairs)))
+
+    def test_the_backend_token_opens_the_stream(self):
+        self.assertIsNone(self.check(Authorization=f"Bearer {self.TOKEN}"))
+
+    def test_missing_or_wrong_token_is_refused(self):
+        self.assertEqual(self.check()[1], 403)
+        self.assertEqual(self.check(Authorization="Bearer nope")[1], 403)
+        self.assertEqual(self.check(Authorization=self.TOKEN)[1], 403)
+        self.assertEqual(self.check(Authorization=f"Bearer {self.TOKEN}x")[1], 403)
+
+    def test_a_browser_is_refused_even_with_the_token(self):
+        refused = self.check(Authorization=f"Bearer {self.TOKEN}", Origin="http://localhost:3000")
+        self.assertEqual(refused[1], 403)
+        self.assertNotIn(self.TOKEN, refused[2])
+
+    def test_two_authorization_headers_are_refused(self):
+        refused = self.check_raw([("Authorization", f"Bearer {self.TOKEN}"), ("Authorization", "Bearer x")])
+        self.assertEqual(refused[1], 403)
+
+    def test_a_real_handshake_goes_through_only_with_the_token(self):
+        import asyncio
+
+        import websockets
+        from websockets.exceptions import InvalidStatus
+
+        async def scenario():
+            async def handler(ws):
+                await ws.send("hello")
+
+            async with websockets.serve(handler, "127.0.0.1", 0, process_request=observer.make_access_check(self.TOKEN)) as server:
+                port = server.sockets[0].getsockname()[1]
+                uri = f"ws://127.0.0.1:{port}"
+                async with websockets.connect(uri, additional_headers={"Authorization": f"Bearer {self.TOKEN}"}) as ws:
+                    self.assertEqual(await ws.recv(), "hello")
+                with self.assertRaises(InvalidStatus) as refused:
+                    async with websockets.connect(uri):
+                        pass
+                self.assertEqual(refused.exception.response.status_code, 403)
+                with self.assertRaises(InvalidStatus):
+                    async with websockets.connect(uri, additional_headers={"Authorization": "Bearer wrong"}):
+                        pass
+                with self.assertRaises(InvalidStatus):
+                    async with websockets.connect(
+                        uri, origin="http://localhost:3000",
+                        additional_headers={"Authorization": f"Bearer {self.TOKEN}"},
+                    ):
+                        pass
+
+        asyncio.run(scenario())
+
+
+class ObserverTokenSourceTests(unittest.TestCase):
+    def write_env(self, text, bom=False):
+        import tempfile
+        from pathlib import Path
+
+        handle = tempfile.NamedTemporaryFile("wb", suffix=".env", delete=False)
+        handle.write((b"\xef\xbb\xbf" if bom else b"") + text.encode("utf-8"))
+        handle.close()
+        self.addCleanup(Path(handle.name).unlink)
+        return Path(handle.name)
+
+    def test_reads_its_own_line_and_nothing_else(self):
+        path = self.write_env("# comment\nFRED_API_KEY=other-secret\n\nTRADINGOS_OBSERVER_TOKEN=abc\n", bom=True)
+        self.assertEqual(observer.read_env_value(path, "TRADINGOS_OBSERVER_TOKEN"), "abc")
+        self.assertIsNone(observer.read_env_value(path, "TRADINGOS_COCKPIT_TOKEN"))
+
+    def test_empty_value_or_missing_file_is_no_token(self):
+        from pathlib import Path
+
+        self.assertIsNone(observer.read_env_value(self.write_env("TRADINGOS_OBSERVER_TOKEN=\n"), "TRADINGOS_OBSERVER_TOKEN"))
+        self.assertIsNone(observer.read_env_value(Path("does-not-exist.env"), "TRADINGOS_OBSERVER_TOKEN"))
+
+    def test_the_environment_wins_over_the_file(self):
+        path = self.write_env("TRADINGOS_OBSERVER_TOKEN=from-file\n")
+        self.assertEqual(observer.load_observer_token({"TRADINGOS_OBSERVER_TOKEN": "from-env"}, path), "from-env")
+        self.assertEqual(observer.load_observer_token({}, path), "from-file")
+
+
 if __name__ == "__main__":
     unittest.main()

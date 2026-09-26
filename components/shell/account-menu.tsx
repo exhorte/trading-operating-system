@@ -99,7 +99,7 @@ function StatusRow({ label, value, tone }: { label: string; value: string; tone:
  * account is whichever one MT5 has open (ADR 0003).
  */
 export function AccountMenu() {
-  const { account, connection, environment, executionAgentConnected } = useCockpit();
+  const { account, connection, connectionIssue, environment, executionAgentConnected } = useCockpit();
   const { resolved } = useAccountSettings();
   const persistence = usePersistenceHealth();
 
@@ -152,6 +152,9 @@ export function AccountMenu() {
         <DropdownMenuSeparator />
         <div className="flex flex-col gap-2 px-2 py-2 text-xs">
           <StatusRow label="Temps réel" value={hub.label} tone={hub.tone} />
+          {connectionIssue && connection !== "connected" ? (
+            <p className="text-[11px] leading-snug text-warning">{connectionIssue}</p>
+          ) : null}
           <StatusRow label="Persistance" value={store.label} tone={store.tone} />
           <StatusRow
             label="Agent EA-05"

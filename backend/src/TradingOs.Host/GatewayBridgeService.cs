@@ -55,6 +55,10 @@ public sealed class GatewayBridgeService(
         };
         observer.ConnectionChanged += (connected) =>
             logger.LogInformation("MT5 observer {State}", connected ? "connected" : "disconnected — retrying");
+        // Once per streak (I0): a 403 here means the observer's token and
+        // this backend's differ — both read TRADINGOS_OBSERVER_TOKEN from .env.
+        observer.ConnectionFailed += (reason) =>
+            logger.LogWarning("MT5 observer unreachable ({Reason}) — retrying quietly until it answers", reason);
 
         // EA-05: the execution agent is a separate connection from the
         // read-only observer above — never merged (ADR 0010) — but shares

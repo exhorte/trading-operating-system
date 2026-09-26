@@ -53,11 +53,13 @@ Aucune fonctionnalité touchant à l'exécution n'est acceptable si elle ne remp
 - un arrêt d'urgence existe ;
 - le comportement de reconnexion et de resynchronisation est spécifié.
 
-**Rappel** : aucun appel de trade n'existe nulle part dans ce dépôt. Le mode `observe` / SIMULATED est le seul chemin implémenté. Passer en mode live est une décision d'ADR, pas un changement de configuration.
+**Rappel** (corrigé le 2026-09-26 — la version précédente affirmait encore qu'« aucun appel de trade n'existe ») : un seul appel de trade existe, `OrderSend` dans `ExecuteOrder` (`tools/mt5-execution-agent/TradingOsAgent.mq5`, EA-05 incrément 6), structurellement inatteignable tant que `g_mode` est le `const` `MODE_OBSERVE`. Les accords nommés du 2026-09-25/26 (ADR 0014, EA-08, EA-07, ADR 0015) ouvrent son élargissement incrément par incrément (étude, I4 à I8) ; tant qu'un incrément n'est pas livré et vérifié, le mode `observe` / SIMULATED reste le seul chemin qui s'exécute. Passer en mode live reste une décision d'ADR, pas un changement de configuration.
 
 ## Gates temps réel
 
 Toute fonctionnalité WebSocket/SignalR doit définir : états de connexion, hypothèses d'authentification, portée d'abonnement, enveloppe d'événement, reconnexion, comportement en donnée périmée, resynchronisation par snapshot, champs d'observabilité.
+
+Authentification, depuis I0 (2026-09-26) : le hub, les écritures `/api` et l'observateur exigent leur jeton, le hub aussi une Origin autorisée — `context/security/security_principles.md`, « Surface locale ». Toute nouvelle porte (méthode de hub, endpoint d'écriture, port) passe derrière la même garde, avec un test de refus.
 
 ## Gate IA
 

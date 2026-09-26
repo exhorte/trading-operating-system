@@ -115,6 +115,14 @@ est connecté et quel symbole observer.
 
 Lecture seule, mode `observe`. Le script ne contient aucun appel de trade. Il diffuse sur `ws://localhost:8765`, que le gateway .NET consomme.
 
+**Jeton (I0, 2026-09-26)** : l'observateur exige `TRADINGOS_OBSERVER_TOKEN`
+(environnement, sinon `04_code/.env`) et refuse de démarrer sans. Il
+n'accepte que le backend, qui présente le même jeton (`Authorization:
+Bearer`) ; toute requête qui porte une Origin (un navigateur) est refusée.
+`scripts/start-live.ps1` crée le jeton une fois dans `.env`. Un backend qui
+n'a pas le même jeton est refusé en 403 : le backend l'écrit une seule fois
+(« MT5 observer unreachable (…403…) ») puis réessaie sans bruit.
+
 Détails et dépannage : `tools/mt5-observer/README.md`.
 
 ## 4. Cockpit
@@ -132,6 +140,16 @@ Variables :
 | `NEXT_PUBLIC_BACKEND_HUB_URL` | `http://localhost:5080/hub/cockpit` | Hub SignalR, utilisé si `backend` |
 
 `mock` suffit pour développer l'interface et pour la CI. `backend` exige que les étapes 1 à 3 tournent.
+
+**Depuis I0 (2026-09-26)**, `npm run dev` écoute sur `127.0.0.1` seulement
+(plus sur toutes les interfaces), et `proxy.ts` refuse tout Host qui n'est
+pas `localhost`, `127.0.0.1` ou `[::1]`. Le cockpit lit
+`TRADINGOS_COCKPIT_TOKEN` dans `04_code/.env` (côté serveur, jamais dans le
+bundle) et le remet à ses propres scripts par `/api/cockpit-token` ; le hub
+et les écritures `/api` le refusent sans lui. Jeton absent : le menu du
+compte l'écrit en clair sous « Temps réel ». Jeton différent de celui du
+conteneur : « Hub injoignable ou jeton refusé » — recréer le conteneur
+backend (`docker compose up -d --no-deps --force-recreate backend`).
 
 **Clé FRED (T03)** — sans elle la gate calendrier échoue fermé en permanence et bloque tout (`news_releases` vide ; 370 évaluations S01 sur 370 mortes le 2026-09-15). Elle se met dans **`04_code/.env`** (variable `FRED_API_KEY`, ignoré par git via `.env*`), que `docker compose` lit pour alimenter `Fred__ApiKey` du conteneur backend — **pas** dans `.env.local`, qui ne sert qu'au cockpit Next.js et que le conteneur ne voit jamais. Prise en compte : `docker compose up -d --no-deps --force-recreate backend`. Vérification : `SELECT count(*) FROM news_releases` > 0 et `GET /api/calendar/upcoming` renvoie des releases. Jamais dans `docker-compose.yml` ni dans `.env.example`, qui sont versionnés.
 
@@ -195,8 +213,17 @@ voulu, depuis `04_code` :
 
 ```powershell
 pwsh -File scripts\start-live.ps1                     # base, backend, observer, cockpit
+pwsh -File scripts\start-live.ps1 -Build              # idem, image backend reconstruite (après un changement C#)
 pwsh -File scripts\start-live.ps1 -WithSetupPipeline  # + exportateur et worker S01
 ```
+
+Première étape depuis I0 (2026-09-26) : les jetons locaux
+(`TRADINGOS_COCKPIT_TOKEN`, `TRADINGOS_OBSERVER_TOKEN`) sont ajoutés à
+`.env` s'ils manquent, jamais affichés. Un jeton ajouté change
+l'environnement du service `backend` : `docker compose up` recrée alors le
+conteneur de lui-même. Le script s'arrête si le backend tourne sur une image
+d'avant les jetons (relancer avec `-Build`) ou si le conteneur ne les a pas
+reçus.
 
 Le script fait les étapes ci-dessous dans l'ordre et s'arrête avec un message
 clair à la première qui manque : Docker, port 5433 pris par un autre
@@ -227,6 +254,7 @@ observer, exportateur et worker sont à relancer — **rien ne les supervise**.
 - **Port 5433 partagé avec un autre projet** (constaté le 2026-09-23) : le conteneur `e-commerce-db-1` publie aussi `5433` et démarre tout seul (`restart: unless-stopped`). Quand il tourne, `tradingos-timescaledb` ne peut pas démarrer. `start-live.ps1` le détecte et s'arrête sans y toucher ; c'est au trader de choisir lequel tourne. Bascule vers TradingOS, sur sa demande : `docker stop -t 30 e-commerce-db-1`, puis `docker start tradingos-timescaledb` et attendre `healthy` ; un arrêt manuel garde un conteneur `unless-stopped` arrêté même après un redémarrage de Docker Desktop. Le backend n'a pas besoin d'être relancé, mais il perd un bloc d'événements au début de la coupure (le 2026-09-24 : 1362 événements, 9 min, uniquement données de marché et snapshots) — voir `PersistenceWriter`.
 - **Le volume de la base porte le nom d'un ancien projet compose** (constaté le 2026-09-25) : `tradingos-timescaledb` a été créé depuis un ancien dossier (`C:\SECOND_BRAIN\…\trading_operating_system_algorithmique`), et ses données vivent dans le volume `trading_operating_system_algorithmique_tradingos-pgdata`. Un volume `04_code_tradingos-pgdata`, vide ou périmé, existe aussi. `docker-compose.yml` déclare désormais le vrai volume en `external`, par son nom exact : sans ça, recréer le conteneur depuis `04_code` démarrerait TradingOS sur la mauvaise base, sans aucune erreur. **Avant toute recréation**, faire une sauvegarde (`pg_dump -Fc`, copiée hors du conteneur) et relever le nombre de lignes par table, puis comparer après. Une sauvegarde du 2026-09-25 est dans `C:\Dev\trading-operating-system\backups\`. La base n'est publiée que sur `127.0.0.1` depuis sa recréation le 2026-09-25 (vérifié : même volume, 26 tables identiques au relevé d'avant) ; avant, elle l'était sur `0.0.0.0`, donc joignable depuis le réseau local. **Sur une machine neuve**, le volume externe n'existe pas encore : `docker volume create trading_operating_system_algorithmique_tradingos-pgdata` avant le premier `docker compose up`.
 - **Un seul `next dev` par dossier** (Next 16) : la préversion mock (3001) et le cockpit backend (3000) ne peuvent pas tourner en même temps — le second s'arrête sur « Another next dev server is already running ».
+- **404 partout sauf `/` au premier démarrage après l'ajout de `proxy.ts`** (vu une fois le 2026-09-26, cache `.next/dev` d'avant le proxy) : `/account`, `/api/cockpit-token` et toute autre route répondaient 404, `/` seul passait. Disparu en relançant `next dev`, jamais revu sur quatre redémarrages ensuite. Si ça revient : arrêter `next dev`, supprimer `.next/dev`, relancer.
 - **Agent EA-05 installé par jonction** (2026-09-23) : `MQL5\Experts\TradingOsAgent` dans le dossier de données du terminal pointe vers `tools/mt5-execution-agent` — MT5 voit toujours la version compilée du dépôt. Recompiler (gate MetaEditor, `quality_gates.md`) après chaque modification du `.mq5`, puis réattacher l'EA — indispensable : une compilation headless ne recharge pas l'EA déjà attaché, qui garde l'ancien code (vérifié le 2026-09-24). Prérequis terminal : `127.0.0.1` dans Outils → Options → Expert Advisors, liste WebRequest, sinon `SocketConnect` échoue en 4014 (README de l'agent, prérequis 4). Une seule instance par terminal. Retirer la jonction suffit à le désinstaller.
 - **Rien ne supervise le pipeline S01** (exportateur + worker, section 5) : deux processus lancés à la main, qui ne survivent pas de façon prévisible à une fin de session ni à un redémarrage de la machine. Le critère de réussite de S01 mesure un échantillon de séances ; chaque arrêt silencieux en perd. Question ouverte dans `state.md`.
 - **Stall de l'observer** — observé une fois le 2026-07-28 à 14:03 sur une collecte longue. Si le problème revient, la piste retenue est la conteneurisation via `gmag11/MetaTrader5-Docker` (MIT), éventuellement avec `lucas-campagna/mt5linux`.
