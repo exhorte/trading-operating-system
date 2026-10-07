@@ -65,3 +65,10 @@ next-env.d.ts
 # T08 — generated weekly review documents (personal trading data, not
 # source; regenerate with `npm run weekly-review`)
 /weekly-reviews/
+
+# Python core (ADR 0016): virtualenv and tool caches
+python/.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
