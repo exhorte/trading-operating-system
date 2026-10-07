@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta, timezone
 
 from trading_os.domain.primitives import DomainModel
+from trading_os.domain.risk.lockout import ActiveLockout
 
 # Bound on how far back to look for a streak — no real trader runs a losing streak anywhere near this long.
 MAX_RECENT_CLOSED_TRADES = 50
@@ -48,3 +49,16 @@ def count_consecutive_losses(most_recent_first: Iterable[StreakTrade]) -> tuple[
         if last_loss_at is None:
             last_loss_at = trade.closed_at
     return count, last_loss_at
+
+
+class RiskToday(DomainModel):
+    """The persisted facts the risk state is built from, for one account: the day anchor, trades since it, the loss
+    streak, the lockout on record. ``day_start_equity`` is ``None`` until the live equity stream confirmed it —
+    unknown, never zero."""
+
+    day_anchor_starts_at_utc: datetime | None = None
+    day_start_equity: float | None = None
+    trades_today: int = 0
+    consecutive_losses: int = 0
+    last_loss_at: datetime | None = None
+    active_lockout: ActiveLockout | None = None

@@ -25,6 +25,16 @@ class ActiveLockout(DomainModel):
     until: datetime | None = None  # None = acknowledgement required; set = auto-expires (T02b pause)
 
 
+class LockoutWindow(DomainModel):
+    """A lockout as recorded, active or not — what the compliance review replays against the trades."""
+
+    lockout_id: str
+    reason: str
+    since: datetime
+    until: datetime | None = None
+    cleared_at: datetime | None = None
+
+
 class NewLockout(DomainModel):
     reason: str
     until: datetime | None = None

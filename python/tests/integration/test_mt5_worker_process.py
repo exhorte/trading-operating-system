@@ -57,7 +57,7 @@ async def test_a_worker_killed_from_outside_is_replaced_on_the_next_call(transpo
     process = transport._process
     assert process is not None
     process.kill()
-    await process.wait()
+    process.wait()
     assert await transport.call("initialize") is True
     assert transport.restarts == 1
 
