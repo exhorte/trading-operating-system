@@ -33,6 +33,13 @@ def register_secret(value: str | None) -> None:
             _secrets.add(value)
 
 
+def unregister_secret(value: str | None) -> None:
+    """Forget a *transient* secret (a password that lived for the time of one login). Never needed for tokens."""
+    if value:
+        with _lock:
+            _secrets.discard(value)
+
+
 def clear_secrets() -> None:
     with _lock:
         _secrets.clear()

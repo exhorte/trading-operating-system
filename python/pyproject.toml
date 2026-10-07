@@ -57,6 +57,8 @@ ignore = [
     "RUF001", "RUF002", "RUF003",  # French accents / typographic characters in strings and comments
     "SIM108",                      # ternary is not always clearer
     "B008",                        # FastAPI Depends() in defaults is the framework idiom
+    "E501",                        # prose lines (docstrings, comments) may run long; the formatter owns the code
+    "ASYNC109",                    # an explicit `timeout` argument is the point of the MT5 transport API
 ]
 
 [tool.mypy]
