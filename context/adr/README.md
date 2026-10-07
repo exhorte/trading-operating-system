@@ -8,8 +8,8 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 |---|---|---|
 | 0001 | Le process est le produit | Accepté |
 | 0002 | Fin de la recherche d'edge | Accepté |
-| 0003 | Stack et topologie | Accepté |
-| 0004 | Contrats de domaine et wire MT5 | Accepté |
+| 0003 | Stack et topologie | Accepté — pile .NET/SignalR supersédée par 0016 (le reste tient) |
+| 0004 | Contrats de domaine et wire MT5 | Accepté — le modèle canonique devient le modèle Python (0016) ; le wire EA tient |
 | 0005 | L'IA reste en lecture | Accepté |
 | 0006 | Gouvernance par outils et vagues | Accepté |
 | 0007 | Le Risk Engine est le point de contrôle unique | Accepté |
@@ -21,6 +21,7 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0013 | Connexion au compte depuis l'application | Accepté le 2026-09-25, rédigé le 2026-09-26 — amende 0003 ; texte soumis à relecture |
 | 0014 | Armement de l'agent depuis l'application | Accepté le 2026-09-25 (volet armement), rédigé le 2026-09-26 avec le bail côté serveur de 0015 — amende 0010 ; texte soumis à relecture |
 | 0015 | Mode autonome : le Trading OS exécute la stratégie configurée | Accepté le 2026-09-26 — supersède la clause AUTO de 0010, amende 0001 et la charte (v3) ; amendé le même jour (spread relatif au stop, pertes levées par accusé, arrêts de stratégie) |
+| 0016 | Architecture Python-native : le cœur est un monolithe Python | Accepté le 2026-10-07 — supersède la pile .NET/SignalR de 0003, amende 0004 et 0013 (stockage opt-in des identifiants) ; réalise le Risk Engine côté serveur de 0007/0015 ; points à confirmer listés dans l'ADR |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 
