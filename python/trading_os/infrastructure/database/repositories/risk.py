@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from trading_os.domain.risk.decision import RiskDecision
-from trading_os.domain.risk.lockout import ActiveLockout, LockoutWindow
+from trading_os.domain.risk.lockout import CONSECUTIVE_LOSS_REASON, ActiveLockout, LockoutWindow
 from trading_os.domain.risk.trading_day import (
     MAX_RECENT_CLOSED_TRADES,
     RiskToday,
@@ -109,12 +109,31 @@ class RiskRepository:
         )
         return next((r["lockout_id"] for r in rows if r["was_active"]), None)
 
+    async def expire_pauses(self, account_id: str, now: datetime) -> list[str]:
+        """Stamps timed pauses whose clock ran out as cleared (``pause-expired``) and returns their ids, so the ledger
+        never keeps a stale « active » row and the cleared event is published exactly once."""
+        rows = await self._db.fetch_all(
+            "UPDATE risk_lockouts SET cleared_at = %s, cleared_by = 'pause-expired' "
+            "WHERE account_id = %s AND cleared_at IS NULL AND until IS NOT NULL AND until <= %s RETURNING lockout_id",
+            (now, account_id, now),
+        )
+        return [row["lockout_id"] for row in rows]
+
     async def acknowledge(self, account_id: str, lockout_id: str, at: datetime) -> None:
         await self._db.execute(
             "INSERT INTO kill_switch_acks (account_id, lockout_id, acknowledged_at) VALUES (%s, %s, %s) "
             "ON CONFLICT (account_id, lockout_id) DO NOTHING",
             (account_id, lockout_id, at),
         )
+
+    async def last_pause_end(self, account_id: str) -> datetime | None:
+        """When the most recent timed pause (consecutive losses) ends or ended: a streak whose last loss is not later
+        than this has been served and must not lock the account a second time."""
+        value = await self._db.fetch_value(
+            "SELECT max(until) FROM risk_lockouts WHERE account_id = %s AND reason = %s AND until IS NOT NULL",
+            (account_id, CONSECUTIVE_LOSS_REASON),
+        )
+        return value  # type: ignore[no-any-return]
 
     async def lockout_history(self, account_id: str, up_to: datetime) -> list[LockoutWindow]:
         rows = await self._db.fetch_all(

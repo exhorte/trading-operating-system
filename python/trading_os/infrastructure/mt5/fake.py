@@ -149,47 +149,56 @@ class FakeMt5:
     TIMEFRAME_W1 = TIMEFRAME_W1
 
     @classmethod
+    def for_accounts(
+        cls,
+        accounts: list[FakeAccount],
+        *,
+        suffix: str = "m",
+        simulate_feed: bool = False,
+        server_offset_minutes: int = 0,
+        clock: Callable[[], float] = time.time,
+    ) -> FakeMt5:
+        """A simulated terminal that knows these accounts and quotes three instruments named like the broker's
+        (``EURUSD`` + the broker's suffix: « m » on Exness Standard, none on FTMO)."""
+
+        def symbol(
+            base: str, price: float, spread: float, digits: int, tick: float, tick_value: float, contract: float,
+            base_ccy: str, description: str, amplitude: float,
+        ) -> tuple[str, FakeSymbol]:  # fmt: skip
+            name = base + suffix
+            return name, FakeSymbol(
+                name,
+                price,
+                spread,
+                digits,
+                tick,
+                tick_value,
+                contract,
+                base_ccy,
+                "USD",
+                description,
+                amplitude=amplitude,
+            )
+
+        return cls(
+            accounts={a.login: a for a in accounts},
+            symbols=dict(
+                [
+                    symbol("EURUSD", 1.0850, 0.00008, 5, 0.00001, 1.0, 100_000, "EUR", "Euro vs US Dollar", 0.0030),
+                    symbol("GBPUSD", 1.2650, 0.00010, 5, 0.00001, 1.0, 100_000, "GBP", "Pound vs US Dollar", 0.0040),
+                    symbol("XAUUSD", 3300.0, 0.26, 3, 0.001, 0.1, 100, "XAU", "Gold vs US Dollar", 12.0),
+                ]
+            ),
+            simulate_feed=simulate_feed,
+            server_offset_minutes=server_offset_minutes,
+            clock=clock,
+        )
+
+    @classmethod
     def default(cls) -> FakeMt5:
         """A ready simulated terminal: one demo account, three instruments, a moving feed."""
-        return cls(
-            accounts={
-                1000001: FakeAccount(
-                    login=1000001, server="Sim-Server", password="sim-password", company="Simulated Broker"
-                )
-            },
-            symbols={
-                "EURUSDm": FakeSymbol(
-                    "EURUSDm",
-                    1.0850,
-                    0.00008,
-                    5,
-                    0.00001,
-                    1.0,
-                    100_000,
-                    "EUR",
-                    "USD",
-                    "Euro vs US Dollar",
-                    amplitude=0.0030,
-                ),
-                "GBPUSDm": FakeSymbol(
-                    "GBPUSDm",
-                    1.2650,
-                    0.00010,
-                    5,
-                    0.00001,
-                    1.0,
-                    100_000,
-                    "GBP",
-                    "USD",
-                    "Pound vs US Dollar",
-                    amplitude=0.0040,
-                ),
-                "XAUUSDm": FakeSymbol(
-                    "XAUUSDm", 3300.0, 0.26, 3, 0.001, 0.1, 100, "XAU", "USD", "Gold vs US Dollar", amplitude=12.0
-                ),
-            },
-            simulate_feed=True,
-        )
+        account = FakeAccount(login=1000001, server="Sim-Server", password="sim-password", company="Simulated Broker")
+        return cls.for_accounts([account], suffix="m", simulate_feed=True)
 
     # --- internals ----------------------------------------------------------------------------------------------------
 

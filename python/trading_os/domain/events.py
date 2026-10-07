@@ -21,6 +21,7 @@ from trading_os.domain.market.calendar import UpcomingRelease
 from trading_os.domain.market.models import Candle, Tick
 from trading_os.domain.positions.models import ClosedTrade, Position
 from trading_os.domain.positions.reconciliation import Mismatch
+from trading_os.domain.primitives import Side
 from trading_os.domain.risk.decision import RiskDecision
 from trading_os.domain.risk.view import RiskStatus
 from trading_os.domain.strategy.intent import TradeIntent
@@ -29,6 +30,29 @@ from trading_os.domain.system.supervision import Finding, Severity
 from trading_os.shared.events.base import Event
 
 # ------------------------------------------------------------------------------------------------------ accounts
+
+
+class AccountCreated(Event):
+    wire_type = "account.created"
+    name: str
+    provider: str
+    environment: Environment
+
+
+class AccountUpdated(Event):
+    wire_type = "account.updated"
+    fields: list[str]
+
+
+class AccountArchived(Event):
+    wire_type = "account.archived"
+
+
+class AccountTradingToggled(Event):
+    """The user's « Enable / Disable Trading » switch for one account."""
+
+    wire_type = "account.trading_toggled"
+    enabled: bool
 
 
 class AccountConnected(Event):
@@ -102,7 +126,7 @@ class PositionOpened(Event):
     wire_type = "position.opened"
     position_id: str
     symbol: str
-    side: Literal["buy", "sell"]
+    side: Side
     volume: float
     entry_price: float
     stop_loss: float
@@ -208,7 +232,7 @@ class LockoutViolated(Event):
     wire_type = "risk.lockout_violated"
     broker_position_id: str
     symbol: str
-    side: Literal["buy", "sell"]
+    side: Side
     lockout_id: str
     lockout_reason: str
     opened_at: datetime
@@ -251,7 +275,7 @@ class ExecutionReported(Event):
     command_id: str
     outcome: Literal["executed", "simulated"]
     symbol: str
-    side: Literal["buy", "sell"] | None = None
+    side: Side | None = None
     filled_volume: float | None = None
     average_price: float | None = None
     broker_order_id: str | None = None
