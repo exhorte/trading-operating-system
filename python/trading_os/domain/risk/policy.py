@@ -26,7 +26,9 @@ class DrawdownPolicy(DomainModel):
     # Balance every percentage is measured against. FTMO: the challenge size, fixed for its whole life. A direct
     # account: the capital the trader commits (Settings). None keeps the historical behaviour (balance at
     # connection time) and must be displayed as "not fixed", never as a floor.
-    reference_balance: float | None = Field(default=None, gt=0)
+    reference_balance: float | None = Field(
+        default=None, ge=1, le=100_000_000
+    )  # bounds refuse a typo that disables a gate
 
 
 class NewsPolicy(DomainModel):

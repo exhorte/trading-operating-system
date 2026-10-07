@@ -18,7 +18,7 @@ from pydantic import Field
 
 from trading_os.domain.market.models import SymbolSpec
 from trading_os.domain.positions.models import Position
-from trading_os.domain.primitives import AccountId, DomainModel
+from trading_os.domain.primitives import AccountId, DomainModel, Side, SymbolCode
 from trading_os.domain.risk.evaluate import RiskInputs, evaluate_risk_state
 from trading_os.domain.risk.exposure import currency_exposure, max_correlated_exposure, position_risk_amount
 from trading_os.domain.risk.gates import symbol_gate
@@ -187,6 +187,13 @@ class RiskDecision(DomainModel):
     account_id: AccountId
     approved: bool
     approved_volume: float | None
+    # The terms that were reviewed. An execution command must not deviate from them (symbol and side equal, volume
+    # at most the approved one, stop at least as tight): the approval covers *this* trade, not any trade.
+    symbol: SymbolCode | None = None
+    side: Side | None = None
+    entry_price: float | None = None
+    stop_loss: float | None = None
+    take_profit: float | None = None
     reasons: list[str]
     checks: list[CheckResult]
     sizing: SizingResult | None
@@ -325,6 +332,11 @@ def decide(ctx: TradingContext, intent: TradeIntent, review: IntentReview) -> Ri
         account_id=intent.account_id,
         approved=approved,
         approved_volume=sizing.volume if approved and sizing else None,
+        symbol=intent.symbol,
+        side=intent.side,
+        entry_price=intent.entry_price,
+        stop_loss=intent.stop_loss,
+        take_profit=intent.take_profit,
         reasons=reasons,
         checks=checks,
         sizing=sizing if approved else None,
