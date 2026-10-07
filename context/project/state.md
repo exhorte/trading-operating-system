@@ -209,11 +209,17 @@ ouverts.
   démo.
 - **Autonomie :** l'agent exécutera la stratégie configurée (S01, EURUSD)
   sans validation par ordre, dans des limites automatiques. **ADR 0015
-  accepté le 2026-09-26** ; limites du compte réel données (0,1 % par
-  trade, 5 % par jour, 10 % au total, 7 trades et 7 positions, killzones
-  de S01), S01 confirmée. Manquent le spread maximal par symbole et le
-  capital de référence (détail : `session-log.md`, 2026-09-26). Rien
-  d'autonome n'existe encore dans le code. I6 à I8 révisés en conséquence.
+  accepté le 2026-09-26**, **amendé le même jour** ; limites du compte
+  réel : 0,1 % par trade, 5 % par jour, 10 % au total, **4 trades par jour
+  et 2 positions**, killzones de S01 ; spread sans plafond fixe (porte de
+  coût de S01 seule) ; pertes levées par accusé ; arrêts de stratégie à
+  20 R et à 50 trades — règles déduites de SCALP et de Marco, validées
+  (`02_Plan_Projet/regles-deduites-scalp-marco-2026-09-26.md`). Preset de
+  l'agent `ea1.set` aligné sur l'agent 1.10, à charger par l'utilisateur.
+  Manquent le capital de référence et la mesure du spread du compte réel ;
+  restent ouverts le plafond de stop à 7 pips et la demi-heure de
+  Francfort. Rien d'autonome n'existe encore dans le code. I6 à I8 révisés
+  en conséquence.
 - **Paires :** XAUUSD et EURUSD ; GBPUSD mis de côté. Agent rattaché sur
   XAUUSDm avec le nouveau preset.
 

@@ -6,6 +6,74 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-09-26, suite (**règles déduites de SCALP et de Marco ; spread sans plafond fixe ; relevé de spread corrigé**)
+
+Demande : analyser *The SCALP Trading System* et *Liquidity Trap Strategy
+(Marco Trades)*, puis en déduire les règles de spread, de risque et de
+drawdown. En cours de route, décision de l'utilisateur, mot pour mot :
+« peutit changement ne pas definir de regle de lmite de spread laisser et
+s'adapter au regle du broker ».
+
+**Lecture de Claude, à confirmer** : pas de plafond fixe par symbole ; seule
+reste la porte de coût de S01 (`c` ≤ 0,25 du stop, spread lu en direct), à
+la décision et au remplissage. Elle s'adapte déjà au courtier. La retirer
+changerait S01. À construire avec le code (I6/I7) : la ligne « spread » de
+l'ADR 0015, le contrôle de l'agent (`SPREAD_LIMIT_MISSING` → contrôle
+relatif depuis le stop de la commande), la gate de spread du Risk Engine.
+
+**Relevé de spread corrigé.** Le « EURUSDm 2,0 pips sans variation sur 9 h »
+de l'entrée précédente date d'un samedi : `spread_log.jsonl` contient 3 684
+relevés et une seule cotation bid/ask par symbole (marché fermé). Mesure
+refaite depuis l'historique de ticks du courtier (démo Exness-MT5Trial9, 20
+jours ouvrés du 31/08 au 25/09, un relevé par minute, lecture seule, nouveau
+`tools/mt5-observer/spread_history.py`) : EURUSDm 0,8 pip, GBPUSDm 1,0 pip,
+XAUUSDm 0,26 $, identiques dans toutes les minutes des killzones (pics
+d'or à 08:30 NY) ; rollover EURUSDm jusqu'à 12,4 pips. Commission 0 sur
+les 22 deals ; exécution au marché. Flux de démo à spread fixe : le compte
+réel reste à mesurer.
+
+**Analyse** : `02_Plan_Projet/regles-deduites-scalp-marco-2026-09-26.md`.
+Points saillants : les chiffres du SCALP ne tiennent pas ensemble (50 % de
+réussite en 1:3 à 1–4 trades par semaine donnerait 4 à 17 % par mois, pas
+2 à 4 %) ; plancher de stop EURUSD 3,2 pips à 0,8 pip de spread ; à 0,1 %
+par trade, la perte du jour (5 %) et la perte totale (10 % = 100 R) ne
+peuvent être atteintes que par un dysfonctionnement. Huit décisions sont
+soumises à l'utilisateur ; rien n'est décidé à sa place.
+
+**Trouvé en chemin** :
+- l'ADR 0015 (« sans clic » après la perte du jour) contredit T02c (accusé
+  obligatoire pour tout verrou non chronométré) ;
+- la barrière de l'agent `InpMaxOpenPositions = 3` rend inopérante la
+  limite de 7 positions ; `InpMaxVolumePerOrder = 1.0` correspond à 0,1 %
+  d'un compte de 40 000 $ sur EURUSD ;
+- `resolve_broker_symbol("XAUUSD")` (`log_spread.py`) retient `XAUUSD247m`
+  (contrat 24/7) et non `XAUUSDm` ; `spread_history.py` exige le nom exact.
+
+Contrôles : `py_compile` sur `tools/mt5-observer/*.py`, unittest 34/34.
+
+**Validation, mot pour mot** : « je valide tes decisions implemente les
+parametre directement dna sle fichier […]\MQL5\Experts\TradingOsAgent\ea1.set
+afin que je le load et l'integre dans lEA dans MT5 ». Lecture de Claude : là
+où l'analyse proposait une valeur, c'est elle qui est retenue — porte de
+coût de S01 seule pour le spread ; 2 positions et 4 trades par jour au lieu
+de 7 et 7 ; pertes du jour (5 %) et totale (10 %) levées seulement par
+accusé ; arrêts de stratégie à 20 R et à 50 trades ; taille coût compris,
+ré-entrée 0,05 %, buffer du stop = max(1 pip, spread), 2 pertes de suite
+dans la journée = fin de journée. **ADR 0015 amendé** (section
+« Amendement »). Restent ouverts : capital de référence, plafond de stop à
+7 pips, demi-heure de Francfort, spread du compte réel.
+
+**Preset de l'agent** `tools/mt5-execution-agent/ea1.set` (gitignoré, UTF-16
+comme MT5 l'écrit), aligné sur l'agent 1.10 : `InpMaxOpenPositions=2` ;
+`InpMaxSpreadCsv=EURUSDm=0.01,XAUUSDm=10` (aucun plafond effectif ; sans
+effet tant que `g_mode` est figé à OBSERVE) ; `InpMaxSpreadPoints` retiré
+(n'existe plus depuis I1) ; `InpTradableLogins` et `InpClosableLogins`
+explicitement vides ; `InpReportReplayMinutes=60`. `InpAccountId` recopié
+sans être lu ni affiché. `InpMaxVolumePerOrder` reste à 1.0 jusqu'au capital
+de référence (capital / 40 000 lot). Le reste des règles n'a pas d'entrée
+dans l'EA : Risk Engine et configuration de l'autonomie, I6/I7 (ADR 0010 :
+l'EA n'est pas le cerveau). Rien de commité.
+
 ## 2026-09-26 (**ADR 0015 accepté ; limites du compte réel ; S01 confirmée**)
 
 Reprise au point d'arrêt (étude, « Suivi d'avancement »). Réponse de

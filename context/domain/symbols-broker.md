@@ -31,6 +31,11 @@ dit pas laquelle est la bonne, seulement qu'elles existent toutes les deux :
   compris), typique des CFD or "always-on" que certains brokers proposent en
   plus du contrat classique.
 
+Constaté le 2026-09-26 : `resolve_broker_symbol("XAUUSD")` de `log_spread.py`
+retient `XAUUSD247m`, le premier trouvé — et sa cotation confirme le contrat
+continu (2,90 $ de spread le week-end, 0,26 $ en semaine). Toute mesure de
+l'or passe donc par le nom exact `XAUUSDm` (`spread_history.py` l'exige).
+
 XAUUSD est hors périmètre pour S01 v1 (fiche S01, section Périmètre), donc
 ceci ne bloque rien maintenant. **À trancher avant EA-04** : quel des deux
 symboles entre dans le registre canonique, et si les deux ont leur usage,

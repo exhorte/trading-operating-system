@@ -20,7 +20,7 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0012 | Système de design : shadcn/ui | Accepté — amende 0003 (dépendances front, densité) |
 | 0013 | Connexion au compte depuis l'application | Accepté le 2026-09-25, rédigé le 2026-09-26 — amende 0003 ; texte soumis à relecture |
 | 0014 | Armement de l'agent depuis l'application | Accepté le 2026-09-25 (volet armement), rédigé le 2026-09-26 avec le bail côté serveur de 0015 — amende 0010 ; texte soumis à relecture |
-| 0015 | Mode autonome : le Trading OS exécute la stratégie configurée | Accepté le 2026-09-26 — supersède la clause AUTO de 0010, amende 0001 et la charte (v3) |
+| 0015 | Mode autonome : le Trading OS exécute la stratégie configurée | Accepté le 2026-09-26 — supersède la clause AUTO de 0010, amende 0001 et la charte (v3) ; amendé le même jour (spread relatif au stop, pertes levées par accusé, arrêts de stratégie) |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 
