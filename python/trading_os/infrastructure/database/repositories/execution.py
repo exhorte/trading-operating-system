@@ -154,6 +154,16 @@ class ExecutionRepository:
         )
         return [_to_command(r) for r in rows]
 
+    async def for_position(self, account_id: str, broker_position_id: str) -> ExecutionCommand | None:
+        """The command that opened this position, when the core knows it (the fill report or a reconciliation named the
+        position). A position opened by hand in MT5 has none."""
+        row = await self._db.fetch_one(
+            "SELECT " + _COLUMNS + " FROM execution_commands WHERE account_id = %s AND broker_position_id = %s "
+            "ORDER BY created_at ASC LIMIT 1",
+            (account_id, broker_position_id),
+        )
+        return _to_command(row) if row else None
+
     async def created_since(self, account_id: str, since: datetime) -> list[ExecutionCommand]:
         """Every command of the account created at or after ``since`` (reconciliation looks at a bounded recent window)."""
         rows = await self._db.fetch_all(

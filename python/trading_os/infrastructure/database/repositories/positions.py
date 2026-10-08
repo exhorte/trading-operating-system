@@ -98,23 +98,34 @@ class PositionRepository:
         return [(r["broker_position_id"], r["opened_at"]) for r in rows]
 
     # ------------------------------------------------------------------------------------------ journal
+    # LEFT JOINs throughout: a trade stays visible even if its open was never observed (a position already open when the
+    # core first attached) or it predates the captures. Entry price and stop only exist through the capture, so they are
+    # null for a trade without one — an unknown, not a zero.
+    _JOURNAL_SELECT = """
+        SELECT ct.broker_position_id, ct.symbol, ct.side, ct.volume, tc.entry_price, ct.exit_price,
+               ct.realized_pnl, tc.stop_loss, po.opened_at, ct.closed_at,
+               (tc.broker_position_id IS NOT NULL) AS has_capture
+        FROM closed_trades ct
+        LEFT JOIN position_opens po
+          ON po.account_id = ct.account_id AND po.broker_position_id = ct.broker_position_id
+        LEFT JOIN trade_captures tc
+          ON tc.account_id = ct.account_id AND tc.broker_position_id = ct.broker_position_id AND tc.kind = 'entry'
+    """
+
     async def journal_trades(self, account_id: str, start: datetime, end: datetime) -> list[JournalTrade]:
         rows = await self._db.fetch_all(
-            """
-            SELECT ct.broker_position_id, ct.symbol, ct.side, ct.volume, tc.entry_price, ct.exit_price,
-                   ct.realized_pnl, tc.stop_loss, po.opened_at, ct.closed_at,
-                   (tc.broker_position_id IS NOT NULL) AS has_capture
-            FROM closed_trades ct
-            LEFT JOIN position_opens po
-              ON po.account_id = ct.account_id AND po.broker_position_id = ct.broker_position_id
-            LEFT JOIN trade_captures tc
-              ON tc.account_id = ct.account_id AND tc.broker_position_id = ct.broker_position_id AND tc.kind = 'entry'
-            WHERE ct.account_id = %s AND ct.closed_at >= %s AND ct.closed_at <= %s
-            ORDER BY ct.closed_at DESC
-            """,
+            self._JOURNAL_SELECT
+            + "WHERE ct.account_id = %s AND ct.closed_at >= %s AND ct.closed_at <= %s ORDER BY ct.closed_at DESC",
             (account_id, start, end),
         )
         return [JournalTrade.model_validate(dict(r)) for r in rows]
+
+    async def journal_trade(self, account_id: str, broker_position_id: str) -> JournalTrade | None:
+        row = await self._db.fetch_one(
+            self._JOURNAL_SELECT + "WHERE ct.account_id = %s AND ct.broker_position_id = %s",
+            (account_id, broker_position_id),
+        )
+        return JournalTrade.model_validate(dict(row)) if row else None
 
     # ------------------------------------------------------------------------------------------ captures (T05)
     async def record_capture_entry(
