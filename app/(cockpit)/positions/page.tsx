@@ -1,16 +1,21 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { CircleAlert, CircleCheck, GitCompareArrows, Unplug } from "lucide-react";
+import { CircleAlert, CircleCheck, GitCompareArrows, Layers, TrendingUp, Unplug } from "lucide-react";
 import { useCockpit } from "@/lib/realtime/provider";
 import { backendHttpBase } from "@/lib/realtime/backend-url";
+import { formatPercent, formatSignedMoney } from "@/lib/format";
+import { PositionsTable } from "@/components/cockpit/positions-table";
+import { PageHeader, SectionHeading } from "@/components/shell/page-header";
+import { screenAt } from "@/components/shell/nav";
+import { HighlightBar, MetricPanel, MetricPanelItem } from "@/components/ui/metric-panel";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PositionsTable } from "@/components/cockpit/positions-table";
+import { SplitLayout } from "@/components/ui/split-layout";
 
 /** One row of a divergence list — the same soft tile everywhere on the page. */
 function Row({ children }: { children: ReactNode }) {
-  return <li className="rounded-xl bg-muted/50 px-3.5 py-3 ring-1 ring-border">{children}</li>;
+  return <li className="rounded-lg border bg-muted/40 px-3.5 py-3">{children}</li>;
 }
 
 interface ExternalPosition {
@@ -51,9 +56,13 @@ interface Divergence {
  * OrderSend, never replayed). This page's old placeholder pointed live P&L
  * at the Command Center and reserved this one for exactly this — pending
  * commands, broker errors, reconciliation state.
+ *
+ * Composition (ADR 0017): the divergences sit beside the dark panel of key
+ * figures; the open positions get the full width below, where an
+ * eleven-column table can breathe.
  */
 export default function PositionsPage() {
-  const { account } = useCockpit();
+  const { account, positions } = useCockpit();
   const accountId = account?.accountId ?? null;
 
   const [data, setData] = useState<Divergence | null>(null);
@@ -78,7 +87,7 @@ export default function PositionsPage() {
         }
       } catch {
         if (!cancelled) {
-          setError("Could not load execution divergence.");
+          setError("Impossible de charger la divergence d'exécution.");
         }
       }
     }
@@ -89,39 +98,36 @@ export default function PositionsPage() {
     };
   }, [accountId]);
 
-  // The open positions first — the half of this screen's question
-  // (« qu'est-ce qui est ouvert ») that used to live on the Command Center
-  // only — then whether they match what the system itself sent (EA-06).
+  const loading = !accountId || (!data && !error);
+  const unresolved = data?.reconciliations.filter((r) => r.outcome === "not_found") ?? [];
+  const resolved = data?.reconciliations.filter((r) => r.outcome !== "not_found") ?? [];
+  const openPnl = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+  const unknownHint = loading ? "chargement…" : error ? "backend injoignable" : undefined;
+
   let divergence: ReactNode;
-  if (!accountId || (!data && !error)) {
-    divergence = (
-      <Panel title="Divergence d'exécution" icon={GitCompareArrows}>
-        <Skeleton className="h-40 rounded-xl" />
-      </Panel>
-    );
+  if (loading) {
+    divergence = <Skeleton className="h-48 rounded-xl" />;
   } else if (error || !data) {
     divergence = (
       <Panel title="Divergence d'exécution" icon={GitCompareArrows} description="EA-06">
-        <p className="rounded-xl border border-dashed border-border py-8 text-center text-sm text-muted-foreground">
-          {error ?? "Could not load execution divergence."} Le backend répond-il ?
+        <p className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
+          {error ?? "Impossible de charger la divergence d'exécution."} Le backend répond-il ?
         </p>
       </Panel>
     );
   } else {
-    const unresolved = data.reconciliations.filter((r) => r.outcome === "not_found");
-    const resolved = data.reconciliations.filter((r) => r.outcome !== "not_found");
     divergence = (
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="External positions" icon={Unplug} description="Magic number étranger à l'agent EA-05">
+      <>
+        <Panel title="Positions externes" icon={Unplug} description="Magic number étranger à l'agent EA-05">
           {data.externalPositions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No position with a foreign magic number is currently open.</p>
+            <p className="text-sm text-muted-foreground">Aucune position à magic number étranger n&apos;est ouverte.</p>
           ) : (
             <ul className="flex flex-col gap-2 text-sm">
               {data.externalPositions.map((p) => (
                 <Row key={p.brokerPositionId}>
                   <span className="font-medium">{p.symbol}</span> {p.side} {p.volume} lot — magic {p.magicNumber}
                   <span className="block text-xs text-muted-foreground">
-                    position {p.brokerPositionId} · last seen {new Date(p.scannedAt).toLocaleString()}
+                    position {p.brokerPositionId} · vue pour la dernière fois le {new Date(p.scannedAt).toLocaleString("fr-FR")}
                   </span>
                 </Row>
               ))}
@@ -129,41 +135,90 @@ export default function PositionsPage() {
           )}
         </Panel>
 
-        <Panel title="Unresolved commands" icon={CircleAlert} description="UNKNOWN en attente de réconciliation">
+        <Panel title="Commandes non résolues" icon={CircleAlert} description="UNKNOWN en attente de réconciliation">
           {unresolved.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing left UNKNOWN.</p>
+            <p className="text-sm text-muted-foreground">Aucune commande n&apos;est restée UNKNOWN.</p>
           ) : (
             <ul className="flex flex-col gap-2 text-sm">
               {unresolved.map((r) => (
                 <Row key={r.commandId}>
-                  <span className="font-medium">{r.commandId}</span> — {r.attempts} attempt(s)
+                  <span className="font-medium">{r.commandId}</span> — {r.attempts} tentative(s)
                   <span className="block text-xs text-muted-foreground">{r.detail}</span>
                 </Row>
               ))}
             </ul>
           )}
         </Panel>
-
-        {resolved.length > 0 && (
-          <Panel title="Recently reconciled" icon={CircleCheck} className="lg:col-span-2">
-            <ul className="flex flex-col gap-2 text-sm">
-              {resolved.map((r) => (
-                <Row key={r.commandId}>
-                  <span className="font-medium">{r.commandId}</span> — {r.outcome}
-                  <span className="block text-xs text-muted-foreground">{r.detail}</span>
-                </Row>
-              ))}
-            </ul>
-          </Panel>
-        )}
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <PositionsTable showViewAll={false} />
-      {divergence}
+    <div className="flex flex-col gap-10">
+      <SplitLayout
+        main={
+          <>
+            <PageHeader screen={screenAt("/positions")} />
+            {divergence}
+          </>
+        }
+        aside={
+          <>
+            <HighlightBar
+              icon={Layers}
+              value={String(positions.length)}
+              label="Positions ouvertes"
+              aside={
+                account ? (
+                  <span className="text-xs text-panel-muted">risque ouvert {formatPercent(account.openRiskPercent)}</span>
+                ) : undefined
+              }
+            />
+            <MetricPanel>
+              <MetricPanelItem
+                label="P&L latent"
+                value={formatSignedMoney(openPnl)}
+                tone={openPnl >= 0 ? "success" : "destructive"}
+                hint="somme des positions ouvertes"
+                icon={TrendingUp}
+              />
+              <MetricPanelItem
+                label="Positions externes"
+                value={data ? String(data.externalPositions.length) : "—"}
+                tone={data && data.externalPositions.length > 0 ? "warning" : undefined}
+                hint={unknownHint ?? "magic number étranger à l'agent EA-05"}
+                icon={Unplug}
+              />
+              <MetricPanelItem
+                label="Commandes UNKNOWN"
+                value={data ? String(unresolved.length) : "—"}
+                tone={data && unresolved.length > 0 ? "destructive" : undefined}
+                hint={unknownHint ?? "en attente de réconciliation"}
+                icon={CircleAlert}
+                solidIcon
+              />
+            </MetricPanel>
+          </>
+        }
+      />
+
+      <section className="flex flex-col gap-4">
+        <SectionHeading title="Positions ouvertes" subtitle="suivies en direct" icon={Layers} />
+        <PositionsTable />
+      </section>
+
+      {resolved.length > 0 && (
+        <Panel title="Réconciliées récemment" icon={CircleCheck}>
+          <ul className="flex flex-col gap-2 text-sm">
+            {resolved.map((r) => (
+              <Row key={r.commandId}>
+                <span className="font-medium">{r.commandId}</span> — {r.outcome}
+                <span className="block text-xs text-muted-foreground">{r.detail}</span>
+              </Row>
+            ))}
+          </ul>
+        </Panel>
+      )}
     </div>
   );
 }

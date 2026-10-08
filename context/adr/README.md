@@ -17,11 +17,12 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0009 | Le serveur capture des faits, le cockpit rend | Accepté |
 | 0010 | Le Trading OS exécute, l'EA est un agent | Accepté |
 | 0011 | Un banc de replay n'est pas un backtester | Accepté |
-| 0012 | Système de design : shadcn/ui | Accepté — amende 0003 (dépendances front, densité) |
+| 0012 | Système de design : shadcn/ui | Accepté — amende 0003 (dépendances front, densité) ; l'apparence (sombre seul, menthe) est supersédée par 0017, la bibliothèque tient |
 | 0013 | Connexion au compte depuis l'application | Accepté le 2026-09-25, rédigé le 2026-09-26 — amende 0003 ; texte soumis à relecture |
 | 0014 | Armement de l'agent depuis l'application | Accepté le 2026-09-25 (volet armement), rédigé le 2026-09-26 avec le bail côté serveur de 0015 — amende 0010 ; texte soumis à relecture |
 | 0015 | Mode autonome : le Trading OS exécute la stratégie configurée | Accepté le 2026-09-26 — supersède la clause AUTO de 0010, amende 0001 et la charte (v3) ; amendé le même jour (spread relatif au stop, pertes levées par accusé, arrêts de stratégie) |
 | 0016 | Architecture Python-native : le cœur est un monolithe Python | Accepté le 2026-10-07 — supersède la pile .NET/SignalR de 0003, amende 0004 et 0013 (stockage opt-in des identifiants) ; réalise le Risk Engine côté serveur de 0007/0015 ; points à confirmer listés dans l'ADR |
+| 0017 | Système de design : « ExponentValue Monochrome » | Accepté le 2026-10-08 — supersède l'apparence de 0012 (thème clair + sombre, panneau de métriques sombre, une seule pastille menthe), amende 0003 (« cockpit sombre ») ; écarts assumés par rapport au design d'origine et points laissés ouverts listés dans l'ADR |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 

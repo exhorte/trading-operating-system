@@ -1,3 +1,4 @@
+import { Scale } from "lucide-react";
 import type { ActiveProfile } from "@/lib/accounts/active-profile";
 import { CONSECUTIVE_LOSS_PAUSE_MINUTES } from "@/lib/risk";
 import { formatMoney } from "@/lib/format";
@@ -33,26 +34,26 @@ export function RulesCard({ profile }: { profile: ActiveProfile }) {
   ];
 
   return (
-    <Panel title="Règles appliquées">
-      <table className="w-full text-xs">
+    <Panel title="Règles appliquées" description="les limites du moteur de risque, en % et en montant" icon={Scale}>
+      <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
-            <th className="pb-1 font-medium">Règle</th>
-            <th className="pb-1 text-right font-medium">Limite</th>
-            <th className="pb-1 text-right font-medium">Montant</th>
+            <th className="pb-2 font-medium">Règle</th>
+            <th className="pb-2 text-right font-medium">Limite</th>
+            <th className="pb-2 text-right font-medium">Montant</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(([rule, limit, amount]) => (
-            <tr key={rule} className="border-t border-border">
-              <td className="py-1.5 text-foreground">{rule}</td>
-              <td className="tnum py-1.5 text-right text-foreground">{limit}</td>
-              <td className="tnum py-1.5 text-right text-muted-foreground">{amount}</td>
+            <tr key={rule} className="border-t">
+              <td className="py-2 text-foreground">{rule}</td>
+              <td className="tnum py-2 text-right text-foreground">{limit}</td>
+              <td className="tnum py-2 text-right text-muted-foreground">{amount}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-border pt-3 text-xs">
+      <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 border-t pt-4 text-sm">
         <dt className="text-muted-foreground">Référence de calcul</dt>
         <dd className={ref === null ? "text-warning" : "text-foreground"}>{profile.referenceSource}</dd>
         <dt className="text-muted-foreground">Commission</dt>

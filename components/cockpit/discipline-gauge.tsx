@@ -1,5 +1,6 @@
 "use client";
 
+import { Target } from "lucide-react";
 import { useComplianceRate } from "@/lib/compliance/use-compliance-rate";
 import { VIOLATION_LABELS } from "@/lib/compliance/labels";
 import type { ViolationType } from "@/lib/compliance/violations";
@@ -46,13 +47,13 @@ export function DisciplineGauge() {
     // "Could not read" and "still reading" must not look alike: an endless
     // skeleton reads as patience when the backend is actually down.
     return (
-      <Panel title="Score de discipline">
+      <Panel title="Score de discipline" icon={Target}>
         {failed ? (
-          <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+          <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             Trades clôturés illisibles — le backend répond-il ?
           </p>
         ) : (
-          <Skeleton className="h-52 rounded-xl" />
+          <Skeleton className="h-52 rounded-lg" />
         )}
       </Panel>
     );
@@ -68,7 +69,9 @@ export function DisciplineGauge() {
   return (
     <Panel
       title="Score de discipline"
-      actions={<span className="text-xs text-muted-foreground">{lookbackDays} derniers jours</span>}
+      description="taux de conformité des trades clôturés (T07)"
+      icon={Target}
+      actions={<span className="text-sm text-muted-foreground">{lookbackDays} derniers jours</span>}
     >
       <div className="flex flex-col items-center">
         <svg viewBox="0 0 140 78" className="w-full max-w-[220px]" role="img"
@@ -116,7 +119,7 @@ export function DisciplineGauge() {
         </p>
       </div>
 
-      <div className="mt-3 border-t border-border pt-3">
+      <div className="mt-3 border-t pt-3">
         <p className="mb-2 text-xs text-muted-foreground">
           Par type de manquement
         </p>
@@ -137,8 +140,8 @@ export function DisciplineGauge() {
                 </div>
                 <Progress
                   value={(count / maxCount) * 100}
-                  className="mt-1.5 h-1 bg-muted"
-                  indicatorClassName={count > 0 ? "bg-loss" : "bg-transparent"}
+                  className="mt-1.5 h-1"
+                  indicatorClassName={count > 0 ? "bg-destructive" : "bg-transparent"}
                 />
               </li>
             ))}

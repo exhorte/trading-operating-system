@@ -37,7 +37,7 @@ export function PendingChange({
   }
 
   return (
-    <div className="rounded border border-warning/40 bg-warning/5 px-2.5 py-2 text-xs leading-snug">
+    <div className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5 text-sm leading-snug">
       <div className="flex items-start justify-between gap-2">
         <p className="text-foreground">
           <span className="font-medium text-warning">En attente du prochain jour de trading</span>
@@ -51,7 +51,7 @@ export function PendingChange({
           </button>
         )}
       </div>
-      {error && <p className="mt-1 text-loss">{error}</p>}
+      {error && <p className="mt-1 text-destructive">{error}</p>}
     </div>
   );
 }

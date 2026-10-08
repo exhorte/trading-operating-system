@@ -1,9 +1,13 @@
 "use client";
 
+import { FileText } from "lucide-react";
+import { cn } from "cn";
+import type { ExecutionReport } from "@/lib/contracts/snapshots";
 import type { ExecutionReportStatus } from "@/lib/contracts/enums";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { formatClockTime } from "@/lib/format";
-import { Panel } from "@/components/ui/panel";
+import { SectionHeading } from "@/components/shell/page-header";
+import { DataList, MobileCardHeader, MobileFields, type Column } from "@/components/ui/data-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 
@@ -21,49 +25,68 @@ const REPORT_TONES: Record<ExecutionReportStatus, PillTone> = {
   position_closed: "muted",
 };
 
+const sideClass = (side: ExecutionReport["side"]) => (side === "buy" ? "text-success" : "text-destructive");
+
+const COLUMNS: Column<ExecutionReport>[] = [
+  { key: "time", header: "Heure", cell: (r) => <span className="text-muted-foreground">{formatClockTime(r.reportedAt)}</span> },
+  { key: "command", header: "Commande", cell: (r) => <span className="text-muted-foreground">{r.commandId}</span> },
+  { key: "symbol", header: "Symbole", cell: (r) => <span className="font-medium">{r.symbol}</span> },
+  {
+    key: "side",
+    header: "Sens",
+    cell: (r) => <span className={cn("font-medium", sideClass(r.side))}>{r.side.toUpperCase()}</span>,
+  },
+  { key: "status", header: "Statut", cell: (r) => <StatusPill tone={REPORT_TONES[r.status]}>{r.status}</StatusPill> },
+  {
+    key: "detail",
+    header: "Détail",
+    className: "max-w-xs truncate whitespace-nowrap text-muted-foreground",
+    cell: (r) => r.detail,
+  },
+];
+
 export function ExecutionReportsFeed() {
   const { executionReports, connection } = useCockpit();
   const untrusted = useIsDataUntrusted();
 
-  if (connection === "connecting") {
-    return (
-      <Panel title="Execution reports">
-        <Skeleton className="h-28" />
-      </Panel>
-    );
-  }
-
   return (
-    <Panel title="Execution reports" untrusted={untrusted}>
-      {executionReports.length === 0 ? (
-        <p className="py-6 text-center text-xs text-muted-foreground">No execution reports.</p>
+    <section className="flex flex-col gap-4">
+      <SectionHeading
+        title="Execution reports"
+        subtitle="les six derniers retours de l'agent d'exécution"
+        icon={FileText}
+      />
+      {connection === "connecting" ? (
+        <Skeleton className="h-28 rounded-xl" />
+      ) : executionReports.length === 0 ? (
+        <p className="rounded-xl border border-dashed py-8 text-center text-sm text-muted-foreground">
+          No execution reports.
+        </p>
       ) : (
-        <ul className="flex flex-col gap-1.5">
-          {executionReports.slice(0, 6).map((report) => (
-            <li
-              key={report.reportId}
-              className="flex items-center justify-between gap-2 rounded border border-border bg-muted px-2 py-1.5"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="tnum text-muted-foreground">{report.commandId}</span>
-                  <span className="font-medium">{report.symbol}</span>
-                  <span className={report.side === "buy" ? "text-profit" : "text-loss"}>
-                    {report.side.toUpperCase()}
-                  </span>
-                </div>
-                <p className="truncate text-[11px] text-muted-foreground">{report.detail}</p>
-              </div>
-              <div className="flex shrink-0 flex-col items-end gap-0.5">
-                <StatusPill tone={REPORT_TONES[report.status]}>{report.status}</StatusPill>
-                <span className="tnum text-[11px] text-muted-foreground">
-                  {formatClockTime(report.reportedAt)}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className={cn("transition-opacity", untrusted && "opacity-60")}>
+          <DataList
+            rows={executionReports.slice(0, 6)}
+            columns={COLUMNS}
+            rowKey={(r) => r.reportId}
+            mobileCard={(r) => (
+              <>
+                <MobileCardHeader
+                  name={r.symbol}
+                  subtitle={r.commandId}
+                  badge={<StatusPill tone={REPORT_TONES[r.status]}>{r.status}</StatusPill>}
+                />
+                <MobileFields
+                  fields={[
+                    { label: "Heure", value: formatClockTime(r.reportedAt) },
+                    { label: "Sens", value: <span className={sideClass(r.side)}>{r.side.toUpperCase()}</span> },
+                  ]}
+                />
+                <p className="mt-3 text-xs text-muted-foreground">{r.detail}</p>
+              </>
+            )}
+          />
+        </div>
       )}
-    </Panel>
+    </section>
   );
 }

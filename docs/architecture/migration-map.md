@@ -909,14 +909,37 @@ simulé du cœur** (`MT5_ENABLED=false`) — un seul chemin de données, pas un 
 
 ## 10. Suivi d'avancement (à mettre à jour à chaque phase — c'est le point de reprise)
 
+État au **2026-10-08**. La migration est **suspendue depuis le 2026-10-08 à 05:10** pour la refonte
+visuelle du cockpit (ADR 0017) ; rien n'est déployé. L'ancienne pile (.NET, SignalR, observer Python)
+reste la seule qui existe en service, et elle est **éteinte** au 2026-10-08 (aucun conteneur du
+projet depuis le 2026-09-28, MT5 fermé). Branche `refactor/python-native-architecture`, sommet
+`66d4274`. Dernière
+vérification, le 2026-10-08 depuis un worktree temporaire : **463 tests verts**, `ruff` propre,
+`mypy --strict` propre sur 92 fichiers.
+
 | Phase | État | Preuve |
 |---|---|---|
-| 0 — audit, migration-map | ✅ fait | ce document |
-| 1 — architecture cible + ADR | ⏳ | `docs/architecture/python-native-architecture.md`, `context/adr/0016-…` |
-| 2 — cœur Python | ⏳ | — |
-| 3 — comptes + MT5 | ⏳ | — |
-| 4 — risque | ⏳ | — |
-| 5 — exécution | ⏳ | — |
-| 6 — frontend | ⏳ | — |
-| 7 — suppression radicale | ⏳ | — |
+| 0 — audit, migration-map | ✅ fait | ce document (`dcf6b0b`) |
+| 1 — architecture cible + ADR | ✅ fait | `docs/architecture/python-native-architecture.md`, `context/adr/0016-…` (`dcf6b0b`) |
+| 2 — cœur Python | 🔶 en cours | noyau partagé (identifiants, temps, erreurs, journalisation qui masque les secrets, événements), configuration, base de données (migrations numérotées, dépôts SQL) : `1d362a3`, `8c9910c`. **Reste** : `runtime/` (superviseur, battement, ordonnanceur, moteur — le paquet est vide), application FastAPI + WebSocket + sécurité + OpenAPI, CLI et MCP |
+| 3 — comptes + MT5 | 🔶 en cours | domaine des comptes, lecteur MT5 en processus fils à liste blanche (lecture seule), lien EA, simulateur, services comptes / données de marché / positions : `48df6c0`, `751c580`, `89affb7`. **Reste** : service de réconciliation, actualités (FRED) |
+| 4 — risque | 🔶 en cours | `domain/risk` et `services/risk` (jauges, verrous, dimensionnement depuis les spécifications du courtier, exposition et corrélation, politiques par compte) : `1d362a3`, `89affb7`. **Reste** : portage de `lib/analysis` (24 fichiers, contexte de marché) |
+| 5 — exécution | 🔶 en cours | moteur d'exécution centralisé, passerelles d'ordres, cycle de vie des commandes ; l'ordre part toujours par l'EA, jamais par `order_send` depuis Python : `48df6c0`, `66d4274`. **Reste** : service d'autonomie, journal, portage de `lib/setup` (S01, 22 fichiers) et de `lib/compliance` |
+| 6 — frontend | ⏳ pas commencé | à faire : `lib/api`, `lib/websocket`, retrait de SignalR. La refonte visuelle (ADR 0017) ne touche à rien de cela |
+| 7 — suppression radicale | ⏳ pas commencé | — |
+| EA `DEAD_MAN` | ⏳ pas commencé | refus fondé sur le ping ; vérification de compilation seulement (MetaEditor en ligne de commande) |
 | Validation finale + rapport | ⏳ | `docs/architecture/python-native-migration-report.md` |
+
+**Reprendre ici** — dans l'ordre : service de réconciliation → service d'autonomie → actualités (FRED)
+→ journal → `runtime/` (superviseur, battement, ordonnanceur, moteur) → application FastAPI + WebSocket
++ sécurité + OpenAPI → portage de `lib/analysis` puis de `lib/setup` → CLI / MCP → frontend (phase 6)
+→ EA `DEAD_MAN` → suppressions (phase 7) → documents vivants et rapport final.
+
+- Tests : depuis `04_code/python`, `.venv\Scripts\python.exe -m pytest -q` (≈ 2 min 35 s : un cluster
+  PostgreSQL jetable lancé depuis les binaires PG 18 installés, jamais la base `tradingos`), puis
+  `-m ruff check .` et `-m mypy trading_os`.
+- La branche `feat/ui-redesign-exponentvalue` (refonte visuelle, ADR 0017) est coupée de ce même
+  sommet : l'y fusionner avant la phase 6, qui touche aussi `components/` et `lib/`. Pour reprendre la
+  migration sans toucher à une arborescence où la refonte est en cours : `git worktree add` sur la
+  branche de migration, et l'interpréteur du venv existant (le répertoire courant l'emporte sur le
+  finder éditable).

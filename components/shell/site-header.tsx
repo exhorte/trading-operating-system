@@ -1,41 +1,46 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { AccountMenu } from "./account-menu";
+import { LogoMark } from "./logo";
+import { MobileNav } from "./mobile-nav";
 import { navEntryFor, SECTION_LABELS } from "./nav";
+import { ThemeToggle } from "./theme-toggle";
 
 /**
- * The top bar, reduced to what the reference mock-up keeps: the page title
- * with its breadcrumb on the left, the account on the right. Everything that
- * used to crowd it moved to where it is read (2026-09-24 redesign):
- *
- *   compliance rate  -> first card of the Command Center (T07)
- *   news / blackout  -> bottom of the sidebar, on every screen (T03)
- *   emergency stop   -> bottom of the sidebar, on every screen (T02a)
- *   link, persistence, environment -> the account menu and its status dot
+ * The top bar: on the left (desktop) where the screen sits in the navigation,
+ * on the right the account — who, which firm, which environment, with a
+ * status dot on the avatar and the link details behind it — then the theme
+ * switch and, below `lg`, the drawer. Everything that used to crowd it lives
+ * where it is read (ADR 0012): compliance in the Command Center, news and the
+ * emergency stop in the sidebar.
  */
 export function SiteHeader() {
   const pathname = usePathname();
   const entry = navEntryFor(pathname);
-  const title = entry?.label ?? "Trading OS";
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:px-6">
-      <SidebarTrigger className="-ml-1 md:hidden" />
-      <div className="min-w-0">
-        <h1 className="truncate text-base font-semibold tracking-tight text-foreground">{title}</h1>
-        {entry && (
-          <p className="flex items-center gap-1 text-xs text-muted-foreground">
-            <span>{SECTION_LABELS[entry.section]}</span>
-            <ChevronRight className="size-3" strokeWidth={2} />
-            <span className="truncate text-foreground/70">{title}</span>
-          </p>
-        )}
-      </div>
-      <div className="ml-auto">
-        <AccountMenu />
+    <header className="sticky top-0 z-40 border-b bg-background/80 px-4 backdrop-blur-md sm:px-6 lg:px-10">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-3">
+        <Link href="/" className="rounded-full lg:hidden" aria-label="Trading OS — Command Center">
+          <LogoMark />
+        </Link>
+        <div className="hidden min-w-0 flex-1 items-center lg:flex">
+          {entry && (
+            <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+              <span>{SECTION_LABELS[entry.section]}</span>
+              <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate text-foreground">{entry.label}</span>
+            </p>
+          )}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <AccountMenu />
+          <ThemeToggle />
+          <MobileNav />
+        </div>
       </div>
     </header>
   );

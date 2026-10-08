@@ -6,6 +6,80 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-10-08 (**refonte visuelle « ExponentValue Monochrome » : les 12 écrans, ADR 0017**)
+
+Demande, mot pour mot : « nous somme entrain de redesigner la plateform en
+appliquant le skills ui-redesign-from-reference en mode par defaut j'ai
+recement clear la session pour nettoyer le context qui a atteint sa limite
+peut tu analyse ou nous en somme et continu le redesigne ». Aucun modèle
+visuel n'est fourni : le skill s'applique en mode par défaut. Un « continu »
+nu avait d'abord été lu comme la reprise de la migration Python (dernier point
+de reprise en mémoire) ; l'utilisateur a précisé, et rien n'avait été modifié.
+
+**Où en était la refonte** (reconstitué depuis git et le rendu réel, le
+contexte de la session précédente ayant été vidé) : jetons, coque, primitives et
+8 écrans sur 12 faits, `tsc`/`eslint`/tests propres, tout **non commité** sur
+`feat/ui-redesign-exponentvalue` (coupée le 2026-10-08 à 05:10 du sommet de la
+branche de migration, `66d4274`). Restaient `/journal`, `/analyse`,
+`/journal/[id]`, `/settings`, `loading`/`error`/`EmptyState`. L'ADR 0017 était
+cité dans le code et le CSS **sans exister** ; `design_system.md` décrivait
+encore l'ancien système menthe.
+
+**Fait** : les quatre écrans (composition « liste » pour le journal, « résultats /
+détail » pour l'analyse et la capture, « formulaire avec aperçu » pour Settings),
+`EmptyState` illustré, `loading`/`error` à la silhouette d'un écran, `FilterBar`,
+neuf composants de présentation nouveaux (journal, analyse, réglages) ; ADR 0017,
+`design_system.md` réécrit, index des ADR. **Aucune logique métier modifiée** (le journal garde son propre fetch) ; seuls
+écarts d'affichage : `formatQuote` (paires forex à 5 décimales), calendrier lundi
+d'abord, « aucune capture » distingué de « capture illisible ».
+
+**Défauts trouvés par la mesure, corrigés** :
+- `muted-foreground` sur `muted` à 4,40:1 (pastilles grises) → `#6c6c75` ; les
+  numéros de jour des calendriers teintés, à 4,40:1 aussi ;
+- `/settings` débordait de 155 px sur mobile (grille sans colonne explicite) ;
+- le graphique de capture avait une largeur fixe de 720 px (il suit maintenant son
+  conteneur, et ne se démonte plus sur une mesure nulle passagère) ;
+- des informations coupées par une ellipse : valeur-clé `$10,15…`, symbole `EURU…`,
+  titres de panneau, instructions de la liaison MT5, codes de verrou — le bandeau
+  et l'en-tête de carte mobile passent à la ligne, les valeurs s'enroulent ;
+- en-tête de tableau grisé sur noir (la `className` d'une colonne allait aussi à
+  son en-tête) ; « 0 / 0 » et « +$0.00 » en vert sur un journal vide ; « Failed to
+  fetch » brut ; libellés anglais ; espaces perdues par le compilateur JSX après
+  `{expr}` sur du texte multi-ligne (trois messages : `/journal`, `/market-context`,
+  `/account`).
+
+**Vérifié** : `tsc`, `eslint`, vitest (51 fichiers, 332 tests), `next build` (15
+pages). 12 routes × (1440×900 clair, 1440×900 sombre, 375×812 clair, 375×812
+sombre) = 48 chargements, huit détecteurs à zéro : débordement horizontal, thème
+appliqué, squelettes bloqués, messages console, textes tronqués, espaces
+manquantes, contraste réel AA de chaque texte rendu (détecteur lui-même éprouvé
+sur des témoins illisibles), titre `h1` (avant : un débordement, trois écrans sans
+titre). 15 contrôles d'interaction : bascule de thème et rechargement sans flash,
+tiroir mobile (arrêt d'urgence présent — jamais cliqué), filtres du journal
+cohérents entre panneau et tableau, anneaux de focus. Contrastes des 44 paires de
+jetons, deux thèmes : toutes ≥ 4,5:1. États rempli, vide et backend éteint vus sur
+les écrans alimentés par HTTP.
+
+**Non vérifié** : le cockpit contre le vrai backend (éteint depuis le 2026-09-28) et
+en source `backend` (SignalR) — seule la source mock a tourné ; les écrans HTTP
+l'ont été contre un faux serveur en lecture seule à données synthétiques (aucun
+numéro de compte réel). Piège rencontré : un build échouait sur
+`.next/dev/types/validator.ts`, fichier généré corrompu par deux régénérations
+simultanées — se règle en supprimant `.next/dev/types`.
+
+**Commit et suivi, sur demande de l'utilisateur** (« commit tout en un seul commit
+et push me egalement a jour les fichier de suivis du projet ») : un seul commit de
+la refonte sur `feat/ui-redesign-exponentvalue`, avec la mise à jour des fichiers
+de suivi — `state.md` (qui ignorait la migration Python), les fiches T05, T06 et
+T07, le tableau §10 de `migration-map.md` (resté à « ⏳ » partout : il dit
+maintenant l'état réel, 463 tests verts), l'étude de connexion (hors dépôt) et
+l'index des ADR. Le push de cette branche publie aussi les **14 commits locaux
+antérieurs** (snapshot de migration, I0–I2, ADR 0015 accepté, 7 commits Python) :
+balayés avant envoi (motifs de secrets, e-mails, chemins personnels, fichiers
+`.env` / presets / sauvegardes) sans rien trouver ; le login du compte de démo
+Exness y figure, comme déjà dans `origin/main`. À décider : la fusion dans
+`main`, et les points laissés ouverts par le design (ADR 0017).
+
 ## 2026-09-26, suite (**règles déduites de SCALP et de Marco ; spread sans plafond fixe ; relevé de spread corrigé**)
 
 Demande : analyser *The SCALP Trading System* et *Liquidity Trap Strategy

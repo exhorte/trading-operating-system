@@ -1,16 +1,12 @@
-import { SetupProposalsPanel } from "@/components/cockpit/setup-proposals-panel";
-import { ReconciliationView } from "@/components/cockpit/reconciliation-view";
+import { SetupsScreen } from "@/components/cockpit/setups-screen";
 
 /**
  * EA-02 — the instrument of measurement (S01, "Critère de réussite"). Not
  * a signal screen: no button here sends anything anywhere. See
- * context/product/tools/EA-02-observe-taux-accord.md.
+ * context/product/tools/EA-02-observe-taux-accord.md. The screen owns its
+ * fetches (components/cockpit/setups-screen.tsx) so the dark panel counts
+ * what the two lists show.
  */
 export default function SetupsPage() {
-  return (
-    <div className="flex flex-col gap-5">
-      <SetupProposalsPanel />
-      <ReconciliationView />
-    </div>
-  );
+  return <SetupsScreen />;
 }

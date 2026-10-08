@@ -39,7 +39,7 @@ export function TradeChart({ candles, context, markers, width = 720, height = 32
         className="flex items-center justify-center text-xs text-muted-foreground"
         style={{ width, height }}
       >
-        No candles in the captured window.
+        Aucune bougie dans la fenêtre capturée.
       </div>
     );
   }
@@ -53,7 +53,7 @@ export function TradeChart({ candles, context, markers, width = 720, height = 32
   const candleWidth = Math.max(2, timeScale.slotWidth * 0.6);
 
   return (
-    <svg width={width} height={height} role="img" aria-label="Trade capture chart">
+    <svg width={width} height={height} role="img" aria-label="Graphique de la capture du trade" className="block">
       <rect x={0} y={0} width={width} height={height} fill="var(--card)" />
 
       {context?.activeFairValueGaps.map((fvg) => (

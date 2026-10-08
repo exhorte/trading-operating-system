@@ -1,82 +1,196 @@
 # Système de design du cockpit
 
-Décidé le 2026-09-24 (ADR 0012), d'après la maquette de référence
-`05_screenchot/dashboar.jpg`. Ce document est la référence pratique : où
-sont les jetons, quel composant pour quoi, ce qui a bougé.
+Décidé le 2026-10-08 (ADR 0017) : « ExponentValue Monochrome », qui supersède
+l'apparence de l'ADR 0012 (sombre seulement, menthe). Ce document est la
+référence pratique : où sont les jetons, quel composant pour quoi, comment
+composer un écran, comment vérifier.
+
+**Une phrase** : un cockpit blanc, aéré, sobre, où un noir légèrement bleuté
+porte tout ce qui est action ou mise en avant, avec un seul accent (une pastille
+menthe pâle) et des couleurs franches réservées au sens.
 
 ## Jetons — `app/globals.css`
 
-Sombre uniquement (`<html class="dark">`), noms shadcn/ui.
+Format hexadécimal (deux composants SVG lisent `var(--profit)`… comme des
+couleurs complètes), noms shadcn/ui. Clair = `:root` ; sombre = `.dark` sur
+`<html>`. La source HSL de chaque valeur est en commentaire dans le fichier.
 
-| Jeton | Valeur | Usage |
+| Jeton | Clair | Sombre | Rôle |
+|---|---|---|---|
+| `background` / `foreground` | `#ffffff` / `#18181b` | `#0e0e10` / `#f5f5f5` | page, texte (noir neutre) |
+| `card` | `#ffffff` | `#141417` | cartes |
+| `primary` | `#151320` | `#f5f5f5` | **la couleur d'action** (boutons) ; s'inverse en sombre |
+| `muted` / `muted-foreground` | `#f4f4f5` / `#6c6c75` | `#1f1f23` / `#9c9ca5` | surfaces et texte secondaires (5,2:1 sur blanc) |
+| `accent` / `secondary` | `#efeff0` / `#f3f3f4` | `#27272b` / `#222225` | survol, boutons gris |
+| `border` / `input` / `ring` | `#e4e4e7` / `#dfdfe2` / `#a1a1aa` | `#27272b` / `#303036` / `#6d6d78` | filets, champs, focus |
+| `sidebar*` | `#f6f4f5` (gris à peine rosé) | `#121214` | barre latérale |
+| `panel*` | `#151320` | `#1e1d26` | **surfaces sombres** : panneau de métriques, bandeau, en-têtes de tableau — sombres dans les deux thèmes |
+| `panel-highlight` | `#e7f3ee` | idem | la pastille menthe : **une seule par panneau** |
+| `panel-success` / `-warning` / `-destructive` | `#54d498` / `#fab742` / `#f47171` | idem | sens, lisibles sur fond sombre |
+| `success` / `warning` / `destructive` | `#1b744a` / `#9f5704` / `#ca2121` | `#37be7f` / `#f6a328` / `#ec5151` | sens, sur fond clair (≥ 5,4:1) |
+| `profit` / `loss` | = `success` / = `destructive` | idem | sens trading ; noms conservés de l'ADR 0012 |
+| `info` | `#52637a` (ardoise à peine teintée) | `#99abc2` | information neutre (« simulé », « coïncide avec S01 ») |
+| `chart-1…5` | `#151320`, `#b9b9c0`, `#259d65`, `#6f6f7b`, `#f98806` | `#ebebeb`, `#52525b`, `#39c684`, `#94949e` | barres positives (quasi-noir), négatives (gris), courbe |
+
+Règles : **le noir bleuté est sur des aplats, jamais sur du texte** ; aucune
+couleur codée en dur dans une page (`grep` d'un hexadécimal ou d'un
+`text-red-500` dans `app/` et `components/` ne doit rien trouver) ; une seule
+pastille `solidIcon` par `MetricPanel`.
+
+**Contrastes** (WCAG, mesurés sur les jetons le 2026-10-08, 44 paires, deux
+thèmes) : toutes ≥ 4,5:1. Les couleurs sémantiques claires sont plus sombres que
+celles du design d'origine (voir ADR 0017) ; en sombre, le texte d'un aplat
+`destructive` / `success` / `warning` est sombre, pas blanc.
+
+## Typographie, formes, espacements
+
+- **Inter** variable, auto-hébergée (`@fontsource-variable/inter`),
+  `font-feature-settings: "cv11", "ss01"`. Chiffres tabulaires sur toute valeur
+  numérique (`tabular-nums`, ou `.tnum`).
+- Titre de page `text-2xl sm:text-[28px] font-semibold tracking-tight` ; section
+  (h2) `text-xl` ; titre de carte `text-sm font-semibold` ; corps `text-sm` ;
+  libellé de champ `text-[13px]` gris ; micro-texte `text-xs`.
+- Rayon `--radius: 0.625rem`. Cartes, panneaux, tableaux `rounded-xl` ; boutons,
+  champs, badges `rounded-md` ; navigation `rounded-lg` ; pastilles `rounded-full`.
+- Une carte = `border` + `shadow-xs` ; le panneau sombre n'a pas de bordure
+  (`shadow-sm`). Pas d'ombre portée marquée : la profondeur vient de la couleur et
+  du filet.
+- Page `px-4 sm:px-6 lg:px-10`, `py-8 lg:py-10` ; entre grandes sections `gap-10` ;
+  grilles `gap-6` ; cartes empilées `gap-4`. Focus : anneau de 3 px sur tout élément
+  interactif (`focus-visible:ring-[3px] ring-ring/40`).
+- Icônes **Lucide**, `size-4` dans l'interface ; l'icône d'un champ de formulaire ou
+  d'un bouton ne porte jamais seule le sens (`aria-label`, ou `aria-hidden` si
+  décorative).
+
+## Thème
+
+`app/layout.tsx` pose la classe `dark` avant le premier rendu (script en ligne dans
+`<head>` : préférence enregistrée `localStorage.theme`, sinon celle du système) ;
+`components/shell/theme-toggle.tsx` bascule la même classe et la même clé. La
+bascule rend les deux icônes et laisse `dark:` choisir : aucun état React, aucun
+écart d'hydratation, aucun flash.
+
+## Coque — `components/shell/`
+
+| Zone | Composant | Notes |
 |---|---|---|
-| `background` | `#0b0d0c` | fond de page, presque noir à sous-ton vert |
-| `card` | `#121615` | cartes, un ton au-dessus du fond |
-| `muted` / `accent` | `#181d1b` / `#1c2220` | surfaces discrètes, survol |
-| `foreground` / `muted-foreground` | `#edf1ef` / `#8b9591` | texte / libellés |
-| `border` / `input` | blanc 7 % / 10 % | filets |
-| `primary` | `#a3efcc` menthe | **le seul accent** : actif, action principale, progression |
-| `warning` | `#e5c47f` or | second accent unique : attente, vigilance |
-| `loss` = `destructive` | `#e7766e` corail éteint | pertes, blocages, arrêt d'urgence |
-| `profit` | `#93e8c2` | gains (famille de la menthe) |
-| `info` | `#9db4c9` acier | information neutre, mode mock — à peine teinté |
-| `sidebar-*` | fond `#0d100f` | barre latérale |
+| Barre latérale (≥ `lg`) | `SidebarNav` dans `CockpitShell` | 16 rem, fixe, `bg-sidebar`. Écrans groupés Opérer / Analyser / Système ; élément actif = blanc surélevé |
+| Tiroir (< `lg`) | `MobileNav` | le même `SidebarNav` dans un `Sheet` ; un clic sur un lien le ferme |
+| Barre du haut | `SiteHeader` | 4 rem, collante, floutée ; fil d'Ariane à gauche (≥ `lg`), à droite le compte (`AccountMenu`), le thème, le hamburger |
+| Contenu | `CockpitShell` | `max-w-6xl`, le **même** conteneur pour la barre, la page et le pied de page |
+| Titre de page | `PageHeader` | `screen={screenAt("/risk")}` : le nom de l'écran + la question à laquelle il répond (`nav.ts`) ; ou `title` / `subtitle` / `icon` / `actions` |
+| Section | `SectionHeading` | h2 avec la même sous-ligne à icône |
 
-Rayons : `--radius` 12 px ; cartes `rounded-2xl` (20 px), boutons `rounded-lg`.
+**La sécurité ne suit pas l'esthétique.** Épinglés en bas de la barre latérale
+**et du tiroir** : le statut des publications (`NewsStatus`, T03), l'arrêt
+d'urgence (`KillSwitchButton`, T02a) et Settings. Les bannières de verrou
+(`LockoutAckBanner`, `LockoutViolationBanner`) restent pleine largeur au-dessus du
+contenu. Où est passé ce qui a changé de place :
 
-Deux surfaces utilitaires (`@layer components`) :
-
-- `.surface-card` — la carte de la maquette : éclairée par le haut ;
-- `.surface-glow` / `.surface-glow-loss` — halo menthe ou corail dans le coin
-  haut-droit, réservé à **la** carte qui répond à la question de l'écran.
+| Élément | Où il se lit maintenant |
+|---|---|
+| Taux de conformité (T07) | métrique « Conformité au plan » du panneau du Command Center ; titre de `/analyse` et dans `/journal` |
+| Liaison temps réel, persistance, environnement | pastille d'état sur l'avatar + détail dans `AccountMenu` |
+| Neuf gates du Risk Engine | `/risk` (`RiskGatesPanel`) et `/preflight` |
+| Rapprochement S01 / réel, propositions | `/setups` (`SetupsScreen`) |
 
 ## Composants
 
-| Besoin | Composant |
-|---|---|
-| Carte d'écran (titre, icône, description, actions) | `Panel` — `components/ui/panel.tsx` |
-| Tuile de chiffre (libellé, grand chiffre, pastille, barre) | `KpiCard` — `components/cockpit/kpi-card.tsx` |
-| Pastille d'état teintée | `StatusPill` (sur `Badge` shadcn) |
-| Barre de progression colorée par ce qu'elle mesure | `Progress` + `indicatorClassName` |
-| Boutons | `Button` / `buttonVariants` |
-| Champs de formulaire | `inputClass` — `components/accounts/form-controls.tsx` |
-| Barre latérale | `Sidebar*` shadcn, repliable en rail d'icônes (Ctrl+B) |
-| Menu du compte | `DropdownMenu` + `Avatar` |
-| Icônes | `lucide-react`, trait 1.75, 18–20 px dans la navigation |
+| Besoin | Composant | Fichier |
+|---|---|---|
+| Action principale / grise / contour | `Button` (`default`, `secondary`, `outline`) | `ui/button.tsx` |
+| Carte d'écran (titre, icône, description, actions) | `Panel` | `ui/panel.tsx` |
+| LE chiffre de l'écran | `HighlightBar` | `ui/metric-panel.tsx` |
+| Chiffres clés (3 à 5) | `MetricPanel` + `MetricPanelItem` (`tone`, `progress`, `solidIcon`) + `MetricPanelList` | `ui/metric-panel.tsx` |
+| Contenu 3/5 + panneau 2/5 | `SplitLayout` (`stickyAside`, `asideFirstOnMobile`) | `ui/split-layout.tsx` |
+| Liste principale | `DataList` (tableau à en-tête sombre dès `md`, cartes dessous) + `MobileCardHeader`, `MobileFields`, `Monogram` | `ui/data-list.tsx`, `ui/table.tsx` |
+| Note « Important » / avertissement | `Callout` (`variant="warning"`) | `ui/callout.tsx` |
+| Rien à montrer | `EmptyState` | `ui/empty-state.tsx` |
+| Filtres d'une liste | `FilterBar` + `FilterField`, contrôles en `filterFieldClass` | `ui/filter-bar.tsx`, `ui/input.tsx` |
+| Champ de formulaire | `Input`, `fieldClass`, `Field` | `ui/input.tsx`, `accounts/form-controls.tsx` |
+| Pastille d'état (point + texte) | `StatusPill` (`onPanel` sur fond sombre) | `ui/status-pill.tsx` |
+| Barre de progression | `Progress` | `ui/progress.tsx` |
+| Chargement | `Skeleton` | `ui/skeleton.tsx` |
 
 Primitives shadcn présentes : `avatar`, `badge`, `button`, `card`,
-`dropdown-menu`, `input`, `progress`, `separator`, `sheet`, `sidebar`,
-`skeleton`, `tooltip`. Ajouter : `npx shadcn@latest add <nom>`, jamais
-`init` (ADR 0012).
+`dropdown-menu`, `input`, `progress`, `separator`, `sheet`, `skeleton`,
+`tooltip`. Ajouter : `npx shadcn@latest add <nom>`, jamais `init` (ADR 0012).
+La barre latérale n'est plus le composant `Sidebar` de shadcn (lourd, supprimé).
 
-## Mise en page
+## Composer un écran
 
-- Pages : `flex flex-col gap-5` ; grilles `gap-4`/`gap-5` ; contenu `p-6`.
-- Titres de carte `text-sm font-medium` ; libellés et notes `text-xs`
-  (plus de 10 px en capitales) ; chiffres principaux `text-3xl`–`text-5xl
-  font-light` + `.tnum`.
-- Un seul `highlight` par écran.
+```
+PageHeader
+SplitLayout            contenu 3/5 · panneau sombre 2/5 (collant si l'écran est long)
+  HighlightBar + MetricPanel        ← les chiffres clés, dans la même colonne
+section(s) pleine largeur           DataList, répartitions, calendriers…
+Callout « Important »               ce que les chiffres de l'écran ne veulent PAS dire
+```
 
-## Coque — ce qui a bougé le 2026-09-24
-
-La barre du haut ne garde que le titre, le fil d'Ariane et le compte. Rien
-n'a été retiré, tout a été placé là où il se lit :
-
-| Élément | Avant | Maintenant |
+| Écran | Chiffre du bandeau | Panneau (★ = pastille menthe) |
 |---|---|---|
-| Taux de conformité (T07) | badge de la barre du haut | première carte du Command Center (`ComplianceCard`) |
-| Prochaine publication et blackout (T03) | badge de la barre du haut | bas de la barre latérale, sur tout écran (`NewsStatus`) |
-| Arrêt d'urgence (T02a) | bouton de la barre du haut | bas de la barre latérale, sur tout écran, un clic (`KillSwitchButton`) — choix de l'utilisateur |
-| Liaison temps réel, persistance, environnement | quatre pastilles | pastille d'état sur l'avatar + détail dans le menu du compte (`AccountMenu`) |
-| Settings | liste de navigation | épinglé en bas de la barre latérale |
-| Symbole suivi | pastille | retiré — il est sur Market Context |
+| `/` Command Center | Equity | P&L du jour · Marge avant verrou · Conformité au plan ★ · Positions ouvertes |
+| `/preflight` | `n / 9` points au vert | Verdict de séance ★ · Points bloquants · Verrou |
+| `/market-context` | biais du marché | Score de contexte ★ · Session · Structure · Prochaine publication |
+| `/positions` | positions ouvertes | P&L latent · Positions externes · Commandes UNKNOWN ★ |
+| `/risk` | état du risque | Perte du jour · Drawdown · Trades du jour · Pertes consécutives ★ |
+| `/journal` | trades clôturés | Dans le cadre ★ · Pris sur une proposition S01 · Avec capture · Résultat réalisé |
+| `/journal/[id]` | symbole de la capture | Entrée ★ · Stop · Objectif · Sortie |
+| `/analyse` | conformité sur la période | Trades en manquement ★ · Trades clôturés · Résultat net · Taux de réussite |
+| `/setups` | évaluations de S01 | Propositions · Bloquées · Proposé et pris ★ · Pris sans proposition |
+| `/account` | equity du compte connecté | Profil reconnu ★ · Capital de référence · Perte journalière max · Marge avant le plancher |
+| `/agents` | agent d'exécution | Observateur MT5 ★ · Latence · Dernier battement · Rapports d'exécution |
+| `/settings` | « à l'enregistrement » : Immédiat / Différé | Challenge FTMO · Capital Exness · Changement en attente ★ · Versions |
 
-## Ce que la refonte a révélé
+Chaque écran garde **sa question** (`question` de `nav.ts`) comme sous-titre : un
+écran, une question (`information_architecture.md`).
+
+## Règles
+
+- **Vide ≠ erreur.** `EmptyState` : « il n'y a rien ». `Callout variant="warning"` :
+  « on n'a pas pu demander » (backend injoignable). Un historique illisible ne
+  s'affiche jamais comme un historique vide : tirets dans le panneau, jamais des
+  zéros (`0 / 0`, `+$0.00` en vert disent un résultat qui n'existe pas).
+- **Le produit passe avant la mise en page** : la discipline avant le P&L (ADR 0001),
+  aucune métrique de performance sur `/setups` (ADR 0011), aucun indicateur agrégé
+  dans le journal (T06, décision 1).
+- **Mobile** : `grid-cols-1` explicite sous le point de rupture (une grille sans
+  colonnes explicites s'élargit au contenu `nowrap` et fait déborder la page),
+  `min-w-0` sur les enfants flex qui tronquent ; en Tailwind 4, `flex-1` (base 0 %)
+  l'emporte sur `basis-*` — écrire `flex-[1_1_7rem]` pour une vraie base. Une valeur
+  qui est une information (code de verrou, date, instruction) **s'enroule**, elle ne
+  se tronque pas ; seule une étiquette secondaire peut l'être, avec un `title`.
+- **Un texte JSX qui suit `{expression}` et s'étend sur plusieurs lignes perd son
+  espace initial** : écrire `{error}{" "}` puis le texte.
+- **Langue** : le texte de l'interface est en français ; les noms d'écrans hérités
+  (Command Center, Market Context, Account, Settings) et les noms de gates du
+  Risk Engine restent tels quels.
+
+## Vérifier
+
+Une refonte se vérifie dans un navigateur, pas au compilateur : `tsc`, `eslint`,
+`vitest`, puis chaque écran en 1440×900 clair et sombre et en 375×812 clair et
+sombre, avec ses états rempli / vide / backend éteint — aucun débordement
+horizontal, aucun texte important tronqué, thème conservé au rechargement sans
+flash, anneau de focus visible, console propre. Le panneau navigateur du poste est
+trop étroit (≈ 390 px) pour juger le desktop : piloter Chrome en headless
+(DevTools Protocol) donne de vraies captures. Les écrans alimentés par HTTP se
+voient sans backend avec un faux serveur en **lecture seule** et à données
+synthétiques sur le port 5080 (jamais de numéro de compte réel). Le détail de la
+dernière campagne est dans `session-log.md` (2026-10-08).
+
+## Ce que les refontes ont révélé
 
 - `useJournalWindow` transformait une réponse refusée (503) en historique
   **vide**, contrairement à son propre contrat ; un historique vide vaut
-  100 % de conformité, et l'ancien badge l'affichait base arrêtée. Corrigé :
-  un refus est un échec (`failed`), affiché comme tel.
+  100 % de conformité, et l'ancien badge l'affichait base arrêtée. Corrigé le
+  2026-09-24 : un refus est un échec (`failed`), affiché comme tel.
 - La jauge de discipline et l'historique des verrous restaient en
   chargement indéfini quand la lecture échouait ; ils disent désormais que
   le backend ne répond pas.
+- 2026-10-08 : `muted-foreground` sur `muted` faisait 4,40:1 (les pastilles grises) ;
+  la procédure de connexion de `/settings` débordait de 155 px sur mobile (grille
+  sans colonne explicite) ; le graphique de capture avait une largeur fixe de 720 px
+  (il s'adapte maintenant à son conteneur) ; le journal affichait les paires forex à
+  deux décimales (entrée et sortie identiques) ; des valeurs-clés (`$10,15…`), des
+  symboles (`EURU…`) et des instructions étaient coupés par une ellipse.

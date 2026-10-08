@@ -239,3 +239,15 @@ Plus une seule capture prise à la main.
   côté rendu ? persister le M15 depuis le worker EA-02 ?), pas un correctif
   d'une ligne. Le point « rendu jamais vérifié en live » (ouvert depuis
   2026-09-05) reste donc ouvert, avec sa cause connue maintenant.
+
+- 2026-10-08 — visionneuse (`/journal/[brokerPositionId]`) reprise dans la
+  refonte de l'ADR 0017 ; le chargement des faits et des bougies, et le repli
+  sur le M1 agrégé vers le timeframe déclaré, sont inchangés. Changent : le
+  graphique suit la largeur de son conteneur (`TradeChartFrame` — le SVG avait
+  une largeur fixe de 720 px et débordait sur mobile) sans se démonter sur une
+  mesure nulle passagère ; les niveaux enregistrés (entrée, stop, objectif,
+  sortie) sont repris dans un panneau sombre, lus sur les mêmes repères que le
+  tracé ; « aucune capture pour ce trade » (état vide) n'est plus confondu
+  avec « capture illisible » (avertissement). Le rendu a été vu pour la
+  première fois, sur des bougies **synthétiques** : le point « rendu jamais
+  vérifié en live » reste ouvert.

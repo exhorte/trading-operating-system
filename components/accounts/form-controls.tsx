@@ -1,18 +1,19 @@
 import type { ReactNode } from "react";
 import { buttonVariants } from "@/components/ui/button";
+import { fieldClass } from "@/components/ui/input";
 
 /**
- * shadcn/ui's Input look (2026-09-24 redesign), for native inputs and
- * selects alike — same field as the /journal and /analyse filters.
+ * The same field as `<Input>`, for native inputs and selects alike (and the
+ * /journal and /analyse filters) — one look for every field of the app.
  */
-export const inputClass =
-  "h-9 w-full rounded-lg border border-input bg-input/30 px-3 text-sm text-foreground outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
+export const inputClass = fieldClass;
 
-/** The mock-up's « New Challenge »: filled mint, dark text. */
-export const primaryButtonClass = buttonVariants({ size: "sm", className: "rounded-lg px-4" });
+/** The action button: the near-black one. */
+export const primaryButtonClass = buttonVariants({ size: "default" });
 
-export const secondaryButtonClass = buttonVariants({ variant: "outline", size: "sm", className: "rounded-lg" });
+export const secondaryButtonClass = buttonVariants({ variant: "outline", size: "sm" });
 
+/** A labelled field: the `<label>` wraps its control, so the association is the markup's. */
 export function Field({
   label,
   hint,
@@ -23,8 +24,8 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1.5 text-xs">
-      <span className="font-medium text-muted-foreground">{label}</span>
+    <label className="flex flex-col gap-2">
+      <span className="text-[13px] text-muted-foreground">{label}</span>
       {children}
       {hint && <span className="text-xs leading-snug text-muted-foreground">{hint}</span>}
     </label>

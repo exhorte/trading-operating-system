@@ -6,7 +6,6 @@ import { CalendarClock } from "lucide-react";
 import { cn } from "cn";
 import { useCockpit } from "@/lib/realtime/provider";
 import { defaultRiskPolicy, isNewsBlackout, nextRelease } from "@/lib/risk";
-import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
 function formatCountdown(untilIso: string, nowMs: number): string {
   const remainingMs = Math.max(0, Date.parse(untilIso) - nowMs);
@@ -28,13 +27,12 @@ interface NewsLine {
 
 /**
  * T03 — the next FRED release and its blackout, permanent and visible from
- * every screen (the fiche's own requirement). Lived in the top bar until the
- * 2026-09-24 redesign; now pinned at the bottom of the sidebar, where it
- * stays on every page. Reads `upcomingReleases` directly so it works before
- * an account is connected (the calendar is global). Absent data is shown as
- * the news gate treats it: closed, never as a reassuring blank.
+ * every screen (the fiche's own requirement): pinned at the bottom of the
+ * sidebar. Reads `upcomingReleases` directly so it works before an account
+ * is connected (the calendar is global). Absent data is shown as the news
+ * gate treats it: closed, never as a reassuring blank.
  */
-export function NewsStatus() {
+export function NewsStatus({ onNavigate }: { onNavigate?: () => void }) {
   const { upcomingReleases, account } = useCockpit();
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -65,38 +63,35 @@ export function NewsStatus() {
     }
   }
 
-  const toneText = line.tone === "loss" ? "text-loss" : line.tone === "warning" ? "text-warning" : "text-sidebar-foreground";
+  const toneText = line.tone === "loss" ? "text-destructive" : line.tone === "warning" ? "text-warning" : "text-foreground";
 
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        asChild
-        size="lg"
-        tooltip={`${line.title} — ${line.detail}`}
-        // The lg size drops its padding in the icon rail; put it back so the
-        // icon sits centred like every other item.
-        className="gap-3 group-data-[collapsible=icon]:p-2.5!"
-      >
-        <Link href="/market-context">
-          <span className="relative flex shrink-0">
-            <CalendarClock className={cn("size-5", toneText)} strokeWidth={1.75} />
-            {line.tone !== "muted" && (
-              <span
-                className={cn(
-                  "absolute -top-0.5 -right-0.5 size-2 rounded-full",
-                  line.tone === "loss" ? "bg-loss" : "bg-warning",
-                  blackout && "animate-pulse",
-                )}
-                aria-hidden
-              />
+    <Link
+      href="/market-context"
+      onClick={onNavigate}
+      title={`${line.title} — ${line.detail}`}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors outline-none",
+        "text-sidebar-foreground hover:bg-sidebar-accent/70 focus-visible:ring-[3px] focus-visible:ring-ring/40",
+      )}
+    >
+      <span className="relative flex shrink-0">
+        <CalendarClock className="size-4" aria-hidden="true" />
+        {line.tone !== "muted" && (
+          <span
+            className={cn(
+              "absolute -top-1 -right-1 size-2 rounded-full",
+              line.tone === "loss" ? "bg-destructive" : "bg-warning",
+              blackout && "animate-pulse",
             )}
-          </span>
-          <span className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className={cn("truncate text-[13px] font-medium", toneText)}>{line.title}</span>
-            <span className="truncate text-[11px] text-muted-foreground">{line.detail}</span>
-          </span>
-        </Link>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
+            aria-hidden="true"
+          />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className={cn("truncate text-[13px] font-medium", toneText)}>{line.title}</span>
+        <span className="truncate text-[11px] text-sidebar-foreground">{line.detail}</span>
+      </span>
+    </Link>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Cable } from "lucide-react";
 import { useCockpit } from "@/lib/realtime/provider";
 import type { ActiveProfile } from "@/lib/accounts/active-profile";
 import {
@@ -115,18 +116,16 @@ export function ConnectionChain({ profile }: { profile: ActiveProfile | null }) 
   ];
 
   return (
-    <Panel title="Liaison MT5">
+    <Panel title="Liaison MT5" description="chaque maillon, du cockpit au terminal" icon={Cable}>
       <ul className="flex flex-col">
         {links.map((link) => (
           <li
             key={link.label}
-            className="grid grid-cols-[minmax(0,11rem)_auto_minmax(0,1fr)] items-center gap-3 border-t border-border py-1.5 text-xs first:border-t-0 first:pt-0"
+            className="grid grid-cols-1 gap-1 border-t py-2.5 text-sm first:border-t-0 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,11rem)_auto_minmax(0,1fr)] sm:items-center sm:gap-3"
           >
             <span className="text-muted-foreground">{link.label}</span>
             <StatusPill tone={link.tone}>{link.state}</StatusPill>
-            <span className="truncate text-xs text-muted-foreground" title={link.detail}>
-              {link.detail}
-            </span>
+            <span className="text-xs leading-snug text-muted-foreground">{link.detail}</span>
           </li>
         ))}
       </ul>

@@ -79,7 +79,7 @@ qui était vide :
 | Bloc sorti | Destination |
 |---|---|
 | `MarketContextPanel` | `/market-context` |
-| `RiskStatusPanel` (9 gates) | `/risk` |
+| `RiskStatusPanel` (9 gates) | `/risk` — devenu `RiskGatesPanel` avec la refonte de l'ADR 0017 |
 | `AgentHealthPanel` | `/agents` |
 | `ExecutionReportsFeed` | `/agents` |
 | `PnlCalendar` | supprimé — `/journal` a déjà son `MonthCalendar`, plus riche et alimenté par la base plutôt que par l'instantané temps réel |

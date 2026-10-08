@@ -6,7 +6,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 interface PanelProps {
   title?: ReactNode;
   description?: ReactNode;
-  /** A line icon in a soft square beside the title, as on the mock-up. */
+  /** A line icon in a bordered square beside the title. */
   icon?: LucideIcon;
   actions?: ReactNode;
   children: ReactNode;
@@ -14,19 +14,14 @@ interface PanelProps {
   contentClassName?: string;
   /** Dim the panel when realtime data can no longer be trusted. */
   untrusted?: boolean;
-  /**
-   * The one panel per screen that answers the screen's question gets the
-   * glow — mint when the answer is good, coral when it is not. More than one
-   * per screen and it stops meaning anything.
-   */
-  highlight?: "primary" | "loss";
 }
 
 /**
- * The cockpit's card: a shadcn `Card` with the app's conventions — a title
- * row with optional icon, description and actions, generous padding, and
- * the reference mock-up's surface (one step above the page, lit from the
- * top). Every screen builds on this, so the look changes here, once.
+ * The cockpit's card: a `Card` with the app's conventions — a title row with
+ * optional icon, description and actions, `p-5` padding, a hairline border.
+ * Every screen builds on this, so the look changes here, once. The key
+ * figures of a screen do NOT go in a Panel: they go in the dark
+ * `MetricPanel` (components/ui/metric-panel.tsx).
  */
 export function Panel({
   title,
@@ -37,31 +32,22 @@ export function Panel({
   className,
   contentClassName,
   untrusted = false,
-  highlight,
 }: PanelProps) {
   const hasHeader = Boolean(title || description || actions || Icon);
   return (
-    <Card
-      className={cn(
-        "surface-card gap-4 rounded-2xl py-5 shadow-none transition-opacity",
-        highlight === "primary" && "surface-glow",
-        highlight === "loss" && "surface-glow-loss",
-        untrusted && "opacity-60",
-        className,
-      )}
-    >
+    <Card className={cn("gap-4 py-5 transition-opacity", untrusted && "opacity-60", className)}>
       {hasHeader && (
         <CardHeader className="gap-1 px-5">
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 items-start gap-3">
             {Icon && (
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-primary ring-1 ring-border">
-                <Icon className="size-[18px]" strokeWidth={1.75} />
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-background shadow-xs">
+                <Icon className="size-4" aria-hidden="true" />
               </span>
             )}
-            <div className="min-w-0">
-              {title && <CardTitle className="truncate text-sm font-medium text-foreground">{title}</CardTitle>}
+            <div className="min-w-0 self-center">
+              {title && <CardTitle className="text-sm leading-snug font-semibold [overflow-wrap:anywhere]">{title}</CardTitle>}
               {description && (
-                <CardDescription className="mt-1 text-xs leading-snug">{description}</CardDescription>
+                <CardDescription className="mt-0.5 text-sm leading-snug">{description}</CardDescription>
               )}
             </div>
           </div>

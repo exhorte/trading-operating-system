@@ -117,7 +117,7 @@ export function AccountMenu() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-3 rounded-xl py-1.5 pr-2 pl-3 text-left transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex items-center gap-3 rounded-lg py-1.5 pr-2 pl-3 text-left transition-colors outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40"
           aria-label="Compte et état de la liaison"
         >
           <span className="hidden min-w-0 sm:block">
@@ -127,7 +127,7 @@ export function AccountMenu() {
           <span className="relative shrink-0">
             <Avatar size="lg" className="ring-1 ring-border">
               <AvatarFallback className="bg-muted text-xs font-semibold text-foreground">
-                {initials ?? <UserRound className="size-5 text-muted-foreground" strokeWidth={1.75} />}
+                {initials ?? <UserRound className="size-5 text-muted-foreground" aria-hidden="true" />}
               </AvatarFallback>
             </Avatar>
             <span
@@ -142,7 +142,7 @@ export function AccountMenu() {
           <ChevronsUpDown className="hidden size-4 text-muted-foreground sm:block" strokeWidth={1.75} />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 rounded-xl p-2">
+      <DropdownMenuContent align="end" className="w-80 rounded-lg p-2">
         <DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
           <span className="text-sm font-medium text-foreground">{name}</span>
           <span className="truncate text-xs text-muted-foreground">

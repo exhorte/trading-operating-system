@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Landmark } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCockpit } from "@/lib/realtime/provider";
 import { exnessProfile, ftmoProfile, type ActiveProfile } from "@/lib/accounts/active-profile";
@@ -66,6 +67,7 @@ export function FirmAccountCard({
   return (
     <Panel
       title={FIRM_TITLES[firm]}
+      icon={Landmark}
       actions={
         connected ? (
           <StatusPill tone="profit" pulse>
@@ -77,13 +79,13 @@ export function FirmAccountCard({
       }
     >
       <p className="text-sm font-semibold tracking-tight text-foreground">{profile.label}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
+      <p className="mt-0.5 text-sm text-muted-foreground">
         {resolution.source
           ? `Configuré dans Settings le ${formatDateTime(resolution.source.requestedAt)}`
           : "Valeurs par défaut du code — aucun réglage de Settings n'est en vigueur"}
       </p>
 
-      <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-xs">
+      <dl className="mt-4 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-sm">
         {firm === "ftmo" ? (
           <FtmoRows profile={profile} daily={daily} floor={floor} />
         ) : (
@@ -103,7 +105,7 @@ export function FirmAccountCard({
       </dl>
 
       {connected && (
-        <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-border pt-3 text-xs">
+        <dl className="mt-4 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 border-t pt-4 text-sm">
           <Row label="Compte">{account.label}</Row>
           <Row label="Solde">{formatMoney(account.balance, account.currency)}</Row>
           <Row label="Equity">{formatMoney(account.equity, account.currency)}</Row>
@@ -132,10 +134,10 @@ export function FirmAccountCard({
       )}
 
       {!connected && (
-        <p className="mt-3 border-t border-border pt-3 text-xs leading-snug text-muted-foreground">
+        <p className="mt-4 border-t pt-4 text-sm leading-snug text-muted-foreground">
           Pour le brancher : ouvre ce compte dans MT5, puis lance{" "}
           <code className="text-foreground">{observerCommand(firm)}</code>.{" "}
-          <Link href="/settings#connexion" className="text-primary hover:underline">
+          <Link href="/settings#connexion" className="text-foreground underline underline-offset-4 hover:no-underline">
             Procédure complète
           </Link>
         </p>

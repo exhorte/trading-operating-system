@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { Trophy } from "lucide-react";
 import { useCockpit } from "@/lib/realtime/provider";
 import { useJournalWindow } from "@/lib/journal/use-journal-window";
 import type { ActiveProfile } from "@/lib/accounts/active-profile";
@@ -50,8 +51,8 @@ export function ObjectivesCard({ profile }: { profile: ActiveProfile }) {
 
   if (failed) {
     return (
-      <Panel title="Objectifs du challenge">
-        <p className="text-xs text-muted-foreground">
+      <Panel title="Objectifs du challenge" icon={Trophy}>
+        <p className="text-sm text-muted-foreground">
           Les trades clôturés n&apos;ont pas pu être chargés — sans eux, ni les jours de trading
           ni la pire journée ne se calculent. Le backend répond-il ?
         </p>
@@ -61,7 +62,7 @@ export function ObjectivesCard({ profile }: { profile: ActiveProfile }) {
 
   if (!rows) {
     return (
-      <Panel title="Objectifs du challenge">
+      <Panel title="Objectifs du challenge" icon={Trophy}>
         <Skeleton className="h-44" />
       </Panel>
     );
@@ -70,21 +71,22 @@ export function ObjectivesCard({ profile }: { profile: ActiveProfile }) {
   return (
     <Panel
       title="Objectifs du challenge"
-      actions={<span className="text-xs text-muted-foreground">{trades?.length ?? 0} trade(s) clôturé(s)</span>}
+      icon={Trophy}
+      actions={<span className="text-sm text-muted-foreground">{trades?.length ?? 0} trade(s) clôturé(s)</span>}
     >
       <ul className="flex flex-col">
         {rows.map((row) => {
           const pill = OBJECTIVE_PILLS[row.state];
           return (
-            <li key={row.key} className="border-t border-border py-2 first:border-t-0 first:pt-0">
-              <div className="flex items-center justify-between gap-3 text-xs">
+            <li key={row.key} className="border-t py-3 first:border-t-0 first:pt-0 last:pb-0">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
                 <span className="text-foreground">{row.label}</span>
                 <span className="flex shrink-0 items-center gap-2">
                   <span className="tnum text-muted-foreground">{row.result}</span>
                   <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
                 </span>
               </div>
-              <p className="mt-1 text-xs leading-snug text-muted-foreground">{row.note}</p>
+              <p className="mt-1 text-sm leading-snug text-muted-foreground">{row.note}</p>
             </li>
           );
         })}

@@ -170,3 +170,14 @@ une violation.
   jauge et l'historique des verrous disent « illisible — le backend
   répond-il ? ». Et sans aucun trade sur la période, la carte affiche « — »,
   pas 100 %. Vérifié à l'écran avec la base réellement arrêtée.
+
+- 2026-10-08 — refonte visuelle (ADR 0017) : la carte `ComplianceCard` du
+  Command Center n'existe plus. Le taux est une métrique du panneau sombre du
+  Command Center (« Conformité au plan », la pastille menthe de ce panneau),
+  le chiffre de tête de `/analyse` et, par trade, la métrique « dans le cadre »
+  de `/journal`. Même hook (`useComplianceRate`, partagé avec la jauge de
+  `/risk` et l'historique des verrous), mêmes seuils — ≥ 90 % « Conforme »,
+  ≥ 70 % « À surveiller », sinon « Hors cadre » — et `/analyse` calcule avec le
+  même résumeur sur la période choisie. Rien mesuré ou base illisible : des
+  tirets, jamais 100 % (règle du 2026-09-24, conservée). Le critère de sortie
+  de la Vague 2 — taux affiché en tête du cockpit — reste rempli.

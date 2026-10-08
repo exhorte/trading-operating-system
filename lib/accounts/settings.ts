@@ -347,7 +347,7 @@ export function describeGuardReason(reason: GuardReason): string {
   }
 }
 
-const PHASE_LABELS: Record<FtmoPhase, string> = {
+export const PHASE_LABELS: Record<FtmoPhase, string> = {
   challenge: "Challenge",
   verification: "Vérification",
   funded: "Funded",

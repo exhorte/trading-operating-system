@@ -1,3 +1,4 @@
+import { History } from "lucide-react";
 import {
   describeGuardReason,
   describeVersion,
@@ -29,10 +30,12 @@ export function SettingsHistory({
   return (
     <Panel
       title="Historique des changements"
-      actions={<span className="text-xs text-muted-foreground">{versions.length} version(s)</span>}
+      description="ce qui a été demandé, quand, et s'il a pris effet tout de suite"
+      icon={History}
+      actions={<span className="text-sm text-muted-foreground">{versions.length} version(s)</span>}
     >
       {versions.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Aucun changement enregistré : les valeurs par défaut du code s&apos;appliquent.
         </p>
       ) : (
@@ -42,7 +45,7 @@ export function SettingsHistory({
             return (
               <li
                 key={version.versionId}
-                className="border-t border-border py-2 text-xs first:border-t-0 first:pt-0"
+                className="border-t py-3 text-sm first:border-t-0 first:pt-0 last:pb-0"
               >
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-foreground">
@@ -52,7 +55,7 @@ export function SettingsHistory({
                   </span>
                   <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
                 </div>
-                <p className="mt-1 text-xs leading-snug text-muted-foreground">
+                <p className="mt-1 text-sm leading-snug text-muted-foreground">
                   Demandé le {formatDateTime(version.requestedAt)} ·{" "}
                   {version.deferred
                     ? `reporté au jour de trading suivant : ${version.deferralReasons

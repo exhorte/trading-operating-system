@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Plug } from "lucide-react";
 import {
   AGENT_MAGIC_SUGGESTION,
   agentAllowedSymbols,
@@ -17,8 +18,8 @@ const FIRM_NAMES: Record<Firm, string> = { ftmo: "FTMO", exness: "Exness" };
 function CopyableCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="mt-1 flex items-center gap-2">
-      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded border border-border bg-muted px-2 py-1 text-xs text-foreground">
+    <div className="mt-2 flex items-center gap-2">
+      <code className="min-w-0 flex-1 overflow-x-auto rounded-md border bg-muted/50 px-2.5 py-1.5 text-xs whitespace-nowrap text-foreground">
         {command}
       </code>
       <button
@@ -40,9 +41,9 @@ function CopyableCommand({ command }: { command: string }) {
 function FirmProcedure({ firm }: { firm: Firm }) {
   const name = FIRM_NAMES[firm];
   return (
-    <div>
-      <h3 className="text-xs font-medium text-foreground">{name}</h3>
-      <ol className="mt-2 flex list-decimal flex-col gap-2 pl-4 text-xs leading-snug text-muted-foreground">
+    <div className="min-w-0">
+      <h3 className="text-sm font-semibold text-foreground">{name}</h3>
+      <ol className="mt-3 flex list-decimal flex-col gap-3 pl-4 text-sm leading-snug text-muted-foreground">
         <li>
           Dans MT5 : <span className="text-foreground">Fichier → Connexion à un compte de trading</span>, et
           choisis le compte {name}. Le mot de passe reste dans MT5 — le Trading OS ne le demande jamais.
@@ -78,8 +79,8 @@ function FirmProcedure({ firm }: { firm: Firm }) {
  */
 export function ConnectionProcedure() {
   return (
-    <Panel title="Connexion MT5 — procédure">
-      <div className="mb-4 rounded border border-border bg-muted px-3 py-2 text-xs leading-snug text-muted-foreground">
+    <Panel title="Connexion MT5 — procédure" description="MT5 se connecte, l'observer s'attache (ADR 0003)" icon={Plug}>
+      <div className="mb-5 rounded-lg border bg-muted/40 px-4 py-3 text-sm leading-snug text-muted-foreground">
         <p>
           En une commande, depuis <code className="text-foreground">04_code</code>, une fois MT5 ouvert et
           connecté au compte : base, backend, observer sur le bon symbole et cockpit démarrent dans
@@ -88,12 +89,12 @@ export function ConnectionProcedure() {
         </p>
         <CopyableCommand command={START_LIVE_COMMAND} />
       </div>
-      <div id="connexion" className="grid gap-4 lg:grid-cols-2">
+      <div id="connexion" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {FIRMS.map((firm) => (
           <FirmProcedure key={firm} firm={firm} />
         ))}
       </div>
-      <p className="mt-3 border-t border-border pt-3 text-xs leading-snug text-muted-foreground">
+      <p className="mt-5 border-t pt-4 text-sm leading-snug text-muted-foreground">
         Un compte à la fois : le cockpit suit le terminal auquel l&apos;observer est attaché. Pour
         passer de l&apos;un à l&apos;autre, change de compte dans MT5 puis relance l&apos;observer —
         son premier message transmet le nouveau broker, et le symbole n&apos;est pas le même

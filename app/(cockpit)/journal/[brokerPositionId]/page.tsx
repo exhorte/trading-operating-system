@@ -1,15 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
+import { ArrowLeft, Camera } from "lucide-react";
 import { analyzeMarketContext } from "@/lib/analysis";
 import { aggregateCandles } from "@/lib/analysis/aggregate";
 import { useCockpit } from "@/lib/realtime/provider";
 import { backendHttpBase } from "@/lib/realtime/backend-url";
-import { TradeChart, type TradeChartMarker } from "@/components/journal/trade-chart";
-import { Panel } from "@/components/ui/panel";
+import { CaptureMetrics, type CaptureLevels } from "@/components/journal/capture-metrics";
+import { type TradeChartMarker } from "@/components/journal/trade-chart";
+import { TradeChartFrame } from "@/components/journal/trade-chart-frame";
+import { PageHeader } from "@/components/shell/page-header";
+import { Button } from "@/components/ui/button";
+import { Callout } from "@/components/ui/callout";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SplitLayout } from "@/components/ui/split-layout";
 import type { Candle } from "@/lib/domain/market";
 import type { Timeframe } from "@/lib/domain/primitives";
 import type { MarketContextState } from "@/lib/domain/analysis";
@@ -27,11 +35,16 @@ interface CaptureFact {
 }
 
 interface CaptureSection {
-  title: string;
+  title: "Entry" | "Exit";
+  symbol: string;
+  timeframe: string;
   candles: Candle[];
   context: MarketContextState | null;
   markers: TradeChartMarker[];
 }
+
+/** What the section titles are called on screen; the keys above stay the data's own. */
+const SECTION_LABELS: Record<CaptureSection["title"], string> = { Entry: "Entrée", Exit: "Sortie" };
 
 async function fetchCandles(
   base: string,
@@ -84,7 +97,7 @@ async function loadCaptureCandles(base: string, fact: CaptureFact): Promise<Cand
  * 3230177984, 2026-09-15). An absent line reads correctly as "no stop was set".
  */
 function buildMarkers(fact: CaptureFact): TradeChartMarker[] {
-  const markers: TradeChartMarker[] = [{ price: fact.entryPrice, label: "Entry", tone: "entry" }];
+  const markers: TradeChartMarker[] = [{ price: fact.entryPrice, label: "Entrée", tone: "entry" }];
   if (fact.stopLoss > 0) {
     markers.push({ price: fact.stopLoss, label: "SL", tone: "stop" });
   }
@@ -92,17 +105,41 @@ function buildMarkers(fact: CaptureFact): TradeChartMarker[] {
     markers.push({ price: fact.takeProfit, label: "TP", tone: "target" });
   }
   if (fact.exitPrice !== null) {
-    markers.push({ price: fact.exitPrice, label: "Exit", tone: "exit" });
+    markers.push({ price: fact.exitPrice, label: "Sortie", tone: "exit" });
   }
   return markers;
+}
+
+/** The levels of the dark panel, read back from the markers the chart draws — one source for both. */
+function levelsOf(sections: CaptureSection[]): CaptureLevels | null {
+  const entry = sections.find((section) => section.title === "Entry");
+  if (!entry) {
+    return null;
+  }
+  const priceOf = (section: CaptureSection | undefined, tone: TradeChartMarker["tone"]) =>
+    section?.markers.find((marker) => marker.tone === tone)?.price ?? null;
+  const exit = sections.find((section) => section.title === "Exit");
+  return {
+    symbol: entry.symbol,
+    timeframe: entry.timeframe,
+    entry: priceOf(entry, "entry"),
+    stop: priceOf(entry, "stop"),
+    target: priceOf(entry, "target"),
+    exit: priceOf(exit, "exit"),
+  };
 }
 
 /**
  * T05 — minimal deep-link viewer for one trade's captures. Deliberately NOT
  * the browsable journal (dense table, filters, tags) — that is T06's scope
- * (see the /journal stub page). This proves the pipeline end to end: fetch
+ * (see the /journal page). This proves the pipeline end to end: fetch
  * the immutable facts, fetch candles within their frozen window, run
  * analyzeMarketContext (the canonical engine, ADR 0004) client-side, render.
+ *
+ * Composition (ADR 0017): the charts on the left, the frozen levels in the
+ * dark panel on the right (first on mobile). « No capture » is an empty state
+ * — nothing was recorded — while a failed read is a warning: the two must not
+ * look alike.
  */
 export default function TradeCapturePage() {
   const params = useParams<{ brokerPositionId: string }>();
@@ -110,6 +147,7 @@ export default function TradeCapturePage() {
   const accountId = account?.accountId ?? null;
 
   const [sections, setSections] = useState<CaptureSection[] | null>(null);
+  const [missing, setMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -133,12 +171,12 @@ export default function TradeCapturePage() {
         };
         if (!entry) {
           if (!cancelled) {
-            setError("No capture recorded for this trade — either it predates T05, or the entry hasn't been observed yet.");
+            setMissing(true);
           }
           return;
         }
 
-        const facts: Array<{ title: string; fact: CaptureFact }> = [{ title: "Entry", fact: entry }];
+        const facts: Array<{ title: CaptureSection["title"]; fact: CaptureFact }> = [{ title: "Entry", fact: entry }];
         if (exit) {
           facts.push({ title: "Exit", fact: exit });
         }
@@ -154,14 +192,21 @@ export default function TradeCapturePage() {
                   candles: rows,
                 })
               : null;
-          built.push({ title, candles: rows, context, markers: buildMarkers(fact) });
+          built.push({
+            title,
+            symbol: fact.symbol,
+            timeframe: fact.timeframe,
+            candles: rows,
+            context,
+            markers: buildMarkers(fact),
+          });
         }
         if (!cancelled) {
           setSections(built);
         }
       } catch {
         if (!cancelled) {
-          setError("Could not load this trade's capture.");
+          setError("Impossible de charger la capture de ce trade.");
         }
       }
     }
@@ -172,33 +217,93 @@ export default function TradeCapturePage() {
     };
   }, [params.brokerPositionId, accountId]);
 
-  if (!accountId) {
+  const header = (
+    <PageHeader
+      title="Capture du trade"
+      subtitle={`Position ${params.brokerPositionId}`}
+      icon={Camera}
+      actions={
+        <Button asChild variant="outline" size="sm">
+          <Link href="/journal">
+            <ArrowLeft aria-hidden="true" />
+            Retour au journal
+          </Link>
+        </Button>
+      }
+    />
+  );
+
+  if (!accountId || (!sections && !missing && !error)) {
     return (
-      <Panel title="Trade capture">
-        <Skeleton className="h-72" />
-      </Panel>
+      <div className="flex flex-col gap-10">
+        <SplitLayout
+          main={
+            <>
+              {header}
+              <Skeleton className="h-96 rounded-xl" />
+            </>
+          }
+          aside={
+            <>
+              <Skeleton className="h-[72px] rounded-xl" />
+              <Skeleton className="h-[420px] rounded-xl" />
+            </>
+          }
+        />
+      </div>
     );
   }
 
   if (error) {
-    return <EmptyState title="No capture" description={error} hint={`Position ${params.brokerPositionId}`} />;
-  }
-
-  if (!sections) {
     return (
-      <Panel title="Trade capture">
-        <Skeleton className="h-72" />
-      </Panel>
+      <div className="flex flex-col gap-10">
+        {header}
+        <Callout title="Capture illisible" variant="warning">
+          {error}{" "}
+          Le backend répond-il ?
+        </Callout>
+      </div>
     );
   }
 
+  if (missing || !sections) {
+    return (
+      <div className="flex flex-col gap-10">
+        {header}
+        <EmptyState
+          icon={Camera}
+          title="Aucune capture pour ce trade"
+          description="Aucune capture n'a été enregistrée pour cette position : soit elle est antérieure à T05, soit son ouverture n'a pas encore été observée."
+          hint={`Position ${params.brokerPositionId}`}
+        />
+      </div>
+    );
+  }
+
+  const levels = levelsOf(sections);
+
   return (
-    <div className="flex flex-col gap-4">
-      {sections.map((section) => (
-        <Panel key={section.title} title={`${section.title} — position ${params.brokerPositionId}`}>
-          <TradeChart candles={section.candles} context={section.context} markers={section.markers} />
-        </Panel>
-      ))}
+    <div className="flex flex-col gap-10">
+      <SplitLayout
+        stickyAside
+        asideFirstOnMobile
+        main={
+          <>
+            {header}
+            {sections.map((section) => (
+              <Panel key={section.title} title={SECTION_LABELS[section.title]} description={`${section.symbol} · ${section.timeframe}`}>
+                <TradeChartFrame candles={section.candles} context={section.context} markers={section.markers} />
+              </Panel>
+            ))}
+          </>
+        }
+        aside={levels ? <CaptureMetrics levels={levels} /> : null}
+      />
+      <Callout title="Important">
+        La capture est rendue à la demande à partir des faits enregistrés à l&apos;ouverture et à la clôture, avec les
+        bougies de la fenêtre figée — jamais une image prise après coup. Une ligne de stop ou d&apos;objectif absente
+        veut dire « non posé » : MT5 renvoie 0 pour un niveau qui n&apos;a jamais été attaché.
+      </Callout>
     </div>
   );
 }

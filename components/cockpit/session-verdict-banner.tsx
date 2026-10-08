@@ -12,14 +12,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 /**
  * The first thing the eye lands on: can I open a position right now?
  *
- * The Command Center used to answer this only by inference — a "Risk state:
- * NORMAL" tile among seven others, plus nine gate rows in a side panel. The
- * verdict itself has the top of the page, and the detail stays one click
- * away on /preflight (T09), which is the screen that owns it.
- *
- * 2026-09-24: the hero card of the redesign, in the place of the reference
- * mock-up's equity card — the glow says the answer (mint armed, coral not),
- * and every gate is listed as a chip, so "why" is readable without a click.
+ * The verdict itself has the top of the page, and the detail stays one click
+ * away on /preflight (T09), which is the screen that owns it. Every gate is
+ * listed as a chip, so « why » is readable without a click. The state is
+ * carried by the icon, the words AND the colour — never by colour alone.
  *
  * Same rule as /preflight, imported rather than re-derived
  * (lib/cockpit/verdict.ts).
@@ -39,40 +35,38 @@ export function SessionVerdictBanner({
   const untrusted = useIsDataUntrusted();
 
   if (!risk) {
-    return <Skeleton className={cn("h-[260px] rounded-2xl", className)} />;
+    return <Skeleton className={cn("h-[260px] rounded-xl", className)} />;
   }
 
   const { armed, blocking, lockoutReason } = sessionVerdict(risk);
   const Icon = armed ? ShieldCheck : ShieldX;
 
   return (
-    <Card
-      className={cn(
-        "gap-6 rounded-2xl px-6 py-6 shadow-none transition-opacity",
-        armed ? "surface-glow" : "surface-glow-loss",
-        untrusted && "opacity-60",
-        className,
-      )}
-    >
+    <Card className={cn("gap-6 px-6 py-6 transition-opacity", untrusted && "opacity-60", className)}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-4">
           <span
             className={cn(
-              "flex size-12 shrink-0 items-center justify-center rounded-2xl ring-1",
-              armed ? "bg-primary/12 text-primary ring-primary/25" : "bg-loss/12 text-loss ring-loss/30",
+              "flex size-12 shrink-0 items-center justify-center rounded-xl border",
+              armed ? "border-success/25 bg-success/10 text-success" : "border-destructive/25 bg-destructive/10 text-destructive",
             )}
           >
-            <Icon className="size-6" strokeWidth={1.75} />
+            <Icon className="size-6" strokeWidth={1.75} aria-hidden="true" />
           </span>
           <div>
-            <p className="text-[13px] text-muted-foreground">Verdict de séance</p>
-            <p className={cn("text-4xl font-light tracking-tight", armed ? "text-primary" : "text-loss")}>
+            <p className="text-sm text-muted-foreground">Verdict de séance</p>
+            <p
+              className={cn(
+                "text-3xl font-semibold tracking-tight sm:text-4xl",
+                armed ? "text-success" : "text-destructive",
+              )}
+            >
               {armed ? "Armé" : "Pas armé"}
             </p>
           </div>
         </div>
         {showPreflightLink && (
-          <Button asChild variant="outline" size="sm" className="rounded-lg">
+          <Button asChild variant="outline" size="sm">
             <Link href="/preflight">
               Pré-vol
               <ArrowRight />
@@ -86,12 +80,12 @@ export function SessionVerdictBanner({
           `${risk.gates.length} points vérifiables au vert — la séance peut commencer.`
         ) : lockoutReason ? (
           <>
-            Lockout : <span className="text-loss">{lockoutReason}</span>
+            Lockout : <span className="font-medium text-destructive">{lockoutReason}</span>
             {blocking.length > 0 && ` · ${blocking.length} point(s) bloquant(s)`}
           </>
         ) : (
           <>
-            <span className="text-loss">{blocking[0]?.label ?? "Compte verrouillé"}</span>
+            <span className="font-medium text-destructive">{blocking[0]?.label ?? "Compte verrouillé"}</span>
             {blocking[0]?.detail ? ` — ${blocking[0].detail}` : ""}
             {blocking.length > 1 && ` · +${blocking.length - 1} autre(s)`}
           </>
@@ -107,12 +101,16 @@ export function SessionVerdictBanner({
                 key={gate.gateId}
                 title={gate.detail}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl px-3 py-2 text-xs ring-1",
-                  open ? "bg-muted/60 text-foreground/85 ring-border" : "bg-loss/10 text-loss ring-loss/30",
+                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs",
+                  open ? "bg-muted/50" : "border-destructive/30 bg-destructive/5",
                 )}
               >
-                <span className={cn("size-1.5 shrink-0 rounded-full", open ? "bg-profit" : "bg-loss")} aria-hidden />
+                <span
+                  className={cn("size-1.5 shrink-0 rounded-full", open ? "bg-success" : "bg-destructive")}
+                  aria-hidden="true"
+                />
                 <span className="truncate">{gate.label}</span>
+                <span className="sr-only">{open ? " : au vert" : " : bloquant"}</span>
               </li>
             );
           })}

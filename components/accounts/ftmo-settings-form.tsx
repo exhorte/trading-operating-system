@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Trophy } from "lucide-react";
 import { ftmoObjectives, ftmoRiskPolicy, type FtmoChallengeType, type FtmoPhase } from "@/lib/accounts/ftmo";
 import {
   ACCOUNT_SIZE_BOUNDS,
@@ -30,7 +31,7 @@ function FtmoPreview({ settings }: { settings: FtmoSettings }) {
   }
   const sourced = objectives.profitTargetPercent !== null;
   return (
-    <div className="rounded border border-border bg-muted px-2.5 py-2 text-xs leading-snug">
+    <div className="rounded-lg border bg-muted/40 px-3.5 py-3 text-sm leading-snug">
       <p className="text-foreground">
         Perte journalière max{" "}
         <span className="tnum">{formatSignedMoney(-(size * policy.dailyLossLimitPercent) / 100)}</span> · plancher{" "}
@@ -47,7 +48,7 @@ function FtmoPreview({ settings }: { settings: FtmoSettings }) {
         )}
       </p>
       {!sourced && (
-        <p className="mt-1 text-warning">
+        <p className="mt-1.5 text-warning">
           Règles de cette combinaison non sourcées (TODO FTMO-rules) : les limites du 2-Step
           Challenge s&apos;appliquent faute de source, et les objectifs s&apos;affichent « non sourcé ».
         </p>
@@ -104,6 +105,8 @@ export function FtmoSettingsForm({
   return (
     <Panel
       title="Prop firm · FTMO"
+      description="le challenge acheté : type, taille, phase"
+      icon={Trophy}
       actions={
         resolution.source ? (
           <StatusPill tone="info">Configuré</StatusPill>
@@ -112,18 +115,18 @@ export function FtmoSettingsForm({
         )
       }
     >
-      <p className="text-xs text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         En vigueur : <span className="text-foreground">{describeFtmoSettings(resolution.settings)}</span>
         {resolution.source ? ` — depuis le ${formatDateTime(resolution.source.requestedAt)}` : ""}
       </p>
       {resolution.pending && (
-        <div className="mt-2">
+        <div className="mt-3">
           <PendingChange version={resolution.pending} />
         </div>
       )}
 
       <form
-        className="mt-3 flex flex-col gap-3"
+        className="mt-5 flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
           if (errors.length === 0 && !unchanged) {
@@ -131,7 +134,7 @@ export function FtmoSettingsForm({
           }
         }}
       >
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Type de challenge">
             <select
               value={type}
@@ -185,16 +188,16 @@ export function FtmoSettingsForm({
 
         <FtmoPreview settings={draft} />
 
-        {overlap && <p className="text-xs text-warning">{overlap}</p>}
+        {overlap && <p className="text-sm text-warning">{overlap}</p>}
         {errors.length > 0 && (
-          <ul className="list-disc pl-4 text-xs text-loss">
+          <ul className="list-disc pl-4 text-sm text-destructive">
             {errors.map((error) => (
               <li key={error}>{error}</li>
             ))}
           </ul>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 border-t pt-5">
           <button
             type="submit"
             disabled={!available || saving || unchanged || errors.length > 0}
@@ -205,15 +208,15 @@ export function FtmoSettingsForm({
           <button type="button" onClick={reset} disabled={unchanged || saving} className={secondaryButtonClass}>
             Rétablir
           </button>
-          {unchanged && available && <span className="text-xs text-muted-foreground">Aucune modification.</span>}
+          {unchanged && available && <span className="text-sm text-muted-foreground">Aucune modification.</span>}
         </div>
 
         {submitState.status === "saved" && (
-          <p className={`text-xs ${submitState.version.deferred ? "text-warning" : "text-profit"}`}>
+          <p className={`text-sm ${submitState.version.deferred ? "text-warning" : "text-success"}`}>
             {submitState.message}
           </p>
         )}
-        {submitState.status === "failed" && <p className="text-xs text-loss">{submitState.message}</p>}
+        {submitState.status === "failed" && <p className="text-sm text-destructive">{submitState.message}</p>}
       </form>
     </Panel>
   );

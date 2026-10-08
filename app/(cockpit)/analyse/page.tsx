@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CalendarClock, ChartColumn, ChartColumnBig, ShieldCheck } from "lucide-react";
 import { useAccountAnalysis } from "@/lib/account-analysis/use-account-analysis";
 import {
   describeDays,
@@ -15,16 +16,19 @@ import {
 import { VIOLATION_LABELS } from "@/lib/compliance/labels";
 import type { ViolationType } from "@/lib/compliance/violations";
 import { useCockpit } from "@/lib/realtime/provider";
-import { formatPercent, formatSignedMoney } from "@/lib/format";
+import { formatSignedMoney } from "@/lib/format";
+import { AnalysisMetrics } from "@/components/analyse/analysis-metrics";
 import { BreakdownSection } from "@/components/analyse/breakdown-section";
 import { StatTile } from "@/components/analyse/stat-tile";
-import { Panel } from "@/components/ui/panel";
+import { PageHeader, SectionHeading } from "@/components/shell/page-header";
+import { screenAt } from "@/components/shell/nav";
+import { Callout } from "@/components/ui/callout";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, FilterField } from "@/components/ui/filter-bar";
+import { filterFieldClass } from "@/components/ui/input";
+import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusPill, type PillTone } from "@/components/ui/status-pill";
-
-const inputClass =
-  "h-9 rounded-lg border border-input bg-input/30 px-3 text-sm text-foreground outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+import { SplitLayout } from "@/components/ui/split-layout";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -59,6 +63,11 @@ function money(value: number | null): string {
  *
  * It shares T08's data and detectors but not its scope: T08 renders a week to
  * a Markdown file you keep, this reads any range on screen.
+ *
+ * Composition (ADR 0017, « résultats / détail »): title and period on top, the
+ * sentence and the discipline block beside the dark panel of the period (which
+ * comes first on mobile), then the sessions, the seven breakdowns and the
+ * « Important » note.
  */
 export default function AccountAnalysisPage() {
   const { account } = useCockpit();
@@ -78,68 +87,79 @@ export default function AccountAnalysisPage() {
 
   if (!account) {
     return (
-      <EmptyState
-        title="Aucun compte connecté"
-        description="L'analyse porte sur les trades clôturés d'un compte. Le cockpit doit être relié à la chaîne temps réel pour savoir lequel."
-      />
+      <div className="flex flex-col gap-10">
+        <PageHeader screen={screenAt("/analyse")} />
+        <EmptyState
+          icon={ChartColumn}
+          title="Aucun compte connecté"
+          description="L'analyse porte sur les trades clôturés d'un compte. Le cockpit doit être relié à la chaîne temps réel pour savoir lequel."
+        />
+      </div>
     );
   }
 
-  const rangeCard = (
-    <Panel title="Période analysée">
-      <div className="flex flex-wrap items-center gap-3 text-xs">
-        <label className="flex items-center gap-1.5">
-          <span className="text-muted-foreground">Du</span>
+  const header = (
+    <div className="flex flex-col gap-6">
+      <PageHeader screen={screenAt("/analyse")} />
+      <FilterBar label="Période analysée">
+        <FilterField label="Du">
           <input
             type="date"
             value={from}
             max={to}
             onChange={(e) => setFrom(e.target.value)}
-            className={inputClass}
+            className={filterFieldClass}
           />
-        </label>
-        <label className="flex items-center gap-1.5">
-          <span className="text-muted-foreground">Au</span>
+        </FilterField>
+        <FilterField label="Au">
           <input
             type="date"
             value={to}
             min={from}
             onChange={(e) => setTo(e.target.value)}
-            className={inputClass}
+            className={filterFieldClass}
           />
-        </label>
-        <span className="text-muted-foreground">{account.label}</span>
-      </div>
-    </Panel>
+        </FilterField>
+        <p className="ml-auto self-end pb-2 text-sm text-muted-foreground">{account.label}</p>
+      </FilterBar>
+    </div>
   );
 
   if (failed) {
     return (
-      <div className="flex flex-col gap-5">
-        {rangeCard}
-        <EmptyState
-          title="Analyse indisponible"
-          description="Les trades clôturés n'ont pas pu être chargés. Le backend répond-il ? docker ps doit montrer tradingos-backend et tradingos-timescaledb."
-        />
+      <div className="flex flex-col gap-10">
+        {header}
+        <Callout title="Analyse indisponible" variant="warning">
+          Les trades clôturés n&apos;ont pas pu être chargés. Le backend répond-il ? <code>docker ps</code> doit
+          montrer <code>tradingos-backend</code> et <code>tradingos-timescaledb</code>.
+        </Callout>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="flex flex-col gap-5">
-        {rangeCard}
-        <Skeleton className="h-40" />
-        <Skeleton className="h-64" />
+      <div className="flex flex-col gap-10">
+        {header}
+        <SplitLayout
+          main={
+            <>
+              <Skeleton className="h-40 rounded-xl" />
+              <Skeleton className="h-64 rounded-xl" />
+            </>
+          }
+          aside={<AnalysisMetrics data={null} loading />}
+        />
       </div>
     );
   }
 
   if (trades.length === 0) {
     return (
-      <div className="flex flex-col gap-5">
-        {rangeCard}
+      <div className="flex flex-col gap-10">
+        {header}
         <EmptyState
+          icon={ChartColumn}
           title="Aucun trade clôturé sur cette période"
           description="Élargis la plage de dates. Cet écran n'analyse que des positions déjà fermées — une position ouverte n'a ni durée ni résultat."
         />
@@ -147,177 +167,166 @@ export default function AccountAnalysisPage() {
     );
   }
 
-  const rate = compliance.rate ?? 0;
-  const complianceTone: PillTone = rate >= 0.9 ? "profit" : rate >= 0.7 ? "warning" : "loss";
-
   return (
-    <div className="flex flex-col gap-5">
-      {rangeCard}
+    <div className="flex flex-col gap-10">
+      {header}
 
-      {/* Le résumé, en une phrase générée — le motif central du modèle FTMO. */}
-      <Panel title="Ce que la période dit">
-        <p className="text-sm leading-relaxed text-foreground">{describeGeneral(general)}</p>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-          <StatTile
-            label="Trades"
-            value={String(general.tradeCount)}
-            detail={`${general.wins} gagnants · ${general.losses} perdants`}
-          />
-          <StatTile
-            label="Résultat net"
-            value={formatSignedMoney(general.netPnl)}
-            detail="somme des P&L réalisés"
-            tone={general.netPnl >= 0 ? "profit" : "loss"}
-          />
-          <StatTile
-            label="Taux de réussite"
-            value={formatPercent(general.winRate * 100)}
-            detail="trades clôturés au-dessus de zéro"
-          />
-          <StatTile
-            label="Gain moyen"
-            value={money(general.avgWin)}
-            detail="moyenne des trades gagnants"
-            tone={general.avgWin === null ? "default" : "profit"}
-          />
-          <StatTile
-            label="Perte moyenne"
-            value={money(general.avgLoss)}
-            detail="moyenne des trades perdants"
-            tone={general.avgLoss === null ? "default" : "loss"}
-          />
-          <StatTile
-            label="Rapport gain / perte"
-            value={general.rewardRiskRatio === null ? "—" : general.rewardRiskRatio.toFixed(2)}
-            detail="gain moyen ÷ |perte moyenne|"
-          />
-        </div>
-      </Panel>
+      <SplitLayout
+        stickyAside
+        asideFirstOnMobile
+        main={
+          <>
+            {/* Le résumé, en une phrase générée — le motif central du modèle FTMO. */}
+            <Panel title="Ce que la période dit">
+              <p className="text-sm leading-relaxed text-foreground">{describeGeneral(general)}</p>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <StatTile
+                  label="Gain moyen"
+                  value={money(general.avgWin)}
+                  detail="moyenne des trades gagnants"
+                  tone={general.avgWin === null ? "default" : "profit"}
+                />
+                <StatTile
+                  label="Perte moyenne"
+                  value={money(general.avgLoss)}
+                  detail="moyenne des trades perdants"
+                  tone={general.avgLoss === null ? "default" : "loss"}
+                />
+                <StatTile
+                  label="Rapport gain / perte"
+                  value={general.rewardRiskRatio === null ? "—" : general.rewardRiskRatio.toFixed(2)}
+                  detail="gain moyen ÷ |perte moyenne|"
+                />
+              </div>
+            </Panel>
 
-      {/* ADR 0001 : la discipline passe avant le P&L, y compris dans l'ordre
-          de lecture de la page. */}
-      <Panel
-        title="Discipline sur la période"
-        actions={
-          <StatusPill tone={complianceTone} pulse={rate < 0.7}>
-            {Math.round(rate * 100)}% conformité
-          </StatusPill>
+            {/* ADR 0001 : la discipline passe avant le P&L, y compris dans l'ordre
+                de lecture de la page. */}
+            <Panel title="Discipline sur la période" icon={ShieldCheck}>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {compliance.breachedCount === 0
+                  ? `Aucun des ${compliance.tradeCount} trades de la période n'enfreint une règle détectable.`
+                  : `${compliance.breachedCount} trade(s) sur ${compliance.tradeCount} enfreignent au moins une règle détectable.`}{" "}
+                Les manquements sont comptés en occurrences, pas en dollars — une règle enfreinte
+                n&apos;a pas de prix.
+              </p>
+              <ul className="mt-4 flex flex-col text-sm">
+                {violationEntries.map(({ type, count }) => (
+                  <li key={type} className="flex items-center justify-between gap-3 border-t py-2.5">
+                    <span className={count > 0 ? "text-foreground" : "text-muted-foreground"}>
+                      {VIOLATION_LABELS[type]}
+                    </span>
+                    <span className={`font-medium tabular-nums ${count > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                      {count}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {compliance.byType.SIZE_POLICY === 0 && (
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                  Le contrôle de taille s&apos;appuie sur le solde courant, faute de solde
+                  historisé — un zéro ici veut dire « rien trouvé avec cette approximation »,
+                  pas « vérifié sur le solde du jour ».
+                </p>
+              )}
+            </Panel>
+          </>
         }
-      >
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {compliance.breachedCount === 0
-            ? `Aucun des ${compliance.tradeCount} trades de la période n'enfreint une règle détectable.`
-            : `${compliance.breachedCount} trade(s) sur ${compliance.tradeCount} enfreignent au moins une règle détectable.`}{" "}
-          Les manquements sont comptés en occurrences, pas en dollars — une règle enfreinte
-          n&apos;a pas de prix.
-        </p>
-        <ul className="mt-3 flex flex-col gap-1.5">
-          {violationEntries.map(({ type, count }) => (
-            <li key={type} className="flex items-center justify-between gap-2 text-xs">
-              <span className={count > 0 ? "text-foreground" : "text-muted-foreground"}>
-                {VIOLATION_LABELS[type]}
-              </span>
-              <span className={`tnum ${count > 0 ? "text-loss" : "text-muted-foreground"}`}>{count}</span>
-            </li>
-          ))}
-        </ul>
-        {compliance.byType.SIZE_POLICY === 0 && (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Le contrôle de taille s&apos;appuie sur le solde courant, faute de solde
-            historisé — un zéro ici veut dire « rien trouvé avec cette approximation »,
-            pas « vérifié sur le solde du jour ».
-          </p>
-        )}
-      </Panel>
+        aside={<AnalysisMetrics data={{ general, compliance }} loading={false} />}
+      />
 
-      <Panel title="Séances">
-        <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-          {describeTradingDays(tradingDays)}
-        </p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-          <StatTile
-            label="Séances"
-            value={String(tradingDays.dayCount)}
-            detail="jours avec au moins une clôture"
+      <section className="flex flex-col gap-4">
+        <SectionHeading title="Séances" subtitle="la période, jour de clôture par jour de clôture" icon={CalendarClock} />
+        <Panel>
+          <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{describeTradingDays(tradingDays)}</p>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <StatTile
+              label="Séances"
+              value={String(tradingDays.dayCount)}
+              detail="jours avec au moins une clôture"
+            />
+            <StatTile
+              label="Trades / séance"
+              value={tradingDays.avgTradesPerDay?.toFixed(1) ?? "—"}
+              detail="moyenne sur la période"
+            />
+            <StatTile
+              label="Séances positives"
+              value={String(tradingDays.positiveDays)}
+              detail={`moyenne ${money(tradingDays.avgPositiveDay)}`}
+              tone={tradingDays.positiveDays > 0 ? "profit" : "default"}
+            />
+            <StatTile
+              label="Séances négatives"
+              value={String(tradingDays.negativeDays)}
+              detail={`moyenne ${money(tradingDays.avgNegativeDay)}`}
+              tone={tradingDays.negativeDays > 0 ? "loss" : "default"}
+            />
+            <StatTile
+              label="Meilleure séance"
+              value={money(tradingDays.bestDay?.pnl ?? null)}
+              detail={tradingDays.bestDay?.label ?? "—"}
+              tone="profit"
+            />
+            <StatTile
+              label="Pire séance"
+              value={money(tradingDays.worstDay?.pnl ?? null)}
+              detail={tradingDays.worstDay?.label ?? "—"}
+              tone="loss"
+            />
+          </div>
+        </Panel>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <SectionHeading title="Répartitions" subtitle="la même période, rangée de sept façons" icon={ChartColumnBig} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <BreakdownSection
+            title="Par durée de trade"
+            narrative={describeDuration(breakdowns.byDuration)}
+            buckets={breakdowns.byDuration}
+            footnote="Les trades sans ouverture enregistrée sont exclus : leur durée est inconnue, pas nulle."
           />
-          <StatTile
-            label="Trades / séance"
-            value={tradingDays.avgTradesPerDay?.toFixed(1) ?? "—"}
-            detail="moyenne sur la période"
+          <BreakdownSection
+            title="Par taille de position"
+            narrative={describeSize(breakdowns.bySize)}
+            buckets={breakdowns.bySize}
+            footnote="En lots, tels qu'exécutés chez le broker."
           />
-          <StatTile
-            label="Séances positives"
-            value={String(tradingDays.positiveDays)}
-            detail={`moyenne ${money(tradingDays.avgPositiveDay)}`}
-            tone={tradingDays.positiveDays > 0 ? "profit" : "default"}
+          <BreakdownSection
+            title="Par heure d'entrée"
+            narrative={describeOpenHour(breakdowns.byOpenHour)}
+            buckets={breakdowns.byOpenHour}
+            footnote="Heures UTC — pas l'heure du terminal MT5 ni l'heure locale."
           />
-          <StatTile
-            label="Séances négatives"
-            value={String(tradingDays.negativeDays)}
-            detail={`moyenne ${money(tradingDays.avgNegativeDay)}`}
-            tone={tradingDays.negativeDays > 0 ? "loss" : "default"}
+          <BreakdownSection
+            title="Achat / Vente"
+            narrative={describeSide(breakdowns.bySide)}
+            buckets={breakdowns.bySide}
           />
-          <StatTile
-            label="Meilleure séance"
-            value={money(tradingDays.bestDay?.pnl ?? null)}
-            detail={tradingDays.bestDay?.label ?? "—"}
-            tone="profit"
+          <BreakdownSection
+            title="Par jour d'ouverture"
+            narrative={describeDays(breakdowns.byOpenDay, breakdowns.byCloseDay)}
+            buckets={breakdowns.byOpenDay}
           />
-          <StatTile
-            label="Pire séance"
-            value={money(tradingDays.worstDay?.pnl ?? null)}
-            detail={tradingDays.worstDay?.label ?? "—"}
-            tone="loss"
+          <BreakdownSection
+            title="Par jour de fermeture"
+            narrative="Les mêmes trades, rangés sur le jour où le résultat a été réalisé — c'est cette lecture que suit une limite de perte journalière."
+            buckets={breakdowns.byCloseDay}
+          />
+          <BreakdownSection
+            title="Par instrument"
+            narrative={describeSymbol(breakdowns.bySymbol)}
+            buckets={breakdowns.bySymbol}
           />
         </div>
-      </Panel>
+      </section>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <BreakdownSection
-          title="Par durée de trade"
-          narrative={describeDuration(breakdowns.byDuration)}
-          buckets={breakdowns.byDuration}
-          footnote="Les trades sans ouverture enregistrée sont exclus : leur durée est inconnue, pas nulle."
-        />
-        <BreakdownSection
-          title="Par taille de position"
-          narrative={describeSize(breakdowns.bySize)}
-          buckets={breakdowns.bySize}
-          footnote="En lots, tels qu'exécutés chez le broker."
-        />
-        <BreakdownSection
-          title="Par heure d'entrée"
-          narrative={describeOpenHour(breakdowns.byOpenHour)}
-          buckets={breakdowns.byOpenHour}
-          footnote="Heures UTC — pas l'heure du terminal MT5 ni l'heure locale."
-        />
-        <BreakdownSection
-          title="Achat / Vente"
-          narrative={describeSide(breakdowns.bySide)}
-          buckets={breakdowns.bySide}
-        />
-        <BreakdownSection
-          title="Par jour d'ouverture"
-          narrative={describeDays(breakdowns.byOpenDay, breakdowns.byCloseDay)}
-          buckets={breakdowns.byOpenDay}
-        />
-        <BreakdownSection
-          title="Par jour de fermeture"
-          narrative="Les mêmes trades, rangés sur le jour où le résultat a été réalisé — c'est cette lecture que suit une limite de perte journalière."
-          buckets={breakdowns.byCloseDay}
-        />
-        <BreakdownSection
-          title="Par instrument"
-          narrative={describeSymbol(breakdowns.bySymbol)}
-          buckets={breakdowns.bySymbol}
-        />
-      </div>
-
-      <p className="text-xs text-muted-foreground">
-        Descriptions d&apos;un échantillon, pas propriétés d&apos;un système. Choisir quoi
-        trader d&apos;après la tranche qui a le mieux marché ici, c&apos;est exactement la
-        sélection a posteriori qui a mis fin à la recherche d&apos;edge (ADR 0002).
-      </p>
+      <Callout title="Important">
+        Descriptions d&apos;un échantillon, pas propriétés d&apos;un système. Choisir quoi trader d&apos;après la
+        tranche qui a le mieux marché ici, c&apos;est exactement la sélection a posteriori qui a mis fin à la
+        recherche d&apos;edge (ADR 0002).
+      </Callout>
     </div>
   );
 }

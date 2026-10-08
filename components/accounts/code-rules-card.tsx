@@ -1,3 +1,4 @@
+import { BookLock } from "lucide-react";
 import { FTMO_COST_MODEL, ftmoRiskPolicy, type FtmoPhase } from "@/lib/accounts/ftmo";
 import { REAL_COST_MODEL, realRiskPolicy } from "@/lib/accounts/real";
 import { CONSECUTIVE_LOSS_PAUSE_MINUTES } from "@/lib/risk";
@@ -38,26 +39,26 @@ export function CodeRulesCard({ ftmoPhase }: { ftmoPhase: FtmoPhase }) {
   ];
 
   return (
-    <Panel title="Règles fixées dans le code">
-      <table className="w-full text-xs">
+    <Panel title="Règles fixées dans le code" description="non modifiables ici, par choix (ADR 0007)" icon={BookLock}>
+      <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
-            <th className="pb-1 font-medium">Règle</th>
-            <th className="pb-1 text-right font-medium">FTMO</th>
-            <th className="pb-1 text-right font-medium">Exness</th>
+            <th className="pb-2 font-medium">Règle</th>
+            <th className="pb-2 text-right font-medium">FTMO</th>
+            <th className="pb-2 text-right font-medium">Exness</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(([rule, ftmoValue, exnessValue]) => (
-            <tr key={rule} className="border-t border-border">
-              <td className="py-1.5 text-foreground">{rule}</td>
-              <td className="tnum py-1.5 text-right text-foreground">{ftmoValue}</td>
-              <td className="tnum py-1.5 text-right text-foreground">{exnessValue}</td>
+            <tr key={rule} className="border-t">
+              <td className="py-2 text-foreground">{rule}</td>
+              <td className="tnum py-2 text-right text-foreground">{ftmoValue}</td>
+              <td className="tnum py-2 text-right text-foreground">{exnessValue}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="mt-3 border-t border-border pt-3 text-xs leading-snug text-muted-foreground">
+      <p className="mt-4 border-t pt-4 text-sm leading-snug text-muted-foreground">
         Pertes FTMO : règles de FTMO, sourcées par tes exports MetriX. Exness 5 %/10 % : ta décision
         du 2026-09-21. Le reste : tes limites de discipline, identiques partout. Modifiables par un
         commit uniquement (<code className="text-foreground">lib/accounts/ftmo.ts</code>,{" "}

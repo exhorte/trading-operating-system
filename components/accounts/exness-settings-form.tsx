@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Landmark } from "lucide-react";
 import { realRiskPolicy } from "@/lib/accounts/real";
 import {
   brokerMatchOverlap,
@@ -26,7 +27,7 @@ function ExnessPreview({ settings }: { settings: ExnessSettings }) {
     return null;
   }
   return (
-    <div className="rounded border border-border bg-muted px-2.5 py-2 text-xs leading-snug text-foreground">
+    <div className="rounded-lg border bg-muted/40 px-3.5 py-3 text-sm leading-snug">
       {ref === null ? (
         <p>
           Aucune référence fixe : les deux limites (5 % par jour, 10 % au total) se calculent en
@@ -89,6 +90,8 @@ export function ExnessSettingsForm({
   return (
     <Panel
       title="Broker · Exness"
+      description="le capital dont la perte maximale est mesurée"
+      icon={Landmark}
       actions={
         resolution.source ? (
           <StatusPill tone="info">Configuré</StatusPill>
@@ -97,18 +100,18 @@ export function ExnessSettingsForm({
         )
       }
     >
-      <p className="text-xs text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         En vigueur : <span className="text-foreground">{describeExnessSettings(resolution.settings)}</span>
         {resolution.source ? ` — depuis le ${formatDateTime(resolution.source.requestedAt)}` : ""}
       </p>
       {resolution.pending && (
-        <div className="mt-2">
+        <div className="mt-3">
           <PendingChange version={resolution.pending} />
         </div>
       )}
 
       <form
-        className="mt-3 flex flex-col gap-3"
+        className="mt-5 flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
           if (errors.length === 0 && !unchanged) {
@@ -149,16 +152,16 @@ export function ExnessSettingsForm({
 
         <ExnessPreview settings={draft} />
 
-        {overlap && <p className="text-xs text-warning">{overlap}</p>}
+        {overlap && <p className="text-sm text-warning">{overlap}</p>}
         {errors.length > 0 && (
-          <ul className="list-disc pl-4 text-xs text-loss">
+          <ul className="list-disc pl-4 text-sm text-destructive">
             {errors.map((error) => (
               <li key={error}>{error}</li>
             ))}
           </ul>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 border-t pt-5">
           <button
             type="submit"
             disabled={!available || saving || unchanged || errors.length > 0}
@@ -169,15 +172,15 @@ export function ExnessSettingsForm({
           <button type="button" onClick={reset} disabled={unchanged || saving} className={secondaryButtonClass}>
             Rétablir
           </button>
-          {unchanged && available && <span className="text-xs text-muted-foreground">Aucune modification.</span>}
+          {unchanged && available && <span className="text-sm text-muted-foreground">Aucune modification.</span>}
         </div>
 
         {submitState.status === "saved" && (
-          <p className={`text-xs ${submitState.version.deferred ? "text-warning" : "text-profit"}`}>
+          <p className={`text-sm ${submitState.version.deferred ? "text-warning" : "text-success"}`}>
             {submitState.message}
           </p>
         )}
-        {submitState.status === "failed" && <p className="text-xs text-loss">{submitState.message}</p>}
+        {submitState.status === "failed" && <p className="text-sm text-destructive">{submitState.message}</p>}
       </form>
     </Panel>
   );

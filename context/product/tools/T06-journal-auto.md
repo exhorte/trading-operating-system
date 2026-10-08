@@ -212,3 +212,22 @@ ouvrir MT5 et sans avoir rien saisi à la main.
   calendrier/les ventilations n'ont jamais été vus rendus à l'écran avec ces
   données réelles. À vérifier à la prochaine séance avec MT5 + l'observer
   connectés.
+
+- 2026-10-08 — écran repris dans la refonte visuelle de l'ADR 0017
+  (« ExponentValue Monochrome »). **La logique de données n'a pas bougé** : le
+  fetch de la page, le rapprochement S01, les violations T07 et les
+  ventilations sont ceux d'avant (la page garde son propre fetch, voir
+  l'en-tête de `lib/journal/use-journal-window.ts`). Changent la présentation —
+  titre et question de l'écran, filtres (`FilterBar`), panneau sombre des
+  chiffres de la période (trades, « dans le cadre », pris sur une proposition
+  S01, avec capture, résultat réalisé ; des tirets, jamais des zéros, quand il
+  n'y a rien à compter), tableau à en-tête sombre (cartes sous `md`), colonne
+  « Cadre » qui réunit la pastille S01 et les manquements, calendriers
+  lundi d'abord — et deux écarts d'affichage assumés : les paires forex à cinq
+  décimales (`formatQuote` ; avec `formatPrice`, l'entrée et la sortie d'un
+  EURUSD affichaient la même valeur), et « aucune capture » distingué de
+  « capture illisible ». **Vu rempli pour la première fois**, mais contre un
+  faux serveur en lecture seule à données synthétiques (100 trades sur 90 jours) :
+  filtres de période et de symbole cohérents entre le panneau et le tableau,
+  aucun débordement à 375 px, clair et sombre. Le point « jamais vu rendu avec
+  des données réelles » de l'entrée du 2026-09-16 **reste ouvert**.
