@@ -390,6 +390,13 @@ class AutonomyHalted(Event):
     reason: str
 
 
+class AutonomyReadinessChanged(Event):
+    """Published when the verdict (ready / blocked) or the set of blockers changes — not at every evaluation."""
+
+    wire_type = "autonomy.readiness_changed"
+    readiness: ReadinessReport
+
+
 # ------------------------------------------------------------------------------------------------------ system
 
 

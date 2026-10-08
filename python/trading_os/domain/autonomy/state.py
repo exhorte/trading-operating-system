@@ -4,8 +4,10 @@
 
 * **One rung up at a time**, never above the ceiling (``min(TRADING_MODE, account max_mode)``, default OBSERVE).
 * Going down is always allowed and immediate.
-* ``ARMED`` and ``AUTONOMOUS`` need a green readiness report; ``ARMED`` lives under a lease the server renews —
-  when it lapses the system falls back to CONFIRM (a human is back in the loop), it does not halt.
+* ``ARMED`` and ``AUTONOMOUS`` need a green readiness report; ``ARMED`` lives under a time-boxed lease that the *human*
+  renews — when it lapses the system falls back to CONFIRM (a human is back in the loop), it does not halt. (The
+  server-side lease of ADR 0014/0015, the one closing the browser must not break, is the dead-man ping to the agent,
+  not this one.)
 * ``HALTED`` is the only state a critical error can produce from ARMED/AUTONOMOUS; leaving it takes an explicit
   human acknowledgement and lands on OFF — never straight back to trading.
 
@@ -154,7 +156,12 @@ def expire_lease_if_due(state: AutonomyState, now: datetime) -> AutonomyState:
 
 
 def disarm(
-    state: AutonomyState, *, now: datetime, target: AutonomyMode = AutonomyMode.OBSERVE, acknowledge: bool = False
+    state: AutonomyState,
+    *,
+    now: datetime,
+    target: AutonomyMode = AutonomyMode.OBSERVE,
+    acknowledge: bool = False,
+    reason: str | None = None,
 ) -> AutonomyState:
     """Step down (always allowed). From HALTED the only exit is an explicit acknowledgement, landing on OFF."""
     if state.mode is AutonomyMode.HALTED:
@@ -165,7 +172,7 @@ def disarm(
         raise IllegalTransition(f"{target} is not a rung you can step down to", code="invalid_target")
     if rank(target) >= rank(state.mode):
         return state  # already at or below the target: nothing to do, and never a step *up* through disarm
-    return _moved(state, target, now, f"disarmed to {target}")
+    return _moved(state, target, now, reason or f"disarmed to {target}")
 
 
 def halt(state: AutonomyState, *, reason: str, now: datetime) -> AutonomyState:

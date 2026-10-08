@@ -153,6 +153,11 @@ class TestHaltAndDisarm:
         with pytest.raises(IllegalTransition):
             disarm(autonomous, now=NOW, target=M.HALTED)
 
+    def test_a_step_down_can_carry_its_own_reason(self) -> None:
+        lowered = disarm(self.autonomous(), now=NOW, target=M.CONFIRM, reason="readiness lost: heartbeat")
+        assert lowered.last_transition is not None and lowered.last_transition.reason == "readiness lost: heartbeat"
+        assert disarm(self.autonomous(), now=NOW).last_transition.reason == "disarmed to OBSERVE"  # type: ignore[union-attr]
+
     def test_lowering_the_ceiling_pulls_a_running_mode_down(self) -> None:
         paper = climb(initial_state(NOW), M.OBSERVE, M.PAPER)
         assert clamp_to_ceiling(paper, M.OBSERVE, NOW).mode is M.OBSERVE
