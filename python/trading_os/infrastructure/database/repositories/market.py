@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from trading_os.domain.market.calendar import UpcomingRelease
 from trading_os.domain.market.models import Candle, Tick
@@ -89,6 +89,19 @@ class NewsRepository:
             "SELECT release_id, label, scheduled_at FROM news_releases WHERE scheduled_at > %s "
             "ORDER BY scheduled_at ASC",
             (now,),
+        )
+        return [UpcomingRelease.model_validate(dict(r)) for r in rows]
+
+    async def around(self, now: datetime, lookback: timedelta) -> list[UpcomingRelease] | None:
+        """Releases from ``lookback`` ago onward — the news blackout is symmetric, so a release that has just passed
+        still counts for a while. ``None`` = never synced."""
+        ever = await self._db.fetch_value("SELECT EXISTS(SELECT 1 FROM news_releases)")
+        if not ever:
+            return None
+        rows = await self._db.fetch_all(
+            "SELECT release_id, label, scheduled_at FROM news_releases WHERE scheduled_at > %s "
+            "ORDER BY scheduled_at ASC",
+            (now - lookback,),
         )
         return [UpcomingRelease.model_validate(dict(r)) for r in rows]
 

@@ -28,3 +28,7 @@ def setup_logging(level: str = "INFO") -> None:
         lg.handlers.clear()
         lg.propagate = True
     logging.getLogger("uvicorn.access").disabled = True
+    # httpx logs every request URL at INFO, and a FRED URL carries the API key in its query string (the masker would
+    # catch it, but a secret that is never written is better than one that is masked).
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
