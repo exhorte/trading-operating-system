@@ -6,6 +6,7 @@ the readiness report read; it is deliberately strict: an agent that does not say
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import Field
@@ -14,6 +15,7 @@ from trading_os.domain.primitives import DomainModel
 
 # Fields that are clocks, not state: a heartbeat that changes only these says nothing new.
 _CLOCK_FIELDS = frozenset({"gateway_silent_ms", "last_heartbeat_ms"})
+_AGENT_MAGIC = re.compile(r"-(\d+)$")
 
 
 class AgentStatus(DomainModel):
@@ -49,6 +51,13 @@ class AgentStatus(DomainModel):
 
     def can(self, capability: str) -> bool:
         return capability in self.capabilities
+
+    @property
+    def magic_number(self) -> int | None:
+        """The agent's ``InpMagicNumber``, which its id carries (``mt5-execution-agent-<magic>``): the number every order,
+        position and deal it produces is stamped with. ``None`` for an id that does not follow the convention."""
+        match = _AGENT_MAGIC.search(self.agent_id)
+        return int(match.group(1)) if match else None
 
     @property
     def permissions_ok(self) -> bool:

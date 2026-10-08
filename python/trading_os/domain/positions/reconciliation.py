@@ -4,6 +4,16 @@ Pure. The service gathers the inputs (commands that executed, positions and orde
 position scan) and acts on the findings. Findings carry a severity the supervisor maps to an action — an unexpected
 position opened under *our* magic number with no command behind it is critical (something is trading that should not);
 a position the user opened by hand is only a warning, like the EXTERNAL_POSITION of the agent's own scan.
+
+*Which command is behind a position?* The execution agent writes a short trace of the command id into the order comment
+(``domain/execution/trace.py``), so the answer comes from the broker's own data — through ``command_states`` (every recent
+command and its state) — with the agent's scan as a second source. Three cases follow from the state of that command:
+
+* in transit (SENT, ACKNOWLEDGED, UNKNOWN, RECONCILING) — the fill is real but the report has not landed: not unexpected,
+  and compared once the command settles;
+* recorded as not placed (PENDING, FAILED, REJECTED, EXPIRED, CANCELLED, SIMULATED) — the position contradicts the record:
+  **critical**, whatever the magic number says;
+* executed — compared with the command in the usual way.
 """
 
 from __future__ import annotations
@@ -15,6 +25,8 @@ from enum import StrEnum
 from pydantic import Field
 
 from trading_os.domain.execution.commands import CommandState
+from trading_os.domain.execution.state import IN_DOUBT_STATES, NO_POSITION_STATES
+from trading_os.domain.execution.trace import command_trace
 from trading_os.domain.positions.models import PendingOrder, Position
 from trading_os.domain.primitives import AccountId, DomainModel, Side, SymbolCode
 
@@ -75,6 +87,33 @@ class Mismatch(DomainModel):
     actual: str | None = None
     external: bool = False  # a position the user opened by hand (not ours)
 
+    @property
+    def key(self) -> str:
+        """Identity of the finding across runs: the same divergence found again is the same finding."""
+        return "|".join((self.kind.value, self.command_id or "", self.position_id or "", self.field or ""))
+
+
+class ReconciliationReport(DomainModel):
+    """The outcome of one run, kept by the service and read by the supervisor and the readiness report."""
+
+    account_id: AccountId
+    started_at: datetime
+    finished_at: datetime
+    readable: bool  # False: MT5 or the database could not be read, so nothing was concluded
+    error: str | None = None
+    positions_checked: int = 0
+    settled: int = 0  # in-doubt commands settled from what the broker shows
+    confirmed: int = 0  # executed commands whose position was confirmed
+    mismatches: Sequence[Mismatch] = ()
+
+    @property
+    def critical(self) -> list[Mismatch]:
+        return [m for m in self.mismatches if m.severity is MismatchSeverity.CRITICAL]
+
+    @property
+    def warnings(self) -> list[Mismatch]:
+        return [m for m in self.mismatches if m.severity is MismatchSeverity.WARNING]
+
 
 class ReconciliationInput(DomainModel):
     account_id: AccountId
@@ -84,6 +123,8 @@ class ReconciliationInput(DomainModel):
     actual: Sequence[Position] = ()
     # position id → command id, from the agent's own scan (it traces each position's comment back to its command)
     command_by_position: Mapping[str, str] = Field(default_factory=dict)
+    # Every recent command and its state: what lets a position or order be tied back to a command through its comment.
+    command_states: Mapping[str, CommandState] = Field(default_factory=dict)
     closed_position_ids: frozenset[str] = frozenset()  # positions known to have closed (stop/target hit)
     our_magic: int | None = None
     unresolved: Sequence[UnresolvedCommand] = ()
@@ -121,7 +162,11 @@ def reconcile(inp: ReconciliationInput) -> list[Mismatch]:
         return found  # nothing else can be trusted against the wrong account
 
     by_id = {p.position_id: p for p in inp.actual}
-    position_for_command = {cmd: pos for pos, cmd in inp.command_by_position.items() if pos in by_id}
+    trace_to_command = _trace_index(inp)
+    command_of = {
+        p.position_id: inp.command_by_position.get(p.position_id) or trace_to_command.get(p.comment) for p in inp.actual
+    }
+    position_for_command = {cmd: pos for pos, cmd in command_of.items() if cmd}
     matched: set[str] = set()
 
     for exp in inp.expected:
@@ -149,6 +194,27 @@ def reconcile(inp: ReconciliationInput) -> list[Mismatch]:
     for position in inp.actual:
         if position.position_id in matched:
             continue
+        command_id = command_of[position.position_id]
+        state = inp.command_states.get(command_id) if command_id else None
+        if state in IN_DOUBT_STATES:
+            continue  # a fill whose report has not landed yet: compared once the command settles
+        if state in NO_POSITION_STATES:
+            found.append(
+                Mismatch(
+                    kind=MismatchKind.UNEXPECTED_POSITION,
+                    severity=MismatchSeverity.CRITICAL,
+                    account_id=account,
+                    command_id=command_id,
+                    position_id=position.position_id,
+                    detail=(
+                        f"{position.symbol} {position.side} {_fmt(position.volume)} lot exists although "
+                        f"command {command_id} is recorded {state.value} — nothing should have been placed"
+                    ),
+                )
+            )
+            continue
+        if state is not None:
+            continue  # executed: accounted for by its command (the comparison above covers it when it is expected)
         ours = inp.our_magic is not None and position.magic_number == inp.our_magic
         found.append(
             Mismatch(
@@ -176,8 +242,16 @@ def reconcile(inp: ReconciliationInput) -> list[Mismatch]:
             )
         )
 
-    found += _reconcile_orders(inp)
+    found += _reconcile_orders(inp, trace_to_command)
     return found
+
+
+def _trace_index(inp: ReconciliationInput) -> dict[str, str]:
+    """broker comment → command id, for every command the input knows about."""
+    ids = set(inp.command_states)
+    ids |= {e.command_id for e in inp.expected} | {c.command_id for c in inp.unresolved}
+    ids |= {o.command_id for o in inp.expected_orders}
+    return {command_trace(command_id): command_id for command_id in ids}
 
 
 def _compare(exp: ExpectedPosition, actual: Position, inp: ReconciliationInput) -> list[Mismatch]:
@@ -249,15 +323,15 @@ def _compare(exp: ExpectedPosition, actual: Position, inp: ReconciliationInput) 
     return found
 
 
-def _reconcile_orders(inp: ReconciliationInput) -> list[Mismatch]:
+def _order_is_of(order: PendingOrder, command_id: str) -> bool:
+    return command_id in order.comment or order.comment == command_trace(command_id)
+
+
+def _reconcile_orders(inp: ReconciliationInput, trace_to_command: Mapping[str, str]) -> list[Mismatch]:
     found: list[Mismatch] = []
-    known = {order.command_id for order in inp.expected_orders}
-    seen_comments = {order.comment for order in inp.actual_orders}
+    expected_ids = {order.command_id for order in inp.expected_orders}
     for expected in inp.expected_orders:
-        if (
-            not any(expected.command_id in order.comment for order in inp.actual_orders)
-            and expected.command_id not in seen_comments
-        ):
+        if not any(_order_is_of(order, expected.command_id) for order in inp.actual_orders):
             found.append(
                 Mismatch(
                     kind=MismatchKind.ORDER_MISMATCH,
@@ -268,15 +342,26 @@ def _reconcile_orders(inp: ReconciliationInput) -> list[Mismatch]:
                 )
             )
     for order in inp.actual_orders:
-        ours = inp.our_magic is not None and order.magic_number == inp.our_magic
-        if ours and not any(command_id in order.comment for command_id in known):
-            found.append(
-                Mismatch(
-                    kind=MismatchKind.ORDER_MISMATCH,
-                    severity=MismatchSeverity.CRITICAL,
-                    account_id=inp.account_id,
-                    detail=f"pending order {order.order_id} carries our magic number but no command",
-                    position_id=None,
-                )
+        if inp.our_magic is None or order.magic_number != inp.our_magic:
+            continue
+        command_id = trace_to_command.get(order.comment) or next(
+            (cid for cid in expected_ids if cid in order.comment), None
+        )
+        state = inp.command_states.get(command_id) if command_id else None
+        if command_id is not None and state not in NO_POSITION_STATES:
+            continue  # tied to a command that went out (in transit, expected, or executed)
+        found.append(
+            Mismatch(
+                kind=MismatchKind.ORDER_MISMATCH,
+                severity=MismatchSeverity.CRITICAL,
+                account_id=inp.account_id,
+                command_id=command_id,
+                detail=(
+                    f"pending order {order.order_id} carries our magic number but no command"
+                    if command_id is None
+                    else f"pending order {order.order_id} exists although command {command_id} is recorded "
+                    f"{state.value if state else 'unknown'}"
+                ),
             )
+        )
     return found

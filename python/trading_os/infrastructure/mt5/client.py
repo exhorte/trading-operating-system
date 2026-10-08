@@ -25,6 +25,7 @@ from trading_os.domain.positions.models import PendingOrder, Position
 from trading_os.domain.primitives import Side, Timeframe
 from trading_os.infrastructure.mt5.observer_logic import (
     Deal,
+    HistoryOrder,
     measure_server_offset_minutes,
     server_time_to_utc,
     utc_to_server_epoch,
@@ -416,6 +417,14 @@ class Mt5Client:
             "history_deals_get", utc_to_server_epoch(start, self.offset), utc_to_server_epoch(end, self.offset)
         )
         return [Deal.model_validate(row) for row in raw or []]
+
+    async def history_orders_between(self, start: datetime, end: datetime) -> list[HistoryOrder]:
+        """Orders that left the live list (filled, cancelled, rejected, expired) — what tells a refused order from one
+        that never reached the broker."""
+        raw = await self._transport.call(
+            "history_orders_get", utc_to_server_epoch(start, self.offset), utc_to_server_epoch(end, self.offset)
+        )
+        return [HistoryOrder.model_validate(row) for row in raw or []]
 
     async def margin_for(self, side: Side, symbol: str, volume: float, price: float) -> float | None:
         """Read-only: what MT5 says the margin of a hypothetical order would be."""

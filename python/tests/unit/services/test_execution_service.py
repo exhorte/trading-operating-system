@@ -49,12 +49,13 @@ class FakeLink:
     halts: list[tuple[str, str]] = field(default_factory=list)
     halted: bool = False
     capabilities: list[str] = field(default_factory=lambda: ["ping", "halt"])
+    agent_id: str = "agent-1"  # « mt5-execution-agent-<magic> » when a test needs the agent's magic number
 
     def status(self, login: str) -> AgentStatus | None:
         if not self.connected:
             return None
         return AgentStatus(
-            account_login=login, agent_id="agent-1", identity="ok", tradable=True, halted=self.halted,
+            account_login=login, agent_id=self.agent_id, identity="ok", tradable=True, halted=self.halted,
             capabilities=self.capabilities,
         )  # fmt: skip
 

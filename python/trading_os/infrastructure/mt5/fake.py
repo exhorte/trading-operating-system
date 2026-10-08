@@ -134,6 +134,7 @@ class FakeMt5:
     positions: list[TradePosition] = field(default_factory=list)
     deals: list[TradeDeal] = field(default_factory=list)
     orders: list[TradeOrder] = field(default_factory=list)
+    history_orders: list[TradeOrder] = field(default_factory=list)
     terminal_connected: bool = True
     initialize_fails: bool = False
 
@@ -441,8 +442,24 @@ class FakeMt5:
         start, end = _as_seconds(date_from), _as_seconds(date_to)
         return tuple(d for d in self.deals if (start is None or d.time >= start) and (end is None or d.time <= end))
 
-    def history_orders_get(self, *args: Any, **kwargs: Any) -> Any:
-        return () if self._ok() else None
+    def history_orders_get(
+        self,
+        date_from: Any = None,
+        date_to: Any = None,
+        group: str | None = None,
+        ticket: int | None = None,
+        position: int | None = None,
+    ) -> Any:
+        if not self._ok():
+            return None
+        if position is not None:
+            return tuple(o for o in self.history_orders if o.position_id == position)
+        start, end = _as_seconds(date_from), _as_seconds(date_to)
+        return tuple(
+            o
+            for o in self.history_orders
+            if (start is None or o.time_setup >= start) and (end is None or o.time_setup <= end)
+        )
 
     # --- bars and ticks --------------------------------------------------------------------------------------------------------
 
@@ -569,6 +586,68 @@ class FakeMt5:
 
     def remove_position(self, identifier: int) -> None:
         self.positions = [p for p in self.positions if p.identifier != identifier]
+
+    def _order(
+        self,
+        *,
+        ticket: int,
+        symbol: str,
+        order_type: int,
+        state: int,
+        volume: float,
+        price: float,
+        magic: int,
+        comment: str,
+        server_time: int | None,
+        position_id: int = 0,
+    ) -> TradeOrder:
+        placed = server_time if server_time is not None else self._server_now()
+        return TradeOrder(
+            ticket=ticket, time_setup=placed, time_setup_msc=placed * 1000, time_expiration=0, type=order_type,
+            type_time=0, type_filling=0, state=state, magic=magic, position_id=position_id, position_by_id=0,
+            reason=0, volume_initial=volume, volume_current=volume, price_open=price, sl=0.0, tp=0.0,
+            price_current=price, price_stoplimit=0.0, symbol=symbol, comment=comment, external_id="",
+        )  # fmt: skip
+
+    def add_pending_order(
+        self,
+        *,
+        ticket: int,
+        symbol: str,
+        order_type: int = 2,  # ORDER_TYPE_BUY_LIMIT
+        volume: float = 0.05,
+        price: float = 1.0,
+        magic: int = 0,
+        comment: str = "",
+        server_time: int | None = None,
+    ) -> TradeOrder:
+        order = self._order(
+            ticket=ticket, symbol=symbol, order_type=order_type, state=1, volume=volume, price=price, magic=magic,
+            comment=comment, server_time=server_time,
+        )  # fmt: skip
+        self.orders.append(order)
+        return order
+
+    def add_history_order(
+        self,
+        *,
+        ticket: int,
+        symbol: str,
+        state: int,  # 4 filled · 2 canceled · 5 rejected · 6 expired
+        side: int = 0,
+        volume: float = 0.05,
+        price: float = 1.0,
+        magic: int = 0,
+        comment: str = "",
+        server_time: int | None = None,
+        position_id: int = 0,
+    ) -> TradeOrder:
+        order = self._order(
+            ticket=ticket, symbol=symbol, order_type=side, state=state, volume=volume, price=price, magic=magic,
+            comment=comment, server_time=server_time, position_id=position_id,
+        )  # fmt: skip
+        self.history_orders.append(order)
+        return order
 
     def add_deal(
         self,

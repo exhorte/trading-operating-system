@@ -35,6 +35,7 @@ class Deal(DomainModel):
     """The fields of an MT5 deal the core uses. ``time`` is the broker's clock in epoch seconds."""
 
     ticket: int = 0
+    order: int = 0  # the order ticket that produced the deal
     time: int
     type: int
     entry: int
@@ -47,6 +48,26 @@ class Deal(DomainModel):
     symbol: str = ""
     magic: int = 0
     comment: str = ""
+
+
+ORDER_STATE_FILLED = 4  # ORDER_STATE_FILLED of the MT5 package
+
+
+class HistoryOrder(DomainModel):
+    """The fields of an MT5 history order the core uses. ``type`` follows ORDER_TYPE_* (0 buy, 1 sell, 2.. pending)."""
+
+    ticket: int = 0
+    time_setup: int = 0
+    type: int = 0
+    state: int = 0
+    position_id: int = 0
+    symbol: str = ""
+    magic: int = 0
+    comment: str = ""
+
+    @property
+    def filled(self) -> bool:
+        return self.state == ORDER_STATE_FILLED
 
 
 class OpenedFact(DomainModel):

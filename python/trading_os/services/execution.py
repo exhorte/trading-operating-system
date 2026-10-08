@@ -24,7 +24,7 @@ import asyncio
 import logging
 from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
-from typing import Protocol
+from typing import Literal, Protocol
 
 from pydantic import Field
 
@@ -35,6 +35,7 @@ from trading_os.domain.events import (
     AgentDisconnected,
     AgentHeartbeatReceived,
     AgentStatusChanged,
+    CommandReconciled,
     ExecutionAcknowledged,
     ExecutionCommandCreated,
     ExecutionCommandSent,
@@ -58,7 +59,6 @@ from trading_os.domain.execution.state import CommandEvent, is_terminal, next_st
 from trading_os.domain.execution.validation import ValidationContext, validate
 from trading_os.domain.primitives import DomainModel
 from trading_os.infrastructure.database.repositories import Repositories
-from trading_os.infrastructure.mt5.protocol import WorkerError
 from trading_os.infrastructure.mt5.wire import (
     AgentHeartbeat,
     ExecutionAck,
@@ -262,20 +262,7 @@ class ExecutionService:
         return problems
 
     async def _attached_account_id(self, account: Account) -> str | None:
-        """Which of our accounts the terminal is *really* logged into right now (read live, never assumed)."""
-        session = self._accounts.session(account.id)
-        if session is None:
-            return None
-        try:
-            info = await session.client.account_info()
-        except (WorkerError, Unavailable):
-            return None
-        if info.login == account.login:
-            return account.id
-        for other in await self._repos.accounts.all():
-            if other.login == info.login:
-                return other.id
-        return f"login:{info.login}"
+        return await self._accounts.attached_account_id(account.id)
 
     # ------------------------------------------------------------------------------------------ routing
     async def confirm(self, command_id: str) -> ExecutionOutcome:
@@ -553,25 +540,66 @@ class ExecutionService:
             average_price=reconciled.average_price, broker_retcode=reconciled.broker_retcode,
             attempts=reconciled.attempts, detail=reconciled.detail, reconciled_at=now,
         )  # fmt: skip
+        await self.settle(record, source="agent")
+
+    async def settle(
+        self, record: ReconciliationRecord, *, source: Literal["agent", "core"]
+    ) -> ExecutionCommand | None:
+        """Apply what the broker shows about an in-doubt command — the **one** place a command leaves UNKNOWN/RECONCILING,
+        whether the evidence comes from the execution agent's own history search or from the core's (``source``).
+
+        The record is kept as the current-state projection of the command; the command moves UNKNOWN → RECONCILING and then
+        to RECONCILED, or stays RECONCILING when the search found nothing (« never guesses »). A command that is not in
+        doubt any more is left alone: late or repeated evidence changes nothing."""
+        label = "the agent" if source == "agent" else "the core"
         try:
             await self._repos.execution.upsert_reconciliation(record)
         except Unavailable:
-            logger.error("reconciliation of %s could not be recorded", reconciled.command_id)
-        command = await self._repos.execution.get(reconciled.command_id)
+            logger.error("reconciliation of %s could not be recorded", record.command_id)
+        command = await self._repos.execution.get(record.command_id)
         if command is None or command.state not in (CommandState.UNKNOWN, CommandState.RECONCILING):
-            return
+            return command
         if command.state is CommandState.UNKNOWN:
-            await self._move(command.command_id, CommandEvent.RECONCILIATION_STARTED, attempts=reconciled.attempts)
-        if reconciled.outcome == "not_found":
-            await self._move(command.command_id, CommandEvent.RECONCILIATION_PENDING, attempts=reconciled.attempts,
-                             detail=f"agent: not found yet — {reconciled.detail}")  # fmt: skip
-            return
-        await self._move(
-            command.command_id, CommandEvent.RECONCILED, attempts=reconciled.attempts,
-            broker_order_id=reconciled.broker_order_id, broker_position_id=reconciled.broker_position_id,
-            filled_volume=reconciled.filled_volume, average_price=reconciled.average_price,
-            broker_retcode=reconciled.broker_retcode, detail=f"reconciled by the agent: {reconciled.outcome} — {reconciled.detail}",
+            await self._move(command.command_id, CommandEvent.RECONCILIATION_STARTED, attempts=record.attempts)
+        if record.outcome == "not_found":
+            return await self._move(
+                command.command_id, CommandEvent.RECONCILIATION_PENDING, attempts=record.attempts,
+                detail=f"{source}: not found yet — {record.detail}",
+            )  # fmt: skip
+        settled = await self._move(
+            command.command_id, CommandEvent.RECONCILED, attempts=record.attempts,
+            broker_order_id=record.broker_order_id, broker_position_id=record.broker_position_id,
+            filled_volume=record.filled_volume, average_price=record.average_price,
+            broker_retcode=record.broker_retcode, detail=f"reconciled by {label}: {record.outcome} — {record.detail}",
         )  # fmt: skip
+        if settled is None:
+            return None
+        outcome: Literal["executed", "rejected"] = "executed" if record.outcome == "executed" else "rejected"
+        await self._events.publish(
+            CommandReconciled(
+                account_id=command.account_id, correlation_id=command.command_id, command_id=command.command_id,
+                outcome=outcome, source=source, broker_order_id=record.broker_order_id,
+                broker_position_id=record.broker_position_id, filled_volume=record.filled_volume,
+                average_price=record.average_price, detail=settled.detail,
+            )
+        )  # fmt: skip
+        if outcome == "executed" and (record.broker_position_id or (record.filled_volume or 0) > 0):
+            await self._events.publish(
+                ExecutionReported(
+                    account_id=command.account_id, correlation_id=command.command_id, command_id=command.command_id,
+                    outcome="executed", symbol=record.symbol or command.request.symbol,
+                    side=side_from_wire(record.side) if record.side else command.request.side,
+                    filled_volume=record.filled_volume, average_price=record.average_price,
+                    broker_order_id=record.broker_order_id, broker_position_id=record.broker_position_id,
+                    detail=settled.detail,
+                )
+            )  # fmt: skip
+        return settled
+
+    async def confirm_position(self, command_id: str) -> ExecutionCommand | None:
+        """EXECUTED → RECONCILED: the position the fill report named exists at the broker. The service that compares
+        the two worlds calls this; nothing else may close the happy path."""
+        return await self._move(command_id, CommandEvent.POSITION_CONFIRMED)
 
     async def on_position_scan(self, login: str, scan: PositionScan) -> None:
         account_id = await self._account_for_login(login) or login

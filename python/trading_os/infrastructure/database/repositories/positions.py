@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 
 from trading_os.domain.execution.records import PositionScanRecord
@@ -67,6 +68,16 @@ class PositionRepository:
             "SELECT broker_position_id FROM position_opens WHERE account_id = %s "
             "AND broker_position_id NOT IN (SELECT broker_position_id FROM closed_trades WHERE account_id = %s)",
             (account_id, account_id),
+        )
+        return {r["broker_position_id"] for r in rows}
+
+    async def closed_ids(self, account_id: str, position_ids: Sequence[str]) -> set[str]:
+        """Which of these positions are already recorded as closed."""
+        if not position_ids:
+            return set()
+        rows = await self._db.fetch_all(
+            "SELECT broker_position_id FROM closed_trades WHERE account_id = %s AND broker_position_id = ANY(%s)",
+            (account_id, list(position_ids)),
         )
         return {r["broker_position_id"] for r in rows}
 
@@ -190,6 +201,15 @@ class PositionRepository:
                 scan.scanned_at,
             ),
         )
+
+    async def scans(self, account_id: str) -> list[PositionScanRecord]:
+        """The agent's latest view of every position it has scanned (ours and external)."""
+        rows = await self._db.fetch_all(
+            "SELECT account_id, broker_position_id, symbol, side, volume, magic_number, is_external, "
+            "known_command_id, scanned_at FROM position_scans WHERE account_id = %s ORDER BY scanned_at DESC",
+            (account_id,),
+        )
+        return [PositionScanRecord.model_validate(dict(r)) for r in rows]
 
     async def external_positions(self, account_id: str) -> list[PositionScanRecord]:
         rows = await self._db.fetch_all(

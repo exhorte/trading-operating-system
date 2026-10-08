@@ -79,6 +79,10 @@ TERMINAL_STATES = frozenset({S.RECONCILED, S.FAILED, S.REJECTED, S.EXPIRED, S.CA
 # States in which a broker order may exist or may have been placed — a restart must never replay these.
 IN_DOUBT_STATES = frozenset({S.SENT, S.ACKNOWLEDGED, S.UNKNOWN, S.RECONCILING})
 
+# States that say nothing was placed at the broker (or that it failed for good). A position or order carrying the trace
+# of such a command contradicts the record — the most serious thing reconciliation can find.
+NO_POSITION_STATES = frozenset({S.PENDING, S.FAILED, S.REJECTED, S.EXPIRED, S.CANCELLED, S.SIMULATED})
+
 
 def next_state(state: S, event: CommandEvent) -> S:
     """The state after ``event``; raises ``IllegalTransition`` when the table has no such edge."""

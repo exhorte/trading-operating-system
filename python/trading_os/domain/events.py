@@ -299,6 +299,21 @@ class ExecutionUnknown(Event):
     detail: str
 
 
+class CommandReconciled(Event):
+    """An in-doubt command was settled from what the broker shows — by the execution agent or by the core itself.
+    Inconclusive attempts (« not found yet ») are not events: the command simply stays RECONCILING."""
+
+    wire_type = "execution.reconciled"
+    command_id: str
+    outcome: Literal["executed", "rejected"]
+    source: Literal["agent", "core"]
+    broker_order_id: str | None = None
+    broker_position_id: str | None = None
+    filled_volume: float | None = None
+    average_price: float | None = None
+    detail: str = ""
+
+
 # ------------------------------------------------------------------------------------------------------ agent link
 
 
@@ -343,6 +358,7 @@ class ReconciliationCompleted(Event):
     mismatches: int
     critical: int
     positions_checked: int
+    readable: bool = True  # False: MT5 or the database could not be read, nothing was concluded
 
 
 # ------------------------------------------------------------------------------------------------------ autonomy

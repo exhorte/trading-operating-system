@@ -154,6 +154,27 @@ class ExecutionRepository:
         )
         return [_to_command(r) for r in rows]
 
+    async def created_since(self, account_id: str, since: datetime) -> list[ExecutionCommand]:
+        """Every command of the account created at or after ``since`` (reconciliation looks at a bounded recent window)."""
+        rows = await self._db.fetch_all(
+            "SELECT " + _COLUMNS + " FROM execution_commands WHERE account_id = %s AND created_at >= %s "
+            "ORDER BY created_at ASC",
+            (account_id, since),
+        )
+        return [_to_command(r) for r in rows]
+
+    async def executed_at(self, command_ids: Sequence[str]) -> dict[str, datetime]:
+        """When each command was first seen executed (or reconciled): the transition the fill report caused. Commands
+        that never executed are absent."""
+        if not command_ids:
+            return {}
+        rows = await self._db.fetch_all(
+            "SELECT command_id, min(at) AS at FROM command_transitions WHERE command_id = ANY(%s) "
+            "AND to_state IN ('EXECUTED', 'RECONCILED') GROUP BY command_id",
+            (list(command_ids),),
+        )
+        return {r["command_id"]: r["at"] for r in rows}
+
     async def in_states(self, states: Sequence[CommandState], account_id: str | None = None) -> list[ExecutionCommand]:
         rows = await self._db.fetch_all(
             "SELECT " + _COLUMNS + " FROM execution_commands WHERE state = ANY(%s) "

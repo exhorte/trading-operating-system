@@ -56,8 +56,9 @@ from trading_os.domain.events import (
 from trading_os.domain.primitives import DomainModel
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.client import Mt5AccountInfo, Mt5Client
+from trading_os.infrastructure.mt5.protocol import WorkerError
 from trading_os.infrastructure.security.credentials import CredentialStore
-from trading_os.shared.errors import Conflict, NotFound, TradingOsError, ValidationFailed
+from trading_os.shared.errors import Conflict, NotFound, TradingOsError, Unavailable, ValidationFailed
 from trading_os.shared.events.dispatcher import EventDispatcher
 from trading_os.shared.time import Clock
 
@@ -160,6 +161,24 @@ class AccountService:
 
     def is_connected(self, account_id: str) -> bool:
         return account_id in self._sessions
+
+    async def attached_account_id(self, account_id: str) -> str | None:
+        """Which of our accounts the terminal is *really* logged into right now — read live, never assumed (ADR 0010).
+        ``None`` when the account is not connected or the terminal cannot be read; ``login:<n>`` when the terminal is
+        logged into an account the Trading OS does not know."""
+        session = self._sessions.get(account_id)
+        if session is None:
+            return None
+        try:
+            info = await session.client.account_info()
+        except (WorkerError, Unavailable):
+            return None
+        if info.login == session.account.login:
+            return account_id
+        for other in await self._repos.accounts.all():
+            if other.login == info.login:
+                return other.id
+        return f"login:{info.login}"
 
     def connected_ids(self) -> list[str]:
         return list(self._sessions)

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from trading_os.domain.autonomy.state import AutonomyMode
 from trading_os.domain.execution.commands import CommandState
+from trading_os.domain.execution.trace import command_trace
 from trading_os.domain.positions.models import PendingOrder, Position
 from trading_os.domain.positions.reconciliation import (
     ExpectedOrder,
@@ -164,6 +165,79 @@ class TestReconciliation:
             expected_orders=[ExpectedOrder(command_id="cmd-9", symbol="EURUSDm", side=Side.BUY, volume=0.1, price=1.09)]
         )
         assert kinds(missing) == [MismatchKind.ORDER_MISMATCH] and missing[0].severity is MismatchSeverity.WARNING
+
+
+class TestReconciliationByTrace:
+    """The broker's own data ties a position to its command: the agent writes a trace of the command id in the comment."""
+
+    def stray(self, command_id: str, **overrides: object) -> Position:
+        return actual(position_id="999", comment=command_trace(command_id), **overrides)
+
+    def test_a_fill_whose_report_has_not_landed_yet_is_not_unexpected(self) -> None:
+        for state in (CommandState.SENT, CommandState.ACKNOWLEDGED, CommandState.UNKNOWN, CommandState.RECONCILING):
+            found = run(
+                expected=[], actual=[self.stray("cmd-fresh")], command_states={"cmd-fresh": state}, our_magic=MAGIC
+            )
+            assert [m for m in found if m.kind is MismatchKind.UNEXPECTED_POSITION] == [], state
+
+    def test_a_position_for_a_command_recorded_as_not_placed_is_critical_whatever_the_magic(self) -> None:
+        for state in (
+            CommandState.FAILED, CommandState.REJECTED, CommandState.EXPIRED, CommandState.CANCELLED,
+            CommandState.SIMULATED, CommandState.PENDING,
+        ):  # fmt: skip
+            found = run(
+                expected=[], actual=[self.stray("cmd-dead", magic_number=0)], command_states={"cmd-dead": state}
+            )
+            assert kinds(found) == [MismatchKind.UNEXPECTED_POSITION], state
+            assert found[0].severity is MismatchSeverity.CRITICAL and found[0].command_id == "cmd-dead"
+            assert state.value in found[0].detail
+
+    def test_an_executed_command_accounts_for_its_position_even_when_it_is_not_in_the_expected_set(self) -> None:
+        found = run(expected=[], actual=[self.stray("cmd-done")], command_states={"cmd-done": CommandState.EXECUTED})
+        assert found == []
+
+    def test_the_comment_links_a_position_to_its_command_when_the_report_carried_no_position_id(self) -> None:
+        loose = expected(broker_position_id=None, command_id="cmd-1")
+        position = actual(position_id="555", comment=command_trace("cmd-1"))
+        assert run(expected=[loose], actual=[position], command_states={"cmd-1": CommandState.EXECUTED}) == []
+        wrong = actual(position_id="555", comment=command_trace("cmd-1"), volume=0.01)
+        found = run(expected=[loose], actual=[wrong], command_states={"cmd-1": CommandState.EXECUTED})
+        assert [m.field for m in found] == ["volume"]
+
+    def test_a_position_without_any_trace_and_without_a_command_is_still_unexpected(self) -> None:
+        found = run(
+            expected=[], actual=[actual(position_id="999", comment="")], command_states={"cmd-1": CommandState.SENT}
+        )
+        assert kinds(found) == [MismatchKind.UNEXPECTED_POSITION] and found[0].severity is MismatchSeverity.CRITICAL
+
+    def order(self, comment: str) -> PendingOrder:
+        return PendingOrder(
+            order_id="900", account_id=ACCOUNT, symbol="EURUSDm", side=Side.BUY, order_type="limit", volume=0.1,
+            price=1.09, magic_number=MAGIC, comment=comment,
+        )  # fmt: skip
+
+    def test_a_pending_order_tied_to_a_command_that_went_out_is_fine(self) -> None:
+        for state in (CommandState.SENT, CommandState.EXECUTED, CommandState.RECONCILED):
+            order = self.order(command_trace("cmd-9"))
+            assert run(expected=[], actual=[], actual_orders=[order], command_states={"cmd-9": state}) == [], state
+
+    def test_a_pending_order_for_a_command_recorded_as_failed_is_critical(self) -> None:
+        order = self.order(command_trace("cmd-9"))
+        found = run(expected=[], actual=[], actual_orders=[order], command_states={"cmd-9": CommandState.FAILED})
+        assert kinds(found) == [MismatchKind.ORDER_MISMATCH] and found[0].severity is MismatchSeverity.CRITICAL
+        assert found[0].command_id == "cmd-9" and "FAILED" in found[0].detail
+
+    def test_an_expected_order_is_found_by_its_trace(self) -> None:
+        wanted = ExpectedOrder(command_id="cmd-9", symbol="EURUSDm", side=Side.BUY, volume=0.1, price=1.09)
+        order = self.order(command_trace("cmd-9"))
+        assert run(expected=[], actual=[], expected_orders=[wanted], actual_orders=[order]) == []
+
+    def test_findings_have_a_stable_identity_across_runs(self) -> None:
+        first = run(actual=[actual(volume=0.05)])[0]
+        again = run(actual=[actual(volume=0.05)])[0]
+        other = run(actual=[actual(stop_loss=1.0980)])[0]
+        assert first.key == again.key and first.key != other.key
+        assert first.key == "POSITION_MISMATCH|cmd-1|555|volume"
 
 
 def finding(code: str, severity: Severity, persisting: bool = False) -> Finding:
