@@ -1,34 +1,32 @@
-import {
-  describeGuardReason,
-  type AccountSettingsLedger,
-} from "@/lib/accounts/settings";
+import type { RulesOverview } from "@/lib/api/generated";
+import { describeGuardReason } from "@/lib/accounts/guard-text";
 import { Callout } from "@/components/ui/callout";
 import { formatDateTime } from "./form-controls";
 
 /**
  * « Si j'enregistre maintenant, ça s'applique quand ? » — answered by the
- * backend (AccountSettingsGuard), displayed here, never computed here. The
- * answer can change by the time of saving (a trade, a lockout); the backend
- * decides again at that instant and the form reports what it decided.
+ * core's anti-tilt guard, displayed here, never computed here. The answer can
+ * change by the time of saving (a trade, a lockout); the core decides again at
+ * that instant and the form reports what it decided.
  */
 export function SettingsGuardBanner({
-  ledger,
+  overview,
   error,
 }: {
-  ledger: AccountSettingsLedger | null;
-  error: string | null;
+  overview: RulesOverview | null;
+  error: Error | null;
 }) {
-  if (!ledger) {
+  if (!overview) {
     return error ? (
-      <Callout title="Backend injoignable" variant="warning">
-        {error} : rien ne peut être enregistré, et le moteur de risque applique les valeurs par défaut du code.
+      <Callout title="Règles illisibles" variant="warning">
+        {error.message} : rien ne peut être enregistré tant que le cœur ne répond pas.
       </Callout>
     ) : (
-      <p className="rounded-xl border px-5 py-4 text-sm text-muted-foreground">Lecture des paramètres…</p>
+      <p className="rounded-xl border px-5 py-4 text-sm text-muted-foreground">Lecture des règles…</p>
     );
   }
 
-  const { guard } = ledger;
+  const { guard } = overview;
   return (
     <Callout
       variant={guard.deferred ? "warning" : "info"}
@@ -45,9 +43,9 @@ export function SettingsGuardBanner({
           ))}
         </ul>
       )}
-      Une limite ne se desserre jamais en pleine séance : le backend en décide au moment d&apos;enregistrer (ADR
-      0007). Évalué le {formatDateTime(ledger.evaluatedAt)}
-      {error ? ` — dernière relecture échouée (${error}), la dernière configuration lue reste appliquée` : ""}.
+      Une limite ne se desserre jamais en pleine séance : le cœur en décide au moment d&apos;enregistrer (ADR 0007).
+      Évalué le {formatDateTime(overview.evaluatedAt)}
+      {error ? ` — dernière relecture échouée (${error.message}), la dernière configuration lue reste affichée` : ""}.
     </Callout>
   );
 }

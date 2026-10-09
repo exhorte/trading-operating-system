@@ -1,6 +1,5 @@
 import { Scale } from "lucide-react";
-import type { ActiveProfile } from "@/lib/accounts/active-profile";
-import { CONSECUTIVE_LOSS_PAUSE_MINUTES } from "@/lib/risk";
+import type { AccountProfile } from "@/lib/accounts/profile";
 import { formatMoney } from "@/lib/format";
 import { Panel } from "@/components/ui/panel";
 
@@ -8,29 +7,32 @@ function percentOf(reference: number | null, percent: number): string {
   return reference === null ? "sur le solde courant" : formatMoney((reference * percent) / 100);
 }
 
-/** The limits the risk engine applies to the connected account, in % and in
- *  dollars, with the reference they are measured from (T12). */
-export function RulesCard({ profile }: { profile: ActiveProfile }) {
-  const { riskPolicy: p, referenceBalance: ref } = profile;
-  const floor = ref === null ? null : ref - (ref * p.maxDrawdownLimitPercent) / 100;
+/** The limits the risk engine applies to the account, in % and in money, with the reference they are measured from —
+ *  the rules in force today, as the core resolved them. */
+export function RulesCard({ profile }: { profile: AccountProfile }) {
+  const { riskProfile: p, executionProfile } = profile.rules;
+  const ref = profile.referenceBalance;
+  const limits = executionProfile.limits;
 
   const rows: Array<[string, string, string]> = [
-    ["Perte journalière max", `${p.dailyLossLimitPercent} %`, percentOf(ref, p.dailyLossLimitPercent)],
+    ["Perte journalière max", `${p.drawdown.dailyLossLimitPercent} %`, percentOf(ref, p.drawdown.dailyLossLimitPercent)],
     [
       "Perte max",
-      `${p.maxDrawdownLimitPercent} %`,
-      floor === null ? "référence non fixée" : `plancher ${formatMoney(floor)}`,
+      `${p.drawdown.maxDrawdownLimitPercent} %`,
+      profile.floor === null ? "référence non fixée" : `plancher ${formatMoney(profile.floor)}`,
     ],
     ["Risque par trade", `${p.maxRiskPerTradePercent} %`, percentOf(ref, p.maxRiskPerTradePercent)],
     ["Risque ouvert max", `${p.maxOpenRiskPercent} %`, percentOf(ref, p.maxOpenRiskPercent)],
+    ["Exposition corrélée max", `${p.maxCorrelatedRiskPercent} %`, percentOf(ref, p.maxCorrelatedRiskPercent)],
     ["Trades par jour", String(p.maxTradesPerDay), "—"],
+    ["Pertes consécutives", String(p.maxConsecutiveLosses), `pause ${p.consecutiveLossPauseMinutes} min`],
     [
-      "Pertes consécutives",
-      String(p.maxConsecutiveLosses),
-      `pause ${CONSECUTIVE_LOSS_PAUSE_MINUTES} min`,
+      "Positions ouvertes",
+      String(p.positions.maxOpenPositions),
+      `${p.positions.maxPositionsPerSymbol} par symbole${p.positions.maxVolumePerOrder === null ? "" : ` · ${p.positions.maxVolumePerOrder} lot max`}`,
     ],
-    ["Spread max", `${p.maxSpreadPoints} pts`, "—"],
-    ["Blackout publications", `±${p.newsBlackoutMinutes} min`, "calendrier FRED"],
+    ["Blackout publications", `±${p.news.blackoutMinutes} min`, "calendrier FRED"],
+    ["Porte de coût S01", `c ≤ ${limits.costThreshold}`, "le spread se juge sur le coût, pas sur un plafond"],
   ];
 
   return (
@@ -58,9 +60,15 @@ export function RulesCard({ profile }: { profile: ActiveProfile }) {
         <dd className={ref === null ? "text-warning" : "text-foreground"}>{profile.referenceSource}</dd>
         <dt className="text-muted-foreground">Commission</dt>
         <dd className="text-foreground">
-          {profile.costModel.commissionPerLotRoundTrip > 0
-            ? `${formatMoney(profile.costModel.commissionPerLotRoundTrip)} par lot, aller-retour`
+          {limits.commissionPerLotRoundTrip > 0
+            ? `${formatMoney(limits.commissionPerLotRoundTrip)} par lot, aller-retour`
             : "aucune (compte Standard mesuré en Phase 0)"}
+        </dd>
+        <dt className="text-muted-foreground">Plafond d&apos;autonomie</dt>
+        <dd className="text-foreground">{executionProfile.maxMode} — jamais au-dessus, quoi que le cœur reçoive</dd>
+        <dt className="text-muted-foreground">Limites écrites par toi</dt>
+        <dd className={p.configured ? "text-foreground" : "text-warning"}>
+          {p.configured ? "oui" : "pas encore — l'autonomie les exige (Settings)"}
         </dd>
       </dl>
     </Panel>

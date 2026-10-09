@@ -113,8 +113,8 @@
   --accent: #27272b;
   --accent-foreground: #f5f5f5;
 
-  --destructive: #ec5151; /* lightened: 5.1 : 1 on the card, 4.6 on its tint */
-  --destructive-foreground: #131316; /* dark text on the red fill: 5.2 : 1 (white would be 3.6) */
+  --destructive: #ef5757; /* lightened: 5.4 : 1 on the card, 4.9 on its tint, 4.6 as a pill on a tinted row */
+  --destructive-foreground: #131316; /* dark text on the red fill: 5.4 : 1 (white would be 3.4) */
   --success: #37be7f;
   --success-foreground: #131316;
   --warning: #f6a328;

@@ -2,6 +2,7 @@
 
 import { ChartCandlestick } from "lucide-react";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
+import { useMarketContext } from "@/lib/cockpit/use-market-context";
 import { formatClockTime } from "@/lib/format";
 import { Panel } from "@/components/ui/panel";
 import { Progress } from "@/components/ui/progress";
@@ -17,13 +18,22 @@ export const SESSION_LABELS: Record<string, string> = {
 };
 
 export function MarketContextPanel() {
-  const { marketContext } = useCockpit();
+  const { account } = useCockpit();
+  const { context: marketContext, error } = useMarketContext();
   const untrusted = useIsDataUntrusted();
 
   if (!marketContext) {
     return (
       <Panel title="Market context" icon={ChartCandlestick}>
-        <Skeleton className="h-48" />
+        {account === null ? (
+          <p className="text-sm text-muted-foreground">
+            Aucun compte rattaché : le contexte se calcule sur les bougies du compte.
+          </p>
+        ) : error ? (
+          <p className="text-sm text-destructive">{error.message}</p>
+        ) : (
+          <Skeleton className="h-48" />
+        )}
       </Panel>
     );
   }

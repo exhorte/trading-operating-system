@@ -1,27 +1,36 @@
 "use client";
 
 import { Activity, Cpu, FileText, HeartPulse, Radio } from "lucide-react";
+import type { AccountStatus } from "@/lib/api/generated";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { formatClockTime } from "@/lib/format";
 import { HighlightBar, MetricPanel, MetricPanelItem, type MetricTone } from "@/components/ui/metric-panel";
 import { StatusPill } from "@/components/ui/status-pill";
 
-const OBSERVER_TONE: Record<string, MetricTone | undefined> = {
-  connected: "success",
-  degraded: "warning",
-  disconnected: "destructive",
+const TERMINAL_TONE: Record<AccountStatus, MetricTone | undefined> = {
+  CONNECTED: "success",
+  CONNECTING: "warning",
+  ERROR: "destructive",
+  DISCONNECTED: undefined,
+};
+
+const TERMINAL_LABEL: Record<AccountStatus, string> = {
+  CONNECTED: "attaché",
+  CONNECTING: "connexion…",
+  ERROR: "en erreur",
+  DISCONNECTED: "détaché",
 };
 
 /**
  * The health of the two links, in the dark panel. The distinction matters
- * here more than anywhere: the observer (read-only) and the EA-05 execution
- * agent are different links, and reading the first as the second is the bug
- * that let the cockpit imply an order could reach MT5 (corrected 2026-09-18).
+ * here more than anywhere: the terminal read (read-only) and the EA-05
+ * execution agent are different links, and reading the first as the second is
+ * the bug that let the cockpit imply an order could reach MT5 (corrected
+ * 2026-09-18).
  */
 export function AgentsMetrics() {
-  const { agents, executionAgentConnected, executionReports } = useCockpit();
+  const { registered, executionAgentConnected, agent, agentPulse, commands } = useCockpit();
   const untrusted = useIsDataUntrusted();
-  const observer = agents[0];
 
   return (
     <>
@@ -37,33 +46,33 @@ export function AgentsMetrics() {
       />
       <MetricPanel>
         <MetricPanelItem
-          label="Observateur MT5"
-          value={observer ? observer.state : "—"}
-          tone={observer ? OBSERVER_TONE[observer.state] : undefined}
-          hint={observer ? `lecture seule · ${observer.platform} ${observer.version}` : "aucun battement reçu"}
+          label="Terminal MT5"
+          value={registered ? TERMINAL_LABEL[registered.status] : "—"}
+          tone={registered ? TERMINAL_TONE[registered.status] : undefined}
+          hint={registered ? `lecture seule · ${registered.server}` : "aucun compte actif"}
           icon={Radio}
           solidIcon
           untrusted={untrusted}
         />
         <MetricPanelItem
-          label="Latence"
-          value={observer ? String(observer.latencyMs) : "—"}
-          unit={observer ? "ms" : undefined}
-          hint="aller-retour de l'observateur"
+          label="Latence de l'agent"
+          value={agentPulse ? String(Math.round(agentPulse.latencyMs)) : "—"}
+          unit={agentPulse ? "ms" : undefined}
+          hint={agent ? "aller-retour de l'agent d'exécution" : "aucun agent connecté"}
           icon={Activity}
           untrusted={untrusted}
         />
         <MetricPanelItem
           label="Dernier battement"
-          value={observer ? formatClockTime(observer.lastHeartbeatAt) : "—"}
-          hint="un battement périmé est signalé « Périmé »"
+          value={agentPulse ? formatClockTime(agentPulse.receivedAt) : "—"}
+          hint="un lien muet est signalé « Périmé »"
           icon={HeartPulse}
           untrusted={untrusted}
         />
         <MetricPanelItem
-          label="Rapports d'exécution"
-          value={String(executionReports.length)}
-          hint="reçus depuis le démarrage du cockpit"
+          label="Commandes d'exécution"
+          value={String(commands.length)}
+          hint="les plus récentes, avec l'état que le cœur leur donne"
           icon={FileText}
           untrusted={untrusted}
         />

@@ -3,7 +3,7 @@
 import { Target } from "lucide-react";
 import { useComplianceRate } from "@/lib/compliance/use-compliance-rate";
 import { VIOLATION_LABELS } from "@/lib/compliance/labels";
-import type { ViolationType } from "@/lib/compliance/violations";
+import type { ViolationType } from "@/lib/api/generated";
 import { Panel } from "@/components/ui/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
@@ -32,8 +32,8 @@ const ARC_PATH = `M ${CENTER_X - RADIUS} ${CENTER_Y} A ${RADIUS} ${RADIUS} 0 0 1
  *
  * FTMO puts a discipline score *beside* the P&L; here the process is the
  * product (ADR 0001), so this is the screen's headline and there is no P&L on
- * it at all. The number is T07's weekly compliance rate — the same value the
- * top bar shows, from the same hook.
+ * it at all. The number is T07's weekly compliance rate, as the core judged
+ * it — the same value the Command Center shows, from the same hook.
  *
  * The breakdown below the gauge is the attribution rail from the trade-journal
  * reference, counted in occurrences per violation type rather than in dollars:
@@ -50,7 +50,7 @@ export function DisciplineGauge() {
       <Panel title="Score de discipline" icon={Target}>
         {failed ? (
           <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-            Trades clôturés illisibles — le backend répond-il ?
+            Trades clôturés illisibles — le cœur répond-il ?
           </p>
         ) : (
           <Skeleton className="h-52 rounded-lg" />

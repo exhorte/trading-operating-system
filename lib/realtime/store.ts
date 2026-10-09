@@ -1,155 +1,320 @@
 /**
- * Cockpit state store: latest known state per subscription group, mutated by
- * enveloped realtime events (snapshot + events pattern from
- * context/realtime/dashboard_realtime_model.md).
+ * The cockpit's state: what the core last told it, and nothing computed.
  *
- * UI code depends on this store and the RealtimeClient interface only —
- * never on the mock implementation — so the future SignalR client can be
- * swapped in without touching components.
+ * The core is the only place a trading fact is decided (risk, lockouts, the state of a command, the session…). This store keeps
+ * the last answer — the `system.snapshot` frame, then the events that move it — and offers it to the screens as a read model
+ * of the **active account**. It never derives a rule: "locked" is the lockout the core reports, "armed" is its verdict, an
+ * order's state is the state it holds. What it does decide is only how to *show* things (which link is up, whether to
+ * distrust what is on screen).
+ *
+ * Two kinds of events:
+ *   - **self-contained** ones are applied here (a position list, a risk status, a calendar);
+ *   - the others only say *something changed* (a command moved, the autonomy mode moved, an account was connected). Patching the
+ *     state they describe would copy the core's logic into the browser, so the store hands back an *effect* — "read it again",
+ *     "ask for a fresh snapshot" — and the controller (`controller.ts`) does the reading.
+ *
+ * `apply` is pure bookkeeping: the same frames in the same order always give the same state. Nothing here knows about sockets,
+ * timers or React, which is what lets the reducers be tested with plain objects.
  */
 
-import type { Envelope } from "@/lib/contracts/envelope";
-import type { ConnectionState, Environment } from "@/lib/contracts/enums";
 import type {
-  AccountSummary,
+  Account,
+  AccountSnapshot,
+  AccountState,
   AgentStatus,
-  CockpitAlert,
-  ExecutionAgentStatus,
-  ExecutionReport,
-  MarketContext,
-  PnlCalendarDay,
+  AutonomyOverview,
+  CalendarSnapshot,
+  CockpitEvent,
+  Environment,
+  EventPayloads,
+  ExecutionCommand,
+  HealthDigest,
   Position,
   RiskStatus,
-} from "@/lib/contracts/snapshots";
-import type {
-  AccountSnapshotPayload,
-  AgentHeartbeatPayload,
-  CalendarUpdatedPayload,
-  ExecutionAgentConnectionPayload,
-  ExecutionAgentStatusPayload,
-  ExecutionReportPayload,
-  LockoutViolatedPayload,
-  MarketContextUpdatedPayload,
-  MarketTickPayload,
-  PositionsSnapshotPayload,
-  RiskLockoutAcknowledgedPayload,
-  RiskLockoutEnabledPayload,
-  RiskStateUpdatedPayload,
-} from "@/lib/contracts/events";
-import type { UpcomingRelease } from "@/lib/domain/risk";
-import type { ActiveLockout } from "@/lib/risk/lockout";
-import type { AccountSettingsLedger } from "@/lib/accounts/settings";
+  UpcomingRelease,
+} from "@/lib/api/generated";
 
-export interface CockpitSnapshot {
-  connection: ConnectionState;
-  /** Why the last hub connection attempt failed, in words the trader can
-   *  act on (I0: a missing cockpit token), or null once connected. */
-  connectionIssue: string | null;
-  environment: Environment;
-  account: AccountSummary | null;
-  positions: Position[];
-  risk: RiskStatus | null;
-  marketContext: MarketContext | null;
-  agents: AgentStatus[];
-  executionReports: ExecutionReport[];
-  pnlCalendar: PnlCalendarDay[];
-  alerts: CockpitAlert[];
-  lastHeartbeatAt: string | null;
-  /**
-   * T02a: the ledger's current lock for this account, or null when clear.
-   * Authoritative — components must not re-derive "locked" from `risk` alone.
-   */
-  activeLockout: ActiveLockout | null;
-  /** lockoutIds this tab has seen acknowledged (kill-switch banner dismissal). */
-  acknowledgedLockoutIds: string[];
-  /**
-   * T03: the backend's FRED cache, as of the last hydrate/market.calendar.updated.
-   * Null means "never hydrated yet" — components must render this as
-   * "no calendar data" (fail-closed), never as an empty, healthy calendar.
-   */
-  upcomingReleases: UpcomingRelease[] | null;
-  /**
-   * T02c: live facts of a position opened while a lockout was active,
-   * Gateway-detected — see LockoutViolatedPayload. Undismissed until the
-   * trader clears each one locally (dismissLockoutViolation); this is a
-   * live notice, not the audit trail (T07/`/journal` already has that).
-   */
-  lockoutViolations: LockoutViolatedPayload[];
-  /**
-   * Whether the EA-05 execution agent's TCP connection is open right now
-   * (Mt5AgentServer.IsConnected, hydrated from the hub snapshot and kept
-   * current by execution.agent.connection). **Never** derive this from
-   * `agents` above: that list is the read-only observer's hello, and reading
-   * it as execution readiness is the bug this field exists to kill — the Risk
-   * Engine's connectionGate (T09) approved orders on it until 2026-09-18.
-   */
-  executionAgentConnected: boolean;
-  /**
-   * I2: the execution agent as it describes itself — identity, mode and
-   * ceiling, the four trading permissions, the halt, other EAs attached.
-   * Hydrated from the hub snapshot, kept current by execution.agent.status;
-   * null without an agent for the account (or one older than I1).
-   */
-  executionAgentStatus: ExecutionAgentStatus | null;
-  /**
-   * T12 incrément 2: the account settings ledger as last read from the
-   * backend — null until the first read succeeds. Resolve it with
-   * `resolveAccountSettings` against `dayAnchorStartsAtUtc`; never read a
-   * version's settings directly, a deferred one may not be in effect yet.
-   */
-  accountSettings: AccountSettingsLedger | null;
-  /** Why the last read of the ledger failed, or null. The last ledger read
-   *  successfully stays in place meanwhile — stale beats the code's defaults
-   *  silently replacing what the trader configured. */
-  accountSettingsError: string | null;
-  /**
-   * T02a: start of the current trading day of the account being traded
-   * (server midnight, Gateway-resolved), or null while unknown. Published
-   * here since T12 incrément 2: it decides which deferred settings are in
-   * effect, on the risk engine's side and on the screens alike.
-   */
-  dayAnchorStartsAtUtc: string | null;
+/**
+ * The link between the browser and the core, as the trader should read it. `degraded` is a link that is up to a core that says
+ * it is unwell (a finding of high or critical severity): the figures arrive, but not all of them can be trusted.
+ */
+export type ConnectionState = "connecting" | "connected" | "reconnecting" | "stale" | "degraded" | "disconnected";
+
+export type LinkState = Exclude<ConnectionState, "degraded">;
+
+/** The lock the core holds on the account — what an acknowledgement has to name. `until === null`: only a person lifts it. */
+export interface LockoutView {
+  lockoutId: string;
+  reason: string;
+  until: string | null;
 }
 
-export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = {
-  connection: "connecting",
-  connectionIssue: null,
-  environment: "mock",
-  account: null,
-  positions: [],
-  risk: null,
-  marketContext: null,
-  agents: [],
-  executionReports: [],
-  pnlCalendar: [],
-  alerts: [],
-  lastHeartbeatAt: null,
-  activeLockout: null,
-  acknowledgedLockoutIds: [],
-  upcomingReleases: null,
-  lockoutViolations: [],
-  // Fail closed: "no agent" until the hub says otherwise, never an optimistic
-  // default that would let the gate pass before anything is known.
-  executionAgentConnected: false,
-  executionAgentStatus: null,
-  accountSettings: null,
-  accountSettingsError: null,
-  dayAnchorStartsAtUtc: null,
+/** A position that opened while a lockout was in force — a live notice, dismissed locally; the record is the journal's. */
+export type LockoutViolation = EventPayloads["risk.lockout_violated"];
+
+/** The execution agent's last heartbeat, as this tab received it. */
+export interface AgentPulse {
+  latencyMs: number;
+  receivedAt: string;
+}
+
+/** What the screens read. Everything about "the account" is the **active** account's. */
+export interface CockpitSnapshot {
+  // ---- the link
+  connection: ConnectionState;
+  /** Why the link is not `connected`, in words the trader can act on — or null. */
+  connectionIssue: string | null;
+  // ---- the core
+  version: string | null;
+  health: HealthDigest | null;
+  autonomy: AutonomyOverview | null;
+  /** The registry: every account, with its connection status. */
+  accounts: Account[];
+  activeAccountId: string | null;
+  /** The FRED calendar. `null` is *unknown* (never synced), which the news gate treats as closed — never as an empty calendar. */
+  upcomingReleases: UpcomingRelease[] | null;
+  calendarSyncedAt: string | null;
+  // ---- the active account
+  /** Its registry entry, or null when none is active. */
+  registered: Account | null;
+  environment: Environment | null;
+  /** MT5's account window — null until the account is connected and read. */
+  account: AccountSnapshot | null;
+  positions: Position[];
+  risk: RiskStatus | null;
+  /** The symbols the core watches for this account (what the broker quotes it), in the order it lists them. */
+  watchlist: string[];
+  /** The lock the core holds, read from the risk status; null when clear. */
+  activeLockout: LockoutView | null;
+  /** The execution agent attached to the account's terminal, or null. It is the *only* order path, and it is not the reader. */
+  agent: AgentStatus | null;
+  executionAgentConnected: boolean;
+  agentPulse: AgentPulse | null;
+  /** The most recent commands, newest first. */
+  commands: ExecutionCommand[];
+  lockoutViolations: LockoutViolation[];
+  /** Per symbol, when a bar last closed — a screen that depends on the bars re-reads when it changes. */
+  candleClosedAt: Record<string, string>;
+}
+
+/** What `apply` asks the controller to do. */
+export type Effect =
+  | { kind: "resync" }
+  | { kind: "refresh-commands"; accountId: string }
+  | { kind: "refresh-autonomy" };
+
+interface Core {
+  link: LinkState;
+  linkIssue: string | null;
+  version: string | null;
+  health: HealthDigest | null;
+  autonomy: AutonomyOverview | null;
+  accounts: Account[];
+  activeAccountId: string | null;
+  calendar: CalendarSnapshot | null;
+  states: Record<string, AccountState>;
+  pulses: Record<string, AgentPulse>;
+  violations: LockoutViolation[];
+  candleClosedAt: Record<string, string>;
+}
+
+const EMPTY_CORE: Core = {
+  link: "connecting",
+  linkIssue: null,
+  version: null,
+  health: null,
+  autonomy: null,
+  accounts: [],
+  activeAccountId: null,
+  calendar: null,
+  states: {},
+  pulses: {},
+  violations: [],
+  candleClosedAt: {},
 };
 
 const MAX_FEED_LENGTH = 20;
 
-/** Newest first, one entry per reportId: since I1 the agent sends its final
- *  reports again after a reconnection, with the same id (commandId, status,
- *  time — Mt5WireTranslator.ToExecutionReport). */
-export function withReport(reports: ExecutionReport[], report: ExecutionReport): ExecutionReport[] {
-  return [report, ...reports.filter((existing) => existing.reportId !== report.reportId)].slice(0, MAX_FEED_LENGTH);
+// ----------------------------------------------------------------------------------------------------- the read model
+
+function lockoutOf(risk: RiskStatus | null): LockoutView | null {
+  if (risk === null || risk.lockoutId === null) {
+    return null;
+  }
+  return { lockoutId: risk.lockoutId, reason: risk.lockoutReason ?? "", until: risk.lockoutUntil };
 }
 
+function connectionOf(core: Core): ConnectionState {
+  const bad = core.health?.status === "high" || core.health?.status === "critical";
+  return core.link === "connected" && bad ? "degraded" : core.link;
+}
+
+/** The registry entry of the account an agent serves: the agent states its MT5 login, the registry knows which account that is. */
+function accountOfLogin(accounts: Account[], login: string): Account | undefined {
+  return accounts.find((account) => String(account.login) === login);
+}
+
+export function derive(core: Core): CockpitSnapshot {
+  const id = core.activeAccountId;
+  const state = id === null ? undefined : core.states[id];
+  const registered = id === null ? null : (core.accounts.find((account) => account.id === id) ?? null);
+  const risk = state?.risk ?? null;
+  const agent = state?.agent ?? null;
+  return {
+    connection: connectionOf(core),
+    connectionIssue: core.linkIssue,
+    version: core.version,
+    health: core.health,
+    autonomy: core.autonomy,
+    accounts: core.accounts,
+    activeAccountId: id,
+    upcomingReleases: core.calendar === null ? null : core.calendar.releases,
+    calendarSyncedAt: core.calendar?.syncedAt ?? null,
+    registered,
+    environment: registered?.environment ?? null,
+    account: state?.snapshot ?? null,
+    positions: state?.positions ?? NO_POSITIONS,
+    watchlist: state === undefined ? NO_SYMBOLS : state.quotes.map((tick) => tick.symbol),
+    risk,
+    activeLockout: lockoutOf(risk),
+    agent,
+    executionAgentConnected: agent !== null,
+    agentPulse: agent === null ? null : (core.pulses[agent.agentId] ?? null),
+    commands: state?.commands ?? NO_COMMANDS,
+    lockoutViolations: core.violations,
+    candleClosedAt: core.candleClosedAt,
+  };
+}
+
+const NO_POSITIONS: Position[] = [];
+const NO_SYMBOLS: string[] = [];
+const NO_COMMANDS: ExecutionCommand[] = [];
+
+export const EMPTY_COCKPIT_SNAPSHOT: CockpitSnapshot = derive(EMPTY_CORE);
+
+// ----------------------------------------------------------------------------------------------------- the reducer
+
+interface Reduction {
+  core: Core;
+  effects: Effect[];
+}
+
+const same = (core: Core): Reduction => ({ core, effects: [] });
+
+function inState(core: Core, accountId: string | null, patch: Partial<AccountState>): Reduction {
+  // An event for an account the snapshot did not list (connected a moment ago): the fresh snapshot will carry it.
+  const known = accountId === null ? undefined : core.states[accountId];
+  if (accountId === null || known === undefined) {
+    return same(core);
+  }
+  return same({ ...core, states: { ...core.states, [accountId]: { ...known, ...patch } } });
+}
+
+function withAgent(core: Core, login: string, agent: AgentStatus | null): Reduction {
+  const account = accountOfLogin(core.accounts, login);
+  return account === undefined ? same(core) : inState(core, account.id, { agent });
+}
+
+function reduce(core: Core, frame: CockpitEvent): Reduction {
+  switch (frame.type) {
+    case "system.snapshot": {
+      const snapshot = frame.payload;
+      return same({
+        ...core,
+        version: snapshot.version,
+        accounts: snapshot.accounts,
+        activeAccountId: snapshot.activeAccountId,
+        autonomy: snapshot.autonomy,
+        health: snapshot.health,
+        calendar: snapshot.calendar,
+        states: snapshot.accountStates,
+      });
+    }
+    case "system.health_changed":
+      return same({
+        ...core,
+        health: { status: frame.payload.status, findings: frame.payload.findings, checkedAt: frame.occurredAt },
+      });
+    case "market.calendar_updated":
+      return same({ ...core, calendar: { releases: frame.payload.releases, syncedAt: frame.payload.syncedAt } });
+    case "market.candle_closed": {
+      const { symbol, openTime } = frame.payload.candle;
+      return same({ ...core, candleClosedAt: { ...core.candleClosedAt, [symbol]: openTime } });
+    }
+    case "account.snapshot":
+      return inState(core, frame.accountId, { snapshot: frame.payload.snapshot });
+    case "positions.snapshot":
+      return inState(core, frame.accountId, { positions: frame.payload.positions });
+    case "risk.state_updated":
+      return inState(core, frame.accountId, { risk: frame.payload.risk });
+    case "risk.lockout_violated": {
+      const violation = frame.payload;
+      const others = core.violations.filter((v) => v.brokerPositionId !== violation.brokerPositionId);
+      return same({ ...core, violations: [violation, ...others].slice(0, MAX_FEED_LENGTH) });
+    }
+    case "agent.connected":
+    case "agent.status_changed":
+      return withAgent(core, frame.payload.status.accountLogin, frame.payload.status);
+    case "agent.disconnected":
+      return withAgent(core, frame.payload.agentLogin, null);
+    case "agent.heartbeat": {
+      const { agentId, latencyMs } = frame.payload;
+      return same({ ...core, pulses: { ...core.pulses, [agentId]: { latencyMs, receivedAt: frame.occurredAt } } });
+    }
+    case "execution.command_created": {
+      // The one execution event that carries the whole command: show it at once, the others re-read the list.
+      const command = frame.payload.command;
+      const known = frame.accountId === null ? undefined : core.states[frame.accountId];
+      if (known === undefined) {
+        return same(core);
+      }
+      const rest = known.commands.filter((c) => c.request.commandId !== command.request.commandId);
+      return inState(core, frame.accountId, { commands: [command, ...rest].slice(0, MAX_FEED_LENGTH) });
+    }
+    case "execution.command_sent":
+    case "execution.acknowledged":
+    case "execution.reported":
+    case "execution.failed":
+    case "execution.rejected":
+    case "execution.unknown":
+    case "execution.reconciled":
+      return frame.accountId === null
+        ? same(core)
+        : { core, effects: [{ kind: "refresh-commands", accountId: frame.accountId }] };
+    case "autonomy.armed":
+    case "autonomy.disarmed":
+    case "autonomy.halted":
+    case "autonomy.mode_changed":
+    case "autonomy.readiness_changed":
+      return { core, effects: [{ kind: "refresh-autonomy" }] };
+    // The registry and the connections: the snapshot is the authority on who is connected and active, so ask for it.
+    case "account.created":
+    case "account.updated":
+    case "account.archived":
+    case "account.connected":
+    case "account.disconnected":
+    case "account.error":
+    case "account.trading_toggled":
+    case "account.active_changed":
+    case "account.rules_changed":
+      return { core, effects: [{ kind: "resync" }] };
+    default:
+      // Ticks (no screen draws them), heartbeats, strategy and reconciliation notices, incidents…: nothing to keep. A screen
+      // that wants one subscribes to the event stream (`onEvent`) and re-reads what it shows.
+      return same(core);
+  }
+}
+
+// ----------------------------------------------------------------------------------------------------- the store
+
 export class CockpitStore {
-  private snapshot: CockpitSnapshot = EMPTY_COCKPIT_SNAPSHOT;
+  private core: Core = EMPTY_CORE;
+
+  private view: CockpitSnapshot = EMPTY_COCKPIT_SNAPSHOT;
 
   private listeners = new Set<() => void>();
+
+  private eventListeners = new Set<(frame: CockpitEvent) => void>();
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -158,207 +323,54 @@ export class CockpitStore {
     };
   };
 
-  getSnapshot = (): CockpitSnapshot => this.snapshot;
+  getSnapshot = (): CockpitSnapshot => this.view;
 
-  setConnectionState(connection: ConnectionState): void {
-    if (this.snapshot.connection !== connection) {
-      this.patch({ connection });
+  /** Every frame, after it has been applied — for a screen that re-reads something when a kind of event arrives. */
+  onEvent = (listener: (frame: CockpitEvent) => void): (() => void) => {
+    this.eventListeners.add(listener);
+    return () => {
+      this.eventListeners.delete(listener);
+    };
+  };
+
+  /** The link's state, from the socket. */
+  setLink(link: LinkState, issue: string | null): void {
+    if (this.core.link === link && this.core.linkIssue === issue) {
+      return;
     }
+    this.commit({ ...this.core, link, linkIssue: issue });
   }
 
-  /** Initial snapshot or post-reconnect resync of every subscription group. */
-  hydrate(data: Partial<CockpitSnapshot>): void {
-    this.patch(data);
-  }
-
-  /** Apply one enveloped realtime event to the latest known state. */
-  apply(envelope: Envelope): void {
-    switch (envelope.type) {
-      case "market.tick": {
-        const { symbol, bid } = envelope.payload as MarketTickPayload;
-        this.applyTick(symbol, bid);
-        break;
-      }
-      case "agent.snapshot.account": {
-        const { account } = envelope.payload as AccountSnapshotPayload;
-        this.patch({ account });
-        break;
-      }
-      case "agent.snapshot.positions": {
-        const { positions } = envelope.payload as PositionsSnapshotPayload;
-        this.patch({ positions });
-        break;
-      }
-      case "analysis.market_context.updated": {
-        const { context } = envelope.payload as MarketContextUpdatedPayload;
-        this.patch({ marketContext: context });
-        break;
-      }
-      case "risk.state.updated": {
-        const { risk } = envelope.payload as RiskStateUpdatedPayload;
-        this.patch({ risk });
-        break;
-      }
-      // T02a: the ledger is authoritative — set/clear it here, never derive
-      // "locked" from `risk` alone in a component.
-      case "risk.lockout.enabled": {
-        const { lockoutId, reason, since, until } = envelope.payload as RiskLockoutEnabledPayload;
-        this.patch({ activeLockout: { lockoutId, reason, since, until } });
-        break;
-      }
-      case "risk.lockout.cleared": {
-        this.patch({ activeLockout: null });
-        break;
-      }
-      case "risk.lockout.acknowledged": {
-        const { lockoutId } = envelope.payload as RiskLockoutAcknowledgedPayload;
-        this.patch({
-          acknowledgedLockoutIds: [lockoutId, ...this.snapshot.acknowledgedLockoutIds].slice(
-            0,
-            MAX_FEED_LENGTH,
-          ),
-        });
-        break;
-      }
-      // T02c: Gateway-detected live — append, don't replace; dismissed
-      // independently via dismissLockoutViolation (local, not another event).
-      case "journal.lockout_violated": {
-        const violation = envelope.payload as LockoutViolatedPayload;
-        this.patch({
-          lockoutViolations: [violation, ...this.snapshot.lockoutViolations].slice(
-            0,
-            MAX_FEED_LENGTH,
-          ),
-        });
-        break;
-      }
-      // The EA-05 agent's real connection, the one connectionGate must use.
-      // Distinct from agent.connected/agent.disconnected below, which the
-      // observer also emits.
-      case "execution.agent.connection": {
-        const { connected } = envelope.payload as ExecutionAgentConnectionPayload;
-        this.patch(
-          connected
-            ? { executionAgentConnected: true }
-            : { executionAgentConnected: false, executionAgentStatus: null },
-        );
-        break;
-      }
-      // I2: only the agent of the account shown — another login's agent
-      // (a second terminal) is not this screen's business.
-      case "execution.agent.status": {
-        const { status } = envelope.payload as ExecutionAgentStatusPayload;
-        const accountId = this.snapshot.account?.accountId ?? null;
-        if (status === null) {
-          if (accountId === null || envelope.correlationId === accountId) {
-            this.patch({ executionAgentStatus: null });
-          }
-        } else if (accountId === null || status.accountId === accountId) {
-          this.patch({ executionAgentStatus: status });
-        }
-        break;
-      }
-      // T03: Gateway-originated, always the full current list (never a delta) —
-      // a plain replace, same as risk.lockout.enabled overwriting the ledger.
-      case "market.calendar.updated": {
-        const { releases } = envelope.payload as CalendarUpdatedPayload;
-        this.patch({ upcomingReleases: releases });
-        break;
-      }
-      case "agent.heartbeat": {
-        const { agentId, latencyMs } = envelope.payload as AgentHeartbeatPayload;
-        this.patch({
-          lastHeartbeatAt: envelope.sentAt,
-          agents: this.snapshot.agents.map((agent) =>
-            agent.agentId === agentId
-              ? { ...agent, state: "connected", latencyMs, lastHeartbeatAt: envelope.sentAt }
-              : agent,
-          ),
-        });
-        break;
-      }
-      case "agent.disconnected": {
-        this.patch({
-          agents: this.snapshot.agents.map((agent) => ({
-            ...agent,
-            state: "disconnected",
-          })),
-        });
-        break;
-      }
-      // Observe-mode outcome: validated end-to-end, no broker order. Distinct
-      // status by contract — never rendered as a fill. Real EA-05 traffic
-      // lands here (Mt5AgentServer -> ExecutionOrderSimulated) as much as
-      // anything else that ever reaches this event type.
-      case "execution.order.simulated":
-      case "execution.order.submitted":
-      case "execution.order.filled":
-      case "execution.order.partially_filled":
-      case "execution.order.failed":
-      case "execution.position.opened":
-      case "execution.position.closed": {
-        const { report } = envelope.payload as ExecutionReportPayload;
-        this.patch({ executionReports: withReport(this.snapshot.executionReports, report) });
-        break;
-      }
-      // The agent's REJECTED report travels under this type, next to the
-      // gateway's own rejection acks (Mt5AgentServer.ReportEventType). Until
-      // 2026-09-26 the store ignored it whole: a refused order never reached
-      // the feed. Only a report goes in — an ack is not one.
-      case "execution.command.rejected": {
-        const { report } = envelope.payload as Partial<ExecutionReportPayload>;
-        if (report && typeof report.reportId === "string") {
-          this.patch({ executionReports: withReport(this.snapshot.executionReports, report) });
-        }
-        break;
-      }
-      default:
-        // Unhandled event families are ignored by the Phase 01 dashboard.
-        break;
+  /** Apply one frame. Returns what the controller has to do next. */
+  apply(frame: CockpitEvent): Effect[] {
+    const { core, effects } = reduce(this.core, frame);
+    this.commit(core);
+    for (const listener of this.eventListeners) {
+      listener(frame);
     }
+    return effects;
   }
 
-  /** T02c: local-only — the underlying fact is already durably in
-   *  position_opens/risk_lockouts (T07/`/journal` reads it from there); this
-   *  just clears the live notice from this tab. */
+  /** The commands of an account, re-read (the answer to a `refresh-commands` effect). */
+  setCommands(accountId: string, commands: ExecutionCommand[]): void {
+    this.commit(inState(this.core, accountId, { commands: commands.slice(0, MAX_FEED_LENGTH) }).core);
+  }
+
+  setAutonomy(autonomy: AutonomyOverview): void {
+    this.commit({ ...this.core, autonomy });
+  }
+
+  /** T02c: local only — the fact itself is already in the journal; this clears the live notice from this tab. */
   dismissLockoutViolation(brokerPositionId: string): void {
-    this.patch({
-      lockoutViolations: this.snapshot.lockoutViolations.filter(
-        (violation) => violation.brokerPositionId !== brokerPositionId,
-      ),
-    });
+    this.commit({ ...this.core, violations: this.core.violations.filter((v) => v.brokerPositionId !== brokerPositionId) });
   }
 
-  private applyTick(symbol: string, price: number): void {
-    const positions = this.snapshot.positions.map((position) => {
-      if (position.symbol !== symbol) {
-        return position;
-      }
-      const direction = position.side === "buy" ? 1 : -1;
-      const move = (price - position.entryPrice) * direction;
-      const risk = Math.abs(position.entryPrice - position.stopLoss);
-      // XAUUSD: 1.00 price move on 1.0 lot ≈ 100 USD.
-      const unrealizedPnl = Math.round(move * position.volume * 100 * 100) / 100;
-      return {
-        ...position,
-        currentPrice: price,
-        unrealizedPnl,
-        rMultiple: risk > 0 ? Math.round((move / risk) * 100) / 100 : 0,
-      };
-    });
-
-    const account = this.snapshot.account;
-    const openPnl = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
-    this.patch({
-      positions,
-      account: account
-        ? { ...account, equity: Math.round((account.balance + openPnl) * 100) / 100 }
-        : account,
-    });
-  }
-
-  private patch(partial: Partial<CockpitSnapshot>): void {
-    this.snapshot = { ...this.snapshot, ...partial };
+  private commit(core: Core): void {
+    if (core === this.core) {
+      return;
+    }
+    this.core = core;
+    this.view = derive(core);
     for (const listener of this.listeners) {
       listener();
     }

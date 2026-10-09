@@ -1,16 +1,15 @@
 import Link from "next/link";
 import { cn } from "cn";
 import { VIOLATION_LABELS } from "@/lib/compliance/labels";
-import type { Violation } from "@/lib/compliance/violations";
+import type { JournalTradeView, Violation } from "@/lib/api/generated";
 import { formatQuote, formatSignedMoney } from "@/lib/format";
-import type { JournalTrade } from "@/lib/journal/types";
 import { DataList, MobileCardHeader, MobileFields, type Column } from "@/components/ui/data-list";
 import { StatusPill } from "@/components/ui/status-pill";
 
 /** One line of the journal, already computed by the page: this file only draws it. */
 export interface TradeRow {
-  trade: JournalTrade;
-  /** R multiple; null = unknown (no capture, or no stop was set) — never a flat zero. */
+  trade: JournalTradeView;
+  /** R multiple; null = unknown (no entry on record, or no stop was set) — never a flat zero. */
   r: number | null;
   duration: string;
   /** What the EA-02 proposal that coincided with this trade said; null when none did. */
@@ -56,16 +55,15 @@ function FramePills({ row }: { row: TradeRow }) {
   );
 }
 
-/** T05: a link, not a button — the capture is a fact recorded when the position opened. Nothing when there is none. */
-const CaptureLink = ({ row }: { row: TradeRow }) =>
-  row.trade.hasCapture ? (
-    <Link
-      href={`/journal/${row.trade.brokerPositionId}`}
-      className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-    >
-      Capture →
-    </Link>
-  ) : null;
+/** A link, not a button — the file of the trade: the numbers recorded for it and the chain that led to it. */
+const FileLink = ({ row }: { row: TradeRow }) => (
+  <Link
+    href={`/journal/${row.trade.brokerPositionId}`}
+    className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+  >
+    Dossier →
+  </Link>
+);
 
 const rLabel = (row: TradeRow) => (row.r === null ? "—" : row.r.toFixed(2));
 
@@ -108,7 +106,7 @@ const COLUMNS: Column<TradeRow>[] = [
     cell: (row) => <span className="text-muted-foreground">{row.duration}</span>,
   },
   { key: "frame", header: "Cadre", className: "min-w-44 whitespace-normal", cell: (row) => <FramePills row={row} /> },
-  { key: "capture", header: "", align: "right", cell: (row) => <CaptureLink row={row} /> },
+  { key: "file", header: "", align: "right", cell: (row) => <FileLink row={row} /> },
 ];
 
 /**
@@ -142,12 +140,10 @@ export function TradesTable({ rows }: { rows: TradeRow[] }) {
               { label: "Durée", value: row.duration },
             ]}
           />
-          {(hasFrame(row) || row.trade.hasCapture) && (
-            <div className="mt-3 flex items-center justify-between gap-3 text-xs">
-              {hasFrame(row) ? <FramePills row={row} /> : <span />}
-              <CaptureLink row={row} />
-            </div>
-          )}
+          <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+            {hasFrame(row) ? <FramePills row={row} /> : <span />}
+            <FileLink row={row} />
+          </div>
         </>
       )}
     />

@@ -13,8 +13,8 @@ import {
   describeSymbol,
   describeTradingDays,
 } from "@/lib/account-analysis/narrative";
+import type { ViolationType } from "@/lib/api/generated";
 import { VIOLATION_LABELS } from "@/lib/compliance/labels";
-import type { ViolationType } from "@/lib/compliance/violations";
 import { useCockpit } from "@/lib/realtime/provider";
 import { formatSignedMoney } from "@/lib/format";
 import { AnalysisMetrics } from "@/components/analyse/analysis-metrics";
@@ -130,8 +130,7 @@ export default function AccountAnalysisPage() {
       <div className="flex flex-col gap-10">
         {header}
         <Callout title="Analyse indisponible" variant="warning">
-          Les trades clôturés n&apos;ont pas pu être chargés. Le backend répond-il ? <code>docker ps</code> doit
-          montrer <code>tradingos-backend</code> et <code>tradingos-timescaledb</code>.
+          Les trades clôturés n&apos;ont pas pu être chargés. Le cœur répond-il ?
         </Callout>
       </div>
     );

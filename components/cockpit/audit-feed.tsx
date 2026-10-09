@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ScrollText } from "lucide-react";
-import { backendHttpBase } from "@/lib/realtime/backend-url";
+import type { EventRecord } from "@/lib/api/generated";
+import { useApi } from "@/lib/api/use-api";
 import { formatClockTime } from "@/lib/format";
 import { SectionHeading } from "@/components/shell/page-header";
 import { Button } from "@/components/ui/button";
@@ -11,107 +12,71 @@ import { DataList, MobileCardHeader, MobileFields, type Column } from "@/compone
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 
-/** One row of GET /api/audit/recent (AuditRepository.RecentAsync). */
-interface AuditEntry {
-  messageId: string;
-  correlationId: string;
-  type: string;
-  source: string;
-  sentAt: string;
-}
-
 const LIMIT = 50;
 const PREVIEW_ROWS = 12;
+const POLL_MS = 15_000;
 
-const COLUMNS: Column<AuditEntry>[] = [
+const COLUMNS: Column<EventRecord>[] = [
   { key: "type", header: "Type", cell: (e) => <span className="font-medium">{e.type}</span> },
-  { key: "source", header: "Source", cell: (e) => <span className="text-muted-foreground">{e.source}</span> },
-  { key: "time", header: "Heure", align: "right", cell: (e) => <span className="text-muted-foreground">{formatClockTime(e.sentAt)}</span> },
+  {
+    key: "account",
+    header: "Compte",
+    cell: (e) => <span className="text-muted-foreground">{e.accountId ?? "—"}</span>,
+  },
+  {
+    key: "time",
+    header: "Heure",
+    align: "right",
+    cell: (e) => <span className="text-muted-foreground">{formatClockTime(e.occurredAt)}</span>,
+  },
 ];
 
 /**
- * The envelope audit trail, on screen for the first time.
+ * The audit trail: every event the core recorded, newest first — which is also
+ * the fastest way to see that the chain is alive at all. A system whose whole
+ * claim is that every decision is auditable keeps its trail on screen, not
+ * behind curl.
  *
- * GET /api/audit/recent has existed since the persistence slice and had zero
- * frontend consumers as of 2026-09-20 — a system whose whole claim is that
- * every decision is auditable was keeping its audit trail behind curl. It is
- * every envelope the gateway persisted, newest first, which is also the
- * fastest way to see that the chain is alive at all.
- *
- * Not account-scoped (the table is the raw envelope log), so it renders even
- * when no account is connected — including against the mock realtime source,
- * where it is the one panel still showing real machine traffic.
+ * Not account-scoped (the table is the raw event log), so it renders even
+ * when no account is connected.
  */
 export function AuditFeed() {
-  const [entries, setEntries] = useState<AuditEntry[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  const { data, error } = useApi("system_events", { query: { limit: LIMIT } }, { pollMs: POLL_MS });
   const [showAll, setShowAll] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const res = await fetch(`${backendHttpBase()}/api/audit/recent?limit=${LIMIT}`);
-        if (cancelled) {
-          return;
-        }
-        if (!res.ok) {
-          setFailed(true);
-          return;
-        }
-        setEntries((await res.json()) as AuditEntry[]);
-      } catch {
-        if (!cancelled) {
-          setFailed(true);
-        }
-      }
-    }
-
-    void load();
-    const interval = setInterval(() => void load(), 15_000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
 
   /** 50 rows of the same event type is a wall; the tally makes it a fact. */
   const tally = useMemo(() => {
-    if (!entries) {
+    if (!data) {
       return [];
     }
     const counts = new Map<string, number>();
-    for (const entry of entries) {
+    for (const entry of data) {
       counts.set(entry.type, (counts.get(entry.type) ?? 0) + 1);
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [entries]);
+  }, [data]);
 
   const heading = (actions?: React.ReactNode) => (
     <SectionHeading
       title="Piste d'audit"
-      subtitle="chaque enveloppe que le backend a persistée, la plus récente en premier"
+      subtitle="chaque événement que le cœur a enregistré, le plus récent en premier"
       icon={ScrollText}
       actions={actions}
     />
   );
 
-  if (failed) {
+  if (error && !data) {
     return (
       <section className="flex flex-col gap-4">
         {heading(<StatusPill tone="loss">indisponible</StatusPill>)}
         <Callout title="Piste d'audit indisponible" variant="warning">
-          <code className="text-foreground">/api/audit/recent</code> ne répond pas. Le backend est-il démarré ?{" "}
-          <code className="text-foreground">docker ps</code> doit montrer{" "}
-          <code className="text-foreground">tradingos-backend</code> et{" "}
-          <code className="text-foreground">tradingos-timescaledb</code>.
+          {error.message}
         </Callout>
       </section>
     );
   }
 
-  if (!entries) {
+  if (!data) {
     return (
       <section className="flex flex-col gap-4">
         {heading()}
@@ -120,15 +85,15 @@ export function AuditFeed() {
     );
   }
 
-  const visible = showAll ? entries : entries.slice(0, PREVIEW_ROWS);
+  const visible = showAll ? data : data.slice(0, PREVIEW_ROWS);
 
   return (
     <section className="flex flex-col gap-4">
-      {heading(<span className="text-sm text-muted-foreground">{entries.length} dernières enveloppes</span>)}
-      {entries.length === 0 ? (
+      {heading(<span className="text-sm text-muted-foreground">{data.length} derniers événements</span>)}
+      {data.length === 0 ? (
         <p className="rounded-xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
-          Aucune enveloppe persistée. La chaîne temps réel n&apos;a rien écrit — observer MT5 arrêté, ou écriture en
-          base coupée.
+          Aucun événement enregistré. Le cœur n&apos;a rien écrit — vient-il de démarrer, ou la base est-elle
+          injoignable ?
         </p>
       ) : (
         <>
@@ -142,17 +107,17 @@ export function AuditFeed() {
           <DataList
             rows={visible}
             columns={COLUMNS}
-            rowKey={(e) => e.messageId}
+            rowKey={(e) => e.eventId}
             mobileCard={(e) => (
               <>
-                <MobileCardHeader name={e.type} subtitle={e.source} />
-                <MobileFields fields={[{ label: "Heure", value: formatClockTime(e.sentAt) }]} />
+                <MobileCardHeader name={e.type} subtitle={e.accountId ?? "—"} />
+                <MobileFields fields={[{ label: "Heure", value: formatClockTime(e.occurredAt) }]} />
               </>
             )}
           />
-          {entries.length > PREVIEW_ROWS && (
+          {data.length > PREVIEW_ROWS && (
             <Button variant="outline" size="sm" className="self-center" onClick={() => setShowAll((value) => !value)}>
-              {showAll ? "Réduire" : `Afficher les ${entries.length} enveloppes`}
+              {showAll ? "Réduire" : `Afficher les ${data.length} événements`}
             </Button>
           )}
         </>

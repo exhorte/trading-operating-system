@@ -4,11 +4,9 @@ import Link from "next/link";
 import { ChevronsUpDown, Settings, UserRound, Wallet } from "lucide-react";
 import { cn } from "cn";
 import { useCockpit } from "@/lib/realtime/provider";
+import type { ConnectionState } from "@/lib/realtime/store";
 import { usePersistenceHealth, type PersistenceState } from "@/lib/realtime/use-persistence-health";
-import { detectFirm } from "@/lib/accounts/firm";
-import { brokerMatchersOf } from "@/lib/accounts/settings";
-import { useAccountSettings } from "@/lib/accounts/use-account-settings";
-import type { ConnectionState, Environment } from "@/lib/contracts/enums";
+import type { Environment, Provider } from "@/lib/api/generated";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -30,53 +28,53 @@ const DOT: Record<Tone, string> = {
 };
 
 const ENVIRONMENT: Record<Environment, string> = {
-  mock: "MOCK",
-  demo: "DÉMO",
-  paper: "PAPER",
-  live: "LIVE",
+  DEMO: "DÉMO",
+  SIMULATED: "SIMULÉ",
+  LIVE: "LIVE",
+};
+
+const PROVIDER: Record<Provider, { name: string; initials: string }> = {
+  FTMO: { name: "FTMO", initials: "FT" },
+  EXNESS: { name: "Exness", initials: "EX" },
 };
 
 const HUB: Record<ConnectionState, { label: string; tone: Tone }> = {
-  mock: { label: "Simulé", tone: "info" },
   connecting: { label: "Connexion…", tone: "warning" },
   connected: { label: "Connecté", tone: "profit" },
   reconnecting: { label: "Reconnexion…", tone: "warning" },
-  stale: { label: "Périmé — plus de battement MT5", tone: "warning" },
-  degraded: { label: "Dégradé", tone: "warning" },
+  stale: { label: "Périmé — plus de battement du cœur", tone: "warning" },
+  degraded: { label: "Dégradé — le cœur signale un défaut", tone: "warning" },
   disconnected: { label: "Déconnecté", tone: "loss" },
-  error: { label: "Erreur", tone: "loss" },
 };
 
 function persistenceLine(state: PersistenceState): { label: string; tone: Tone } {
   switch (state.kind) {
-    case "not_applicable":
-      return { label: "sans objet (mock)", tone: "muted" };
     case "unknown":
       return { label: "—", tone: "muted" };
     case "ok":
       return { label: "OK", tone: "profit" };
     case "issue":
-      return {
-        label:
-          state.health.dropped > 0 ? `${state.health.dropped} événements perdus` : "base injoignable",
-        tone: "loss",
-      };
+      return { label: state.label, tone: "loss" };
   }
 }
 
 /**
- * One dot for "can I trust what I see": the worst of the realtime link and
- * the persistence health. Steel in mock mode — the figures are scripted, and
- * that must stay visible.
+ * One dot for "can I trust what I see": the worst of the link to the core and
+ * its persistence health. Steel on a simulated terminal — the figures are
+ * scripted, and that must stay visible.
  */
-function overallTone(connection: ConnectionState, persistence: PersistenceState, environment: Environment): Tone {
-  if (connection === "disconnected" || connection === "error" || persistence.kind === "issue") {
+function overallTone(
+  connection: ConnectionState,
+  persistence: PersistenceState,
+  environment: Environment | null,
+): Tone {
+  if (connection === "disconnected" || persistence.kind === "issue") {
     return "loss";
   }
   if (connection === "stale" || connection === "degraded" || connection === "reconnecting" || connection === "connecting") {
     return "warning";
   }
-  return environment === "mock" ? "info" : "profit";
+  return environment === "SIMULATED" ? "info" : "profit";
 }
 
 function StatusRow({ label, value, tone }: { label: string; value: string; tone: Tone }) {
@@ -94,20 +92,24 @@ function StatusRow({ label, value, tone }: { label: string; value: string; tone:
 /**
  * The only thing left in the top bar, as on the reference mock-up: the
  * account — who, which firm, which environment — with a status dot on the
- * avatar, and behind it the link details (realtime, persistence, EA-05
+ * avatar, and behind it the link details (the core, persistence, the EA-05
  * agent) that used to be four pills. Nothing here logs in anywhere: the
- * account is whichever one MT5 has open (ADR 0003).
+ * account is the one the core has attached and made active.
  */
 export function AccountMenu() {
-  const { account, connection, connectionIssue, environment, executionAgentConnected } = useCockpit();
-  const { resolved } = useAccountSettings();
+  const { registered, account, connection, connectionIssue, environment, executionAgentConnected, agent } =
+    useCockpit();
   const persistence = usePersistenceHealth();
 
-  const firm = account ? detectFirm(account.broker, brokerMatchersOf(resolved.settings)) : null;
-  const name = !account ? "Aucun compte" : firm === "ftmo" ? "FTMO" : firm === "exness" ? "Exness" : account.broker;
-  const env = ENVIRONMENT[environment];
-  const subtitle = account ? `${account.accountId} · ${env}` : `MT5 non connecté · ${env}`;
-  const initials = firm === "ftmo" ? "FT" : firm === "exness" ? "EX" : null;
+  const firm = registered ? PROVIDER[registered.provider] : null;
+  const name = !registered ? "Aucun compte" : (firm?.name ?? registered.name);
+  const env = environment === null ? "—" : ENVIRONMENT[environment];
+  const subtitle = !registered
+    ? "Aucun compte actif"
+    : account
+      ? `${registered.login} · ${env}`
+      : `${registered.login} · non connecté · ${env}`;
+  const initials = firm?.initials ?? null;
   const tone = overallTone(connection, persistence, environment);
   const hub = HUB[connection];
   const store = persistenceLine(persistence);
@@ -146,22 +148,30 @@ export function AccountMenu() {
         <DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
           <span className="text-sm font-medium text-foreground">{name}</span>
           <span className="truncate text-xs text-muted-foreground">
-            {account ? `${account.label} · ${account.currency}` : "Ouvre un compte dans MT5 : le cockpit le suit."}
+            {account
+              ? `${account.label} · ${account.currency}`
+              : registered
+                ? `${registered.name} — rattache-le dans Account`
+                : "Enregistre un compte dans Settings, puis rattache-le."}
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="flex flex-col gap-2 px-2 py-2 text-xs">
-          <StatusRow label="Temps réel" value={hub.label} tone={hub.tone} />
+          <StatusRow label="Cœur" value={hub.label} tone={hub.tone} />
           {connectionIssue && connection !== "connected" ? (
             <p className="text-[11px] leading-snug text-warning">{connectionIssue}</p>
           ) : null}
           <StatusRow label="Persistance" value={store.label} tone={store.tone} />
           <StatusRow
             label="Agent EA-05"
-            value={executionAgentConnected ? "Connecté · observe" : "Non connecté"}
+            value={executionAgentConnected ? `Connecté · ${agent?.mode ?? "?"}` : "Non connecté"}
             tone={executionAgentConnected ? "profit" : "muted"}
           />
-          <StatusRow label="Environnement" value={env} tone={environment === "live" ? "loss" : environment === "mock" ? "info" : "muted"} />
+          <StatusRow
+            label="Environnement"
+            value={env}
+            tone={environment === "LIVE" ? "loss" : environment === "SIMULATED" ? "info" : "muted"}
+          />
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="gap-2.5 rounded-lg py-2">

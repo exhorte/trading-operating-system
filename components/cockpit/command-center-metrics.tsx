@@ -4,8 +4,7 @@ import Link from "next/link";
 import { Crosshair, Layers, Target, TrendingUp, Wallet } from "lucide-react";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
 import { useComplianceRate } from "@/lib/compliance/use-compliance-rate";
-import { VIOLATION_LABELS } from "@/lib/compliance/labels";
-import type { ViolationType } from "@/lib/compliance/violations";
+import { VIOLATION_LABELS, VIOLATION_TYPES } from "@/lib/compliance/labels";
 import { tightestHeadroom } from "@/lib/cockpit/verdict";
 import { formatMoney, formatPercent, formatSignedMoney } from "@/lib/format";
 import {
@@ -16,8 +15,6 @@ import {
   type MetricTone,
 } from "@/components/ui/metric-panel";
 import { Skeleton } from "@/components/ui/skeleton";
-
-const VIOLATION_TYPES: ViolationType[] = ["LOCKOUT_ACTIVE", "SESSION_WINDOW", "SIZE_POLICY"];
 
 /**
  * The Command Center's key figures, in the dark panel: equity as the headline,
@@ -109,7 +106,7 @@ export function CommandCenterMetrics() {
             <>
               {!measured
                 ? failed
-                  ? "trades clôturés illisibles — le backend répond-il ?"
+                  ? "trades clôturés illisibles — le cœur répond-il ?"
                   : rate === null
                     ? "lecture des trades clôturés…"
                     : "aucun trade clôturé sur la période — rien à mesurer"

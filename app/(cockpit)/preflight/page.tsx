@@ -10,14 +10,16 @@ import {
   Cpu,
   Hash,
   Layers,
+  Link2,
   Lock,
   OctagonX,
   Repeat,
+  ShieldQuestion,
   TrendingDown,
 } from "lucide-react";
 import { cn } from "cn";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
-import type { RiskGate } from "@/lib/contracts/snapshots";
+import type { GateResult } from "@/lib/api/generated";
 import { sessionVerdict } from "@/lib/cockpit/verdict";
 import { SessionVerdictBanner } from "@/components/cockpit/session-verdict-banner";
 import { PageHeader } from "@/components/shell/page-header";
@@ -40,9 +42,12 @@ const GATE_ICONS: Record<string, LucideIcon> = {
   "gate-session": Clock,
   "gate-news": CalendarClock,
   "gate-connection": Cpu,
+  "gate-correlation": Link2,
+  "gate-position-limit": Layers,
+  "gate-symbol": ShieldQuestion,
 };
 
-function GateCard({ gate, untrusted }: { gate: RiskGate; untrusted: boolean }) {
+function GateCard({ gate, untrusted }: { gate: GateResult; untrusted: boolean }) {
   const open = gate.state === "open";
   const Icon = GATE_ICONS[gate.gateId] ?? Hash;
   return (
@@ -62,7 +67,8 @@ function GateCard({ gate, untrusted }: { gate: RiskGate; untrusted: boolean }) {
         >
           <Icon className="size-5" strokeWidth={1.75} aria-hidden="true" />
         </span>
-        <StatusPill tone={open ? "profit" : "loss"} pulse={!open}>
+        {/* A blocked card is already tinted: a second tint under the pill would sink the red text to 4.4 : 1 (AA wants 4.5). */}
+        <StatusPill tone={open ? "profit" : "loss"} pulse={!open} className={open ? undefined : "bg-background"}>
           {open ? "Au vert" : "Bloquant"}
         </StatusPill>
       </div>
@@ -78,8 +84,8 @@ function GateCard({ gate, untrusted }: { gate: RiskGate; untrusted: boolean }) {
  * T09 — the pre-session ritual in one page: every item the system can check
  * for itself, plus a single armed / not-armed verdict.
  *
- * Reads the risk state that already exists (lib/risk/evaluate.ts runs these
- * gates on every tick); it does not evaluate anything of its own. Nothing
+ * Reads the risk status the core already reports (the Risk Engine runs these
+ * gates on every cycle); it does not evaluate anything of its own. Nothing
  * here is checkable by hand on purpose — "pas un document à cocher"
  * (context/product/tools/T09-checklist-prevol.md). An item is green because
  * the system verified it, or it is not green.

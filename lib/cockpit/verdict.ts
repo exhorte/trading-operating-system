@@ -1,10 +1,9 @@
 /**
- * Cockpit derivations over the risk read model.
+ * Cockpit derivations over the risk status the core reports.
  *
- * Pure. Imports `lib/contracts/snapshots` only — one layer above the read
- * model, one layer below the components. `lib/risk/` deliberately stays out
- * of reach here: that package is the portable engine over `lib/domain` and
- * must not learn about dashboard shapes.
+ * Pure, and presentation only: the Risk Engine is the core's. What is derived
+ * here is how to *read* what it said — armed or not, which limit is closest —
+ * never a rule of its own.
  *
  * Exists because the armed / not-armed rule was written twice — once on
  * `/preflight` (T09) and once implicitly in the KPI strip's "Risk state"
@@ -12,13 +11,13 @@
  * what the trader reads before opening a position.
  */
 
-import type { RiskGate, RiskStatus } from "@/lib/contracts/snapshots";
+import type { GateResult, RiskStatus } from "@/lib/api/generated";
 
 export interface SessionVerdict {
   /** True only when nothing blocks and the account is not locked. */
   armed: boolean;
   /** Gates that are not open, in the order the engine reported them. */
-  blocking: RiskGate[];
+  blocking: GateResult[];
   /** Reason text of the active lockout, or null when clear. */
   lockoutReason: string | null;
 }

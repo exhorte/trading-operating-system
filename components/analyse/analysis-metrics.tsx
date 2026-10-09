@@ -1,6 +1,6 @@
 import { Coins, Hash, Percent, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { GeneralStats } from "@/lib/account-analysis/breakdowns";
-import type { ComplianceSummary } from "@/lib/compliance/summarize";
+import type { AnalysisCompliance } from "@/lib/account-analysis/use-account-analysis";
 import { formatPercent, formatSignedMoney } from "@/lib/format";
 import { HighlightBar, MetricPanel, MetricPanelItem } from "@/components/ui/metric-panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,7 +31,7 @@ export function AnalysisMetrics({
   data,
   loading,
 }: {
-  data: { general: GeneralStats; compliance: ComplianceSummary } | null;
+  data: { general: GeneralStats; compliance: AnalysisCompliance } | null;
   loading: boolean;
 }) {
   if (loading || data === null) {

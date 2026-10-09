@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { CalendarClock } from "lucide-react";
+import type { UpcomingRelease } from "@/lib/api/generated";
 import { useCockpit } from "@/lib/realtime/provider";
-import { defaultRiskPolicy } from "@/lib/risk";
-import type { UpcomingRelease } from "@/lib/risk/news-calendar";
+import { blackoutWindow, inBlackout, listedReleases } from "@/lib/cockpit/calendar";
 import { SectionHeading } from "@/components/shell/page-header";
 import { Callout } from "@/components/ui/callout";
 import { DataList, MobileCardHeader, MobileFields, type Column } from "@/components/ui/data-list";
 import { StatusPill } from "@/components/ui/status-pill";
-
-const MINUTE_MS = 60_000;
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -22,13 +20,14 @@ function formatWhen(iso: string): string {
   });
 }
 
-function formatWindow(iso: string, blackoutMinutes: number): string {
-  const at = Date.parse(iso);
+function formatWindow(release: UpcomingRelease, blackoutMinutes: number): string {
   const opts = { hour: "2-digit", minute: "2-digit" } as const;
-  const from = new Date(at - blackoutMinutes * MINUTE_MS).toLocaleTimeString(undefined, opts);
-  const to = new Date(at + blackoutMinutes * MINUTE_MS).toLocaleTimeString(undefined, opts);
-  return `${from} → ${to}`;
+  const [from, to] = blackoutWindow(release, blackoutMinutes);
+  return `${new Date(from).toLocaleTimeString(undefined, opts)} → ${new Date(to).toLocaleTimeString(undefined, opts)}`;
 }
+
+/** The blackout the news gate applies is the account's own rule; before an account is attached, this is the usual one. */
+const FALLBACK_BLACKOUT_MINUTES = 15;
 
 /**
  * The FRED calendar the T03 gate actually runs on, as a list rather than the
@@ -41,7 +40,7 @@ function formatWindow(iso: string, blackoutMinutes: number): string {
  * must not read calmer than the gate behaves (T03-gate-news.md).
  */
 export function EconomicCalendar() {
-  const { upcomingReleases, account } = useCockpit();
+  const { upcomingReleases, registered } = useCockpit();
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -49,8 +48,7 @@ export function EconomicCalendar() {
     return () => clearInterval(interval);
   }, []);
 
-  const policy = defaultRiskPolicy(account?.accountId ?? "unknown");
-  const blackoutMinutes = policy.newsBlackoutMinutes;
+  const blackoutMinutes = registered?.riskProfile.news.blackoutMinutes ?? FALLBACK_BLACKOUT_MINUTES;
 
   const heading = (actions?: React.ReactNode) => (
     <SectionHeading
@@ -74,18 +72,16 @@ export function EconomicCalendar() {
     );
   }
 
-  const upcoming = upcomingReleases
-    .filter((release) => Date.parse(release.scheduledAt) + blackoutMinutes * MINUTE_MS > nowMs)
-    .sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt));
+  const upcoming = listedReleases(nowMs, upcomingReleases, blackoutMinutes);
 
-  const inBlackout = (release: UpcomingRelease) =>
-    Math.abs(Date.parse(release.scheduledAt) - nowMs) <= blackoutMinutes * MINUTE_MS;
-
-  const StateBadge = ({ release }: { release: UpcomingRelease }) => (
-    <StatusPill tone={inBlackout(release) ? "warning" : "muted"} pulse={inBlackout(release)}>
-      {inBlackout(release) ? "blackout" : "à venir"}
-    </StatusPill>
-  );
+  const StateBadge = ({ release }: { release: UpcomingRelease }) => {
+    const active = inBlackout(nowMs, release, blackoutMinutes);
+    return (
+      <StatusPill tone={active ? "warning" : "muted"} pulse={active}>
+        {active ? "blackout" : "à venir"}
+      </StatusPill>
+    );
+  };
 
   const columns: Column<UpcomingRelease>[] = [
     { key: "label", header: "Publication", cell: (r) => <span className="font-medium">{r.label}</span> },
@@ -93,7 +89,7 @@ export function EconomicCalendar() {
     {
       key: "window",
       header: "Fenêtre de blackout",
-      cell: (r) => <span className="text-muted-foreground">{formatWindow(r.scheduledAt, blackoutMinutes)}</span>,
+      cell: (r) => <span className="text-muted-foreground">{formatWindow(r, blackoutMinutes)}</span>,
     },
     { key: "state", header: "État", align: "right", cell: (r) => <StateBadge release={r} /> },
   ];
@@ -117,7 +113,7 @@ export function EconomicCalendar() {
           mobileCard={(r) => (
             <>
               <MobileCardHeader name={r.label} subtitle={formatWhen(r.scheduledAt)} badge={<StateBadge release={r} />} />
-              <MobileFields fields={[{ label: "Fenêtre", value: formatWindow(r.scheduledAt, blackoutMinutes) }]} />
+              <MobileFields fields={[{ label: "Fenêtre", value: formatWindow(r, blackoutMinutes) }]} />
             </>
           )}
         />

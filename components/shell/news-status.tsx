@@ -5,7 +5,7 @@ import Link from "next/link";
 import { CalendarClock } from "lucide-react";
 import { cn } from "cn";
 import { useCockpit } from "@/lib/realtime/provider";
-import { defaultRiskPolicy, isNewsBlackout, nextRelease } from "@/lib/risk";
+import { inBlackout, nextRelease } from "@/lib/cockpit/calendar";
 
 function formatCountdown(untilIso: string, nowMs: number): string {
   const remainingMs = Math.max(0, Date.parse(untilIso) - nowMs);
@@ -30,10 +30,12 @@ interface NewsLine {
  * every screen (the fiche's own requirement): pinned at the bottom of the
  * sidebar. Reads `upcomingReleases` directly so it works before an account
  * is connected (the calendar is global). Absent data is shown as the news
- * gate treats it: closed, never as a reassuring blank.
+ * gate treats it: closed, never as a reassuring blank. Whether an entry is
+ * allowed is the core's gate; the blackout window shown here is the active
+ * account's own rule, and none is claimed before there is an account.
  */
 export function NewsStatus({ onNavigate }: { onNavigate?: () => void }) {
-  const { upcomingReleases, account } = useCockpit();
+  const { upcomingReleases, registered } = useCockpit();
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -41,23 +43,25 @@ export function NewsStatus({ onNavigate }: { onNavigate?: () => void }) {
     return () => clearInterval(interval);
   }, []);
 
+  const blackoutMinutes = registered?.riskProfile.news.blackoutMinutes ?? null;
+
   let line: NewsLine;
   let blackout = false;
   if (upcomingReleases === null) {
     line = { title: "Calendrier indisponible", detail: "gate publications fermée", tone: "loss" };
   } else {
-    const policy = defaultRiskPolicy(account?.accountId ?? "unknown");
-    const nowIso = new Date(nowMs).toISOString();
-    const upcoming = nextRelease(nowIso, upcomingReleases);
+    const upcoming = nextRelease(nowMs, upcomingReleases);
     if (!upcoming) {
       line = { title: "Aucune publication", detail: "rien de prévu au calendrier", tone: "muted" };
     } else {
-      blackout = isNewsBlackout(nowIso, upcomingReleases, policy.newsBlackoutMinutes);
+      blackout = blackoutMinutes !== null && inBlackout(nowMs, upcoming, blackoutMinutes);
       line = {
         title: `${upcoming.label} dans ${formatCountdown(upcoming.scheduledAt, nowMs)}`,
         detail: blackout
-          ? `blackout en cours (±${policy.newsBlackoutMinutes} min)`
-          : `blackout à ${formatClock(upcoming.scheduledAt)}`,
+          ? `blackout en cours (±${blackoutMinutes} min)`
+          : blackoutMinutes === null
+            ? `publication à ${formatClock(upcoming.scheduledAt)}`
+            : `blackout à ${formatClock(upcoming.scheduledAt)}`,
         tone: blackout ? "warning" : "muted",
       };
     }

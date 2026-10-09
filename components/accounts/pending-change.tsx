@@ -1,38 +1,44 @@
 "use client";
 
 import { useState } from "react";
-import { useRefreshAccountSettings } from "@/lib/realtime/provider";
-import { cancelSettingsChange } from "@/lib/accounts/settings-api";
-import { describeVersion, isCancellable, type SettingsVersion } from "@/lib/accounts/settings";
+import type { AccountRules, RuleVersionView } from "@/lib/api/generated";
+import { call } from "@/lib/api/client";
+import { describeChange } from "@/lib/accounts/rules-draft";
+import { describeGuardReasons } from "@/lib/accounts/guard-text";
+import { failureOf } from "./use-account-actions";
 import { formatDateTime, secondaryButtonClass } from "./form-controls";
 
 /**
- * A change waiting for the next trading day. Withdrawing it is offered only
- * while no trading day has started since it was requested (the backend
- * refuses otherwise — it may have governed a session somewhere).
+ * A change waiting for the next trading day, with what it would change. Withdrawing it is offered only while no trading day has
+ * started since it was requested (the core says so in `cancellable`, and refuses otherwise — it may have governed a session
+ * somewhere).
  */
 export function PendingChange({
   version,
-  allowCancel = true,
+  inForce,
+  onChanged,
 }: {
-  version: SettingsVersion;
-  allowCancel?: boolean;
+  version: RuleVersionView;
+  /** The rules in force now — the changes are shown against them. */
+  inForce: AccountRules;
+  onChanged: () => void;
 }) {
-  const refresh = useRefreshAccountSettings();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cancellable = allowCancel && isCancellable(version, "en_attente");
+  const changes = describeChange(inForce, version.rules);
 
   async function cancel() {
     setBusy(true);
     setError(null);
     try {
-      await cancelSettingsChange(version.versionId);
+      await call("accounts_cancel_rules", {
+        path: { account_id: version.accountId, version_id: version.versionId },
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Annulation impossible.");
+      setError(failureOf(e).message);
     } finally {
       setBusy(false);
-      refresh();
+      onChanged();
     }
   }
 
@@ -41,16 +47,24 @@ export function PendingChange({
       <div className="flex items-start justify-between gap-2">
         <p className="text-foreground">
           <span className="font-medium text-warning">En attente du prochain jour de trading</span>
-          {" — "}
-          {describeVersion(version)}
           <span className="text-muted-foreground"> (demandé le {formatDateTime(version.requestedAt)})</span>
         </p>
-        {cancellable && (
-          <button type="button" onClick={cancel} disabled={busy} className={secondaryButtonClass}>
+        {version.cancellable && (
+          <button type="button" onClick={() => void cancel()} disabled={busy} className={secondaryButtonClass}>
             {busy ? "…" : "Annuler"}
           </button>
         )}
       </div>
+      {changes.length > 0 && (
+        <ul className="mt-1.5 list-disc pl-4 text-foreground">
+          {changes.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      )}
+      {version.deferralReasons.length > 0 && (
+        <p className="mt-1.5 text-muted-foreground">Reporté parce que : {describeGuardReasons(version.deferralReasons)}</p>
+      )}
       {error && <p className="mt-1 text-destructive">{error}</p>}
     </div>
   );

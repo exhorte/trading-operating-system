@@ -32,13 +32,4 @@ export function Field({
   );
 }
 
-/** « 23/09/2026 14:05 », local time — the trader reads their own clock. */
-export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("fr-FR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+export { formatDateTime } from "@/lib/format";

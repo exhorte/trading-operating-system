@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AccountSummary, ExecutionAgentStatus } from "@/lib/contracts/snapshots";
+import { agent, snapshot } from "@/lib/realtime/test-fixtures";
 import {
   accountKindLine,
   agentIdentityLine,
@@ -9,53 +9,18 @@ import {
   permissionsLine,
 } from "./agent-view";
 
-const account: AccountSummary = {
-  accountId: "477029930",
-  label: "Exness • 477029930",
-  broker: "Exness Technologies Ltd",
-  currency: "USD",
-  balance: 1046.84,
-  equity: 1046.84,
-  dailyPnl: 0,
-  dailyDrawdownPercent: 0,
-  totalDrawdownPercent: 0,
-  openRiskPercent: 0,
+const account = snapshot({
+  accountId: "exness-477029930",
   server: "Exness-MT5Trial9",
   tradeMode: "demo",
   leverage: 2000,
   marginMode: "hedging",
   fifoClose: false,
   tradeAllowed: true,
-  tradeExpert: true,
-};
+});
 
-function status(overrides: Partial<ExecutionAgentStatus> = {}): ExecutionAgentStatus {
-  return {
-    accountId: "477029930",
-    agentId: "mt5-execution-agent-1001",
-    agentVersion: "1.10",
-    buildId: null,
-    mode: "observe",
-    modeCeiling: "observe",
-    identity: "ok",
-    expectedAccountId: null,
-    server: "Exness-MT5Trial9",
-    tradeMode: "demo",
-    marginMode: "hedging",
-    fifoClose: false,
-    terminalTradeAllowed: true,
-    expertTradeAllowed: false,
-    accountTradeExpert: true,
-    accountTradeAllowed: true,
-    tradable: false,
-    closable: false,
-    halted: false,
-    attachedExperts: [],
-    gatewaySilentMs: null,
-    lastHeartbeatTime: null,
-    ...overrides,
-  };
-}
+const status = (overrides: Parameters<typeof agent>[0] = {}) =>
+  agent({ accountLogin: "477029930", expertTradeAllowed: false, tradable: false, closable: false, ...overrides });
 
 describe("accountKindLine", () => {
   it("says demo, server, leverage and hedging", () => {
@@ -72,30 +37,34 @@ describe("accountKindLine", () => {
     expect(line.detail).toContain("mot de passe investisseur");
   });
 
-  it("says when the observer predates I2 rather than guessing", () => {
-    const line = accountKindLine({ ...account, tradeMode: undefined });
+  it("says when the terminal did not say rather than guessing", () => {
+    const line = accountKindLine({ ...account, tradeMode: null });
     expect(line.state).toBe("Inconnu");
-    expect(line.detail).toContain("antérieur à I2");
+    expect(accountKindLine(null).state).toBe("—");
   });
 });
 
 describe("agentIdentityLine", () => {
   it("confirms the agent answers for the terminal's login", () => {
-    expect(agentIdentityLine(status(), account)).toMatchObject({ state: "477029930", tone: "profit" });
+    expect(agentIdentityLine(status(), 477029930)).toMatchObject({ state: "477029930", tone: "profit" });
   });
 
   it("shows a preset expecting another login as a refusal", () => {
-    const line = agentIdentityLine(status({ identity: "mismatch", expectedAccountId: "12345678" }), account);
+    const line = agentIdentityLine(status({ identity: "mismatch", expectedAccountId: "12345678" }), 477029930);
     expect(line.tone).toBe("loss");
     expect(line.detail).toContain("12345678");
   });
 
-  it("shows an agent serving another login than the observer sees", () => {
-    expect(agentIdentityLine(status({ accountId: "999" }), account).state).toBe("Écart");
+  it("shows an agent connected to no account at all as a refusal", () => {
+    expect(agentIdentityLine(status({ identity: "no_account" }), 477029930)).toMatchObject({ state: "Refus", tone: "loss" });
+  });
+
+  it("shows an agent serving another login than the one the core is attached to", () => {
+    expect(agentIdentityLine(status({ accountLogin: "999" }), 477029930).state).toBe("Écart");
   });
 
   it("says nothing is registered when there is no status", () => {
-    expect(agentIdentityLine(null, account).tone).toBe("muted");
+    expect(agentIdentityLine(null, 477029930).tone).toBe("muted");
   });
 });
 
@@ -106,7 +75,7 @@ describe("permissionsLine", () => {
     expect(line.detail).toContain("case de l'EA non");
   });
 
-  it("does not invent permissions an older agent does not publish", () => {
+  it("does not invent permissions an agent does not publish", () => {
     const line = permissionsLine(
       status({ terminalTradeAllowed: null, expertTradeAllowed: null, accountTradeExpert: null, accountTradeAllowed: null }),
     );

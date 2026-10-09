@@ -2,7 +2,7 @@
 
 import { History } from "lucide-react";
 import { useComplianceRate } from "@/lib/compliance/use-compliance-rate";
-import type { LockoutWindow } from "@/lib/compliance/violations";
+import type { LockoutWindow } from "@/lib/api/generated";
 import { SectionHeading } from "@/components/shell/page-header";
 import { DataList, MobileCardHeader, MobileFields, type Column } from "@/components/ui/data-list";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
@@ -61,17 +61,15 @@ const COLUMNS: Column<LockoutWindow>[] = [
 /**
  * Every lockout this account has ever carried, newest first.
  *
- * The data has been served by GET /api/risk/lockouts since T07 and had no
- * screen: it was read only by the compliance detectors, never shown as a
- * history. It is the trace of the two Vague 1 incidents (six trades opened
- * while a lock was held, 2026-09-14 and 2026-09-15) and of the acknowledgment
- * cycle T02c made mandatory — the kind of thing a personal risk system exists
- * to keep in front of the trader.
+ * The data is the core's lockout ledger (GET /api/risk/lockouts). It is the
+ * trace of the two Vague 1 incidents (six trades opened while a lock was held,
+ * 2026-09-14 and 2026-09-15) and of the acknowledgment cycle T02c made
+ * mandatory — the kind of thing a personal risk system exists to keep in front
+ * of the trader.
  *
- * Reuses the fetch already made by the discipline gauge: the endpoint returns
- * the full history regardless of window ("a personal system has a handful of
- * lockouts, ever" — RiskLockoutHistoryRepository), so there is nothing extra
- * to ask for.
+ * Reads through the same hook as the discipline gauge: the ledger is the full
+ * history regardless of window ("a personal system has a handful of lockouts,
+ * ever"), so there is nothing extra to ask for.
  */
 export function LockoutHistory() {
   const { lockouts, rate, failed } = useComplianceRate();
@@ -93,7 +91,7 @@ export function LockoutHistory() {
       <section className="flex flex-col gap-4">
         {heading()}
         <p className="rounded-xl border border-dashed py-8 text-center text-sm text-muted-foreground">
-          {failed ? "Historique illisible — le backend répond-il ?" : "Chargement…"}
+          {failed ? "Historique illisible — le cœur répond-il ?" : "Chargement…"}
         </p>
       </section>
     );

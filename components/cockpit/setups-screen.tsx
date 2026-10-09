@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { CircleCheck, FlaskConical, GitCompareArrows, Handshake, OctagonX, ShieldQuestion } from "lucide-react";
-import { backendHttpBase } from "@/lib/realtime/backend-url";
+import type { AgreementClass, AgreementRow, StrategyEvaluation } from "@/lib/api/generated";
+import { useApi } from "@/lib/api/use-api";
+import { useNow } from "@/lib/cockpit/use-now";
 import { useCockpit } from "@/lib/realtime/provider";
-import { reconcile, type ReconciliationRow } from "@/lib/setup/reconciliation";
-import type { Side } from "@/lib/domain/primitives";
 import { PageHeader, SectionHeading } from "@/components/shell/page-header";
 import { screenAt } from "@/components/shell/nav";
 import { Callout } from "@/components/ui/callout";
@@ -15,41 +15,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SplitLayout } from "@/components/ui/split-layout";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 
-/** Shape of GET /api/setup-proposals (SetupProposalRepository.SetupProposalRow). */
-interface SetupProposalRow {
-  symbol: string;
-  eventAt: string;
-  status: "proposed" | "blocked";
-  stage: string | null;
-  detail: string | null;
-  side: "buy" | "sell" | null;
-  sweptLevelKind: string | null;
-  sweptLevelPrice: number | null;
-  entryPrice: number | null;
-  stopLoss: number | null;
-  takeProfit: number | null;
-  costRatio: number | null;
-  riskRewardRatio: number | null;
-}
-
-interface ClosedTradeRow {
-  brokerPositionId: string;
-  symbol: string;
-  side: Side;
-  openedAt: string;
-}
-
 const REFRESH_MS = 30_000;
 const PROPOSALS_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const RECONCILIATION_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** How close a trade's open time must be to a proposal's detection time to
  * count as the same trade — EA-02 prompt: "un trade pris trois minutes
  * après une proposition... est le même trade." Provisional, adjustable
- * after observation, same status as the killzone hours (lib/setup/preconditions.ts). */
+ * after observation, same status as the killzone hours. The matching itself
+ * is the core's (GET /api/strategy/agreement); this is the tolerance it is asked for. */
 const TOLERANCE_MINUTES = 5;
-const RECONCILIATION_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 
-type ReconciliationClass = ReconciliationRow["class"];
+const EVALUATION_EVENTS = ["strategy.evaluation_completed"] as const;
+
+type ReconciliationClass = AgreementClass;
 
 const CLASS_LABEL: Record<ReconciliationClass, string> = {
   PROPOSE_ET_PRIS: "Proposé et pris",
@@ -67,17 +46,10 @@ function formatTime(iso: string): string {
   return new Date(iso).toISOString().slice(11, 16); // HH:mm UTC
 }
 
-/**
- * What the warning says. A refused connection reaches the screen as the
- * browser's own « Failed to fetch », which says nothing: name what happened —
- * the backend did not answer, or answered with this HTTP status.
- */
-function describeFetchFailure(error: unknown): string {
-  const status = error instanceof Error ? /\((\d{3})\)/.exec(error.message)?.[1] : undefined;
-  return status ? `Le backend a répondu ${status}.` : "Le backend ne répond pas.";
-}
+/** The core's own words for a read that failed — it says whether it answered, and with what. */
+const describeFailure = (error: Error): string => error.message;
 
-const PROPOSAL_COLUMNS: Column<SetupProposalRow>[] = [
+const PROPOSAL_COLUMNS: Column<StrategyEvaluation>[] = [
   { key: "time", header: "Heure (UTC)", cell: (r) => <span className="text-muted-foreground">{formatTime(r.eventAt)}</span> },
   { key: "symbol", header: "Symbole", cell: (r) => <span className="font-medium">{r.symbol}</span> },
   {
@@ -101,8 +73,8 @@ const PROPOSAL_COLUMNS: Column<SetupProposalRow>[] = [
   },
 ];
 
-const RECONCILIATION_COLUMNS: Column<ReconciliationRow>[] = [
-  { key: "class", header: "Classe", cell: (r) => <StatusPill tone={CLASS_TONE[r.class]}>{CLASS_LABEL[r.class]}</StatusPill> },
+const RECONCILIATION_COLUMNS: Column<AgreementRow>[] = [
+  { key: "class", header: "Classe", cell: (r) => <StatusPill tone={CLASS_TONE[r.agreement]}>{CLASS_LABEL[r.agreement]}</StatusPill> },
   { key: "symbol", header: "Symbole", cell: (r) => <span className="font-medium">{r.symbol}</span> },
   { key: "side", header: "Sens", cell: (r) => <span className="text-muted-foreground">{r.side}</span> },
   {
@@ -129,100 +101,31 @@ const RECONCILIATION_COLUMNS: Column<ReconciliationRow>[] = [
  * The page owns both fetches so the dark panel can count what the lists show.
  */
 export function SetupsScreen() {
-  const { account } = useCockpit();
-  const accountId = account?.accountId ?? null;
+  const { activeAccountId: accountId, autonomy } = useCockpit();
+  const mode = autonomy?.effectiveMode ?? "OBSERVE";
 
-  const [proposals, setProposals] = useState<SetupProposalRow[] | null>(null);
-  const [proposalsError, setProposalsError] = useState<string | null>(null);
+  // The last 24 h of evaluations (the list), and the week the agreement is measured over: one window each, re-read when S01
+  // evaluates a candle and on a slow clock, so a screen left open does not go stale. The windows start on the hour, so that
+  // the question changes (and the list is asked again from scratch) once an hour rather than at every tick.
+  const hour = Math.floor(useNow(60_000) / 3_600_000) * 3_600_000;
+  const sinceDay = useMemo(() => new Date(hour - PROPOSALS_LOOKBACK_MS).toISOString(), [hour]);
+  const sinceWeek = useMemo(() => new Date(hour - RECONCILIATION_LOOKBACK_MS).toISOString(), [hour]);
 
-  const [weekProposals, setWeekProposals] = useState<SetupProposalRow[] | null>(null);
-  const [trades, setTrades] = useState<ClosedTradeRow[] | null>(null);
-  const [reconciliationError, setReconciliationError] = useState<string | null>(null);
+  const evaluations = useApi(
+    "strategy_proposals",
+    { query: { since: sinceDay, limit: 5000 } },
+    { refreshOn: EVALUATION_EVENTS, pollMs: REFRESH_MS },
+  );
+  const agreement = useApi(
+    "strategy_agreement",
+    accountId ? { query: { accountId, since: sinceWeek, toleranceMinutes: TOLERANCE_MINUTES } } : null,
+    { refreshOn: [...EVALUATION_EVENTS, "position.opened", "position.closed"], pollMs: REFRESH_MS },
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const since = new Date(Date.now() - PROPOSALS_LOOKBACK_MS).toISOString();
-        const res = await fetch(`${backendHttpBase()}/api/setup-proposals?since=${encodeURIComponent(since)}`);
-        if (!res.ok) {
-          throw new Error(`setup-proposals fetch failed (${res.status})`);
-        }
-        const data = (await res.json()) as SetupProposalRow[];
-        if (!cancelled) {
-          setProposals(data);
-          setProposalsError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setProposalsError(describeFetchFailure(err));
-        }
-      }
-    }
-
-    void load();
-    const interval = setInterval(() => void load(), REFRESH_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!accountId) {
-      return;
-    }
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const base = backendHttpBase();
-        const since = new Date(Date.now() - RECONCILIATION_LOOKBACK_MS).toISOString();
-        const now = new Date().toISOString();
-
-        const [proposalsRes, tradesRes] = await Promise.all([
-          fetch(`${base}/api/setup-proposals?since=${encodeURIComponent(since)}`),
-          fetch(
-            `${base}/api/trades/closed?accountId=${encodeURIComponent(accountId!)}` +
-              `&from=${encodeURIComponent(since)}&to=${encodeURIComponent(now)}`,
-          ),
-        ]);
-        if (!proposalsRes.ok || !tradesRes.ok) {
-          throw new Error("reconciliation fetch failed");
-        }
-        const proposalRows = (await proposalsRes.json()) as SetupProposalRow[];
-        const tradeRows = (await tradesRes.json()) as ClosedTradeRow[];
-        if (!cancelled) {
-          setWeekProposals(proposalRows);
-          setTrades(tradeRows);
-          setReconciliationError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setReconciliationError(describeFetchFailure(err));
-        }
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [accountId]);
-
-  const reconciliation = useMemo(() => {
-    if (weekProposals === null || trades === null) {
-      return null;
-    }
-    return reconcile(
-      weekProposals
-        .filter((p) => p.status === "proposed" && p.side !== null)
-        .map((p) => ({ symbol: p.symbol, side: p.side as Side, detectedAt: p.eventAt })),
-      trades,
-      TOLERANCE_MINUTES,
-    );
-  }, [weekProposals, trades]);
+  const proposals = evaluations.data;
+  const proposalsError = evaluations.error && !proposals ? describeFailure(evaluations.error) : null;
+  const reconciliation = agreement.data;
+  const reconciliationError = agreement.error && !reconciliation ? describeFailure(agreement.error) : null;
 
   const counts = useMemo(() => {
     const result: Record<ReconciliationClass, number> = {
@@ -231,7 +134,7 @@ export function SetupsScreen() {
       PRIS_SANS_PROPOSITION: 0,
     };
     for (const row of reconciliation ?? []) {
-      result[row.class] += 1;
+      result[row.agreement] += 1;
     }
     return result;
   }, [reconciliation]);
@@ -259,13 +162,13 @@ export function SetupsScreen() {
               icon={FlaskConical}
               value={proposals ? String(proposals.length) : "—"}
               label="évaluations de S01"
-              aside={<span className="text-xs text-panel-muted">dernières 24 h, aucune exécution</span>}
+              aside={<span className="text-xs text-panel-muted">dernières 24 h · mode {mode}</span>}
             />
             <MetricPanel>
               <MetricPanelItem
                 label="Propositions"
                 value={proposals ? String(proposed) : "—"}
-                hint="S01 en OBSERVE : rien n'est exécuté"
+                hint={mode === "OBSERVE" ? "S01 en OBSERVE : rien n'est exécuté" : `mode ${mode} : le moteur de risque tranche`}
                 icon={CircleCheck}
               />
               <MetricPanelItem
@@ -296,8 +199,8 @@ export function SetupsScreen() {
 
       <section className="flex flex-col gap-4">
         <SectionHeading
-          title="S01 — Propositions (OBSERVE)"
-          subtitle="dernières 24 h, aucune exécution"
+          title={`S01 — Propositions (${mode})`}
+          subtitle={mode === "OBSERVE" ? "dernières 24 h, aucune exécution" : "dernières 24 h"}
           icon={FlaskConical}
         />
         {proposalsError ? (
@@ -373,13 +276,13 @@ export function SetupsScreen() {
             <DataList
               rows={reconciliation}
               columns={RECONCILIATION_COLUMNS}
-              rowKey={(r) => `${r.class}-${r.brokerPositionId ?? r.proposalDetectedAt}-${r.symbol}`}
+              rowKey={(r) => `${r.agreement}-${r.brokerPositionId ?? r.proposalDetectedAt}-${r.symbol}`}
               mobileCard={(r) => (
                 <>
                   <MobileCardHeader
                     name={r.symbol}
                     subtitle={r.side}
-                    badge={<StatusPill tone={CLASS_TONE[r.class]}>{CLASS_LABEL[r.class]}</StatusPill>}
+                    badge={<StatusPill tone={CLASS_TONE[r.agreement]}>{CLASS_LABEL[r.agreement]}</StatusPill>}
                   />
                   <MobileFields
                     fields={[

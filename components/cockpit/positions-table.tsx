@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { cn } from "cn";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
-import type { Position } from "@/lib/contracts/snapshots";
-import { formatPrice, formatSignedMoney } from "@/lib/format";
+import type { Position } from "@/lib/api/generated";
+import { formatQuote, formatSignedMoney } from "@/lib/format";
 import { DataList, MobileCardHeader, MobileFields, type Column } from "@/components/ui/data-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -15,13 +15,13 @@ const SideBadge = ({ side }: { side: Position["side"] }) => (
   <StatusPill tone={side === "buy" ? "profit" : "loss"}>{side === "buy" ? "Achat" : "Vente"}</StatusPill>
 );
 
-/** T05: the entry capture is server-recorded the moment the position was observed opening — a link, not a button. */
-const CaptureLink = ({ id }: { id: string }) => (
+/** The file of the trade: its levels are recorded the moment the position was seen opening — a link, not a button. */
+const FileLink = ({ id }: { id: string }) => (
   <Link
     href={`/journal/${id}`}
     className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
   >
-    Capture →
+    Dossier →
   </Link>
 );
 
@@ -29,19 +29,19 @@ const COLUMNS: Column<Position>[] = [
   { key: "symbol", header: "Symbole", cell: (p) => <span className="font-medium">{p.symbol}</span> },
   { key: "side", header: "Sens", cell: (p) => <SideBadge side={p.side} /> },
   { key: "volume", header: "Volume", align: "right", cell: (p) => p.volume.toFixed(2) },
-  { key: "entry", header: "Entrée", align: "right", cell: (p) => formatPrice(p.entryPrice) },
-  { key: "price", header: "Cours", align: "right", cell: (p) => formatPrice(p.currentPrice) },
+  { key: "entry", header: "Entrée", align: "right", cell: (p) => formatQuote(p.entryPrice) },
+  { key: "price", header: "Cours", align: "right", cell: (p) => (p.currentPrice === null ? "—" : formatQuote(p.currentPrice)) },
   {
     key: "sl",
     header: "SL",
     align: "right",
-    cell: (p) => <span className="text-muted-foreground">{formatPrice(p.stopLoss)}</span>,
+    cell: (p) => <span className="text-muted-foreground">{formatQuote(p.stopLoss)}</span>,
   },
   {
     key: "tp",
     header: "TP",
     align: "right",
-    cell: (p) => <span className="text-muted-foreground">{formatPrice(p.takeProfit)}</span>,
+    cell: (p) => <span className="text-muted-foreground">{formatQuote(p.takeProfit)}</span>,
   },
   {
     key: "pnl",
@@ -56,7 +56,7 @@ const COLUMNS: Column<Position>[] = [
     cell: (p) => <span className={pnlClass(p.rMultiple)}>{p.rMultiple.toFixed(2)}</span>,
   },
   { key: "strategy", header: "Stratégie", cell: (p) => <span className="text-muted-foreground">{p.strategyId}</span> },
-  { key: "capture", header: "", align: "right", cell: (p) => <CaptureLink id={p.positionId} /> },
+  { key: "file", header: "", align: "right", cell: (p) => <FileLink id={p.positionId} /> },
 ];
 
 /**
@@ -92,10 +92,10 @@ export function PositionsTable() {
             <MobileFields
               fields={[
                 { label: "Volume", value: p.volume.toFixed(2) },
-                { label: "Entrée", value: formatPrice(p.entryPrice) },
-                { label: "Cours", value: formatPrice(p.currentPrice) },
-                { label: "SL", value: formatPrice(p.stopLoss) },
-                { label: "TP", value: formatPrice(p.takeProfit) },
+                { label: "Entrée", value: formatQuote(p.entryPrice) },
+                { label: "Cours", value: p.currentPrice === null ? "—" : formatQuote(p.currentPrice) },
+                { label: "SL", value: formatQuote(p.stopLoss) },
+                { label: "TP", value: formatQuote(p.takeProfit) },
                 {
                   label: "P&L latent",
                   value: <span className={pnlClass(p.unrealizedPnl)}>{formatSignedMoney(p.unrealizedPnl)}</span>,
@@ -104,7 +104,7 @@ export function PositionsTable() {
             />
             <div className="mt-3 flex items-center justify-between text-xs">
               <span className={cn("tabular-nums", pnlClass(p.rMultiple))}>R {p.rMultiple.toFixed(2)}</span>
-              <CaptureLink id={p.positionId} />
+              <FileLink id={p.positionId} />
             </div>
           </>
         )}

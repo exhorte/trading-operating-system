@@ -2,7 +2,9 @@
 
 import { CalendarClock, ChartCandlestick, Clock, Layers3, Target } from "lucide-react";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
-import { nextRelease } from "@/lib/risk";
+import { nextRelease } from "@/lib/cockpit/calendar";
+import { useMarketContext } from "@/lib/cockpit/use-market-context";
+import { useNow } from "@/lib/cockpit/use-now";
 import { HighlightBar, MetricPanel, MetricPanelItem } from "@/components/ui/metric-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -26,8 +28,10 @@ function formatWhen(iso: string): string {
  * never signals (ADR 0002).
  */
 export function MarketMetrics() {
-  const { marketContext, upcomingReleases } = useCockpit();
+  const { upcomingReleases } = useCockpit();
+  const { context: marketContext } = useMarketContext();
   const untrusted = useIsDataUntrusted();
+  const nowMs = useNow();
 
   if (!marketContext) {
     return (
@@ -38,7 +42,7 @@ export function MarketMetrics() {
     );
   }
 
-  const upcoming = upcomingReleases === null ? null : nextRelease(new Date().toISOString(), upcomingReleases);
+  const upcoming = upcomingReleases === null ? null : nextRelease(nowMs, upcomingReleases);
   const biasTone = marketContext.bias === "bullish" ? "profit" : marketContext.bias === "bearish" ? "loss" : "muted";
 
   return (

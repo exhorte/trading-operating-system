@@ -34,7 +34,7 @@ export default function MarketContextPage() {
       />
       <EconomicCalendar />
       <Callout title="Important">
-        Les niveaux affichés viennent de <code className="text-foreground">lib/analysis</code>{" "}
+        Les niveaux affichés viennent de l&apos;analyse du cœur (<code className="text-foreground">domain/market/analysis</code>){" "}
         — source de niveaux, jamais source de signal (ADR 0002). Le graphique annoté (liquidité, FVG, OB, BOS/CHOCH)
         n&apos;est pas construit.
       </Callout>
