@@ -1,5 +1,4 @@
-"""Port of ``lib/risk/lockout.test.ts`` + the trading-day anchor and the loss streak (C# ``TradingDayAnchorTests``,
-``RiskTodayRepositoryTests``)."""
+"""Lockouts, the trading-day anchor and the loss streak (ported from the former ``lib/risk/lockout.test.ts``)."""
 
 from __future__ import annotations
 

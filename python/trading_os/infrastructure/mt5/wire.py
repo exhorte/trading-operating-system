@@ -1,11 +1,10 @@
 """The execution-agent wire (NDJSON over TCP): lean, versioned JSON, one message per line.
 
-Port of ``lib/contracts/mt5-wire.ts`` / ``Mt5Wire.cs`` — and the only wire kept: the observer's WebSocket protocol is
-gone with the observer. This is the **one** place where the MT5 edge's vocabulary (``BUY``/``SELL``, epoch milliseconds,
-flat fields) is converted to the domain's; nothing downstream sees it.
+This is the **one** place where the MT5 edge's vocabulary (``BUY``/``SELL``, epoch milliseconds, flat fields) is converted
+to the domain's; nothing downstream sees it. It is the only wire the core speaks with MT5 (the read path is a worker process).
 
 Parsing is lenient where the agent was historically sloppy (ids and return codes as numbers or strings) and silent
-on garbage: a malformed frame is dropped, never raised (« never crash the gateway »). The ``token`` of a hello is read
+on garbage: a malformed frame is dropped, never raised (« never crash the core »). The ``token`` of a hello is read
 from the raw line by the server and is deliberately not a field of any model: it is never kept, logged or persisted.
 """
 
@@ -16,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict
+from pydantic import AliasChoices, BaseModel, BeforeValidator, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from trading_os.domain.primitives import Side
@@ -97,7 +96,9 @@ class AgentHeartbeat(WireMessage):
     account_trade_expert: bool | None = None
     account_trade_allowed: bool | None = None
     halted: bool | None = None
-    gateway_silent_ms: int | None = None
+    # How long the agent has gone without hearing from the core. ``gatewaySilentMs`` is the name agents built before 1.11 still
+    # send (the .NET Gateway they were written for no longer exists): read it until every agent is recompiled, then drop it.
+    core_silent_ms: int | None = Field(default=None, validation_alias=AliasChoices("coreSilentMs", "gatewaySilentMs"))
     attached_experts: list[str] | None = None
 
 

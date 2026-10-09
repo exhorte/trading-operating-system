@@ -22,8 +22,8 @@ from trading_os import __version__
 from trading_os.api.errors import document_error_envelope, install_error_handlers
 from trading_os.api.routes import accounts, autonomy, execution, journal, market, risk, strategy, system
 from trading_os.api.security import AccessGuardMiddleware
-from trading_os.api.websocket.hub import CockpitHub
 from trading_os.api.websocket.snapshot import build_snapshot
+from trading_os.api.websocket.stream import CockpitStream
 from trading_os.app.config import Settings, get_settings
 from trading_os.app.container import Container, build_container
 from trading_os.runtime.engine import Engine
@@ -47,8 +47,8 @@ def create_app(
     container = container or build_container(settings)
     migrate_url = settings.database_url.get_secret_value() if own_container and settings.database_url else None
     engine = Engine(container, migrate_url=migrate_url)
-    hub = CockpitHub(lambda accounts: build_snapshot(container, accounts), clock=container.clock)
-    hub.subscribe(container.events)
+    stream = CockpitStream(lambda accounts: build_snapshot(container, accounts), clock=container.clock)
+    stream.subscribe(container.events)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -71,7 +71,7 @@ def create_app(
     )
     app.state.container = container
     app.state.engine = engine
-    app.state.hub = hub
+    app.state.stream = stream
     install_error_handlers(app)
     document_error_envelope(app)
 
@@ -95,6 +95,6 @@ def create_app(
 
     @app.websocket("/ws")
     async def live(websocket: WebSocket) -> None:
-        await hub.serve(websocket)
+        await stream.serve(websocket)
 
     return app

@@ -114,7 +114,7 @@ export interface AgentStatus {
   halted: boolean | null;
   attachedExperts: string[];
   capabilities: string[];
-  gatewaySilentMs: number | null;
+  coreSilentMs: number | null;
   lastHeartbeatMs: number | null;
 }
 export type AgreementClass = "PROPOSE_ET_PRIS" | "PROPOSE_ET_REFUSE" | "PRIS_SANS_PROPOSITION";

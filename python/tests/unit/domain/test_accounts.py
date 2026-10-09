@@ -165,7 +165,7 @@ class TestProviderProfiles:
 
 
 class TestAntiTiltGuard:
-    """Port of ``AccountSettingsGuardTests.cs``."""
+    """When does a change to an account's rules apply: at once, or at the next trading day (ADR 0007)?"""
 
     quiet = LiveLink(connected=True, account_id="ACC-A", open_positions=0)
 

@@ -8,7 +8,7 @@ service that can act.
 It reads the **database** through the journal service and the repositories: it starts no engine, opens no terminal, listens on no
 socket. What lives only in the memory of a running core (live quotes, the risk gates right now) is not here — that is the cockpit's.
 
-The account is configured once (``TRADING_OS_ACCOUNT_ID``, or ``ACTIVE_ACCOUNT_ID``): personal use, one account, never asked per call.
+The account is configured once (``ACTIVE_ACCOUNT_ID``, in ``.env`` or in the server's environment): personal use, one account, never asked per call.
 """
 
 from __future__ import annotations
@@ -49,9 +49,7 @@ class ReadOnlyTools:
     def _account(self) -> str:
         account_id = self._account_id()
         if account_id is None:
-            raise ValidationFailed(
-                "no account configured: set TRADING_OS_ACCOUNT_ID (or ACTIVE_ACCOUNT_ID) once", code="no_account"
-            )
+            raise ValidationFailed("no account configured: set ACTIVE_ACCOUNT_ID once", code="no_account")
         return account_id
 
     async def get_trades(self, start: str, end: str, symbol: str | None = None) -> list[dict[str, Any]]:

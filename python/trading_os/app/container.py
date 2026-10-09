@@ -34,7 +34,6 @@ from trading_os.runtime.supervisor import Supervisor
 from trading_os.services.accounts import AccountService, Mt5Factory
 from trading_os.services.autonomy import AutonomyService
 from trading_os.services.execution import AgentLinkPort, ExecutionService
-from trading_os.services.gateways import EaLinkGateway, ObserveGateway, PaperGateway
 from trading_os.services.journal import JournalService
 from trading_os.services.market_data import MarketDataService, TickWriter
 from trading_os.services.news import CalendarClient, NewsService
@@ -42,6 +41,7 @@ from trading_os.services.positions import PositionService
 from trading_os.services.readiness import AccountCheck, ReadinessCollector
 from trading_os.services.reconciliation import ReconciliationService
 from trading_os.services.risk import RiskService
+from trading_os.services.senders import AgentSender, ObserveSender, PaperSender
 from trading_os.services.strategy import StrategyService
 from trading_os.shared.errors import ValidationFailed
 from trading_os.shared.events.dispatcher import EventDispatcher
@@ -150,14 +150,14 @@ def build_container(
             stale_after=settings.ea_silent_after_s, ping_interval=settings.ea_ping_interval_s,
         )  # fmt: skip
         agent_link = ea_server
-    ea_gateway = EaLinkGateway(agent_link, clock)
+    agent_sender = AgentSender(agent_link, clock)
     execution = ExecutionService(
         accounts=accounts, repos=repos, events=events, clock=clock, link=agent_link,
-        gateways={
-            ExecutionRoute.NONE: ObserveGateway(),
-            ExecutionRoute.PAPER: PaperGateway(market),
-            ExecutionRoute.CONFIRM: ea_gateway,
-            ExecutionRoute.AUTOMATIC: ea_gateway,
+        senders={
+            ExecutionRoute.NONE: ObserveSender(),
+            ExecutionRoute.PAPER: PaperSender(market),
+            ExecutionRoute.CONFIRM: agent_sender,
+            ExecutionRoute.AUTOMATIC: agent_sender,
         },
         effective_mode=autonomy.effective_mode, halted=autonomy.halted,
     )  # fmt: skip

@@ -32,8 +32,8 @@ from trading_os.infrastructure.mt5.fake import FakeAccount
 from trading_os.infrastructure.mt5.wire import ExecutionAck, ExecutionReconciled, ExecutionReport
 from trading_os.services.accounts import AccountService
 from trading_os.services.execution import ExecutionService
-from trading_os.services.gateways import EaLinkGateway, ObserveGateway, PaperGateway
 from trading_os.services.market_data import MarketDataService
+from trading_os.services.senders import AgentSender, ObserveSender, PaperSender
 from trading_os.shared.errors import Conflict, Unavailable
 
 pytestmark = pytest.mark.db
@@ -120,11 +120,11 @@ async def make_rig(h: Harness, mode: AutonomyMode = AutonomyMode.CONFIRM) -> Rig
     link = FakeLink()
     holder = {"mode": mode}
     halted = {"on": False}
-    ea = EaLinkGateway(link, h.clock)
+    ea = AgentSender(link, h.clock)
     execution = ExecutionService(
         accounts=accounts, repos=h.repos, events=h.events, clock=h.clock, link=link,
-        gateways={
-            ExecutionRoute.NONE: ObserveGateway(), ExecutionRoute.PAPER: PaperGateway(market),
+        senders={
+            ExecutionRoute.NONE: ObserveSender(), ExecutionRoute.PAPER: PaperSender(market),
             ExecutionRoute.CONFIRM: ea, ExecutionRoute.AUTOMATIC: ea,
         },
         effective_mode=lambda account: holder["mode"], halted=lambda: halted["on"],

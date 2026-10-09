@@ -232,7 +232,7 @@ bool CommandStoreIsFinalStatus(const string status)
 }
 
 //--- I1: final outcomes recorded at or after sinceMs — what the agent sends
-//    again after a reconnection. The Gateway derives a report's id from its
+//    again after a reconnection. The core derives a report's id from its
 //    commandId, status and time, so a report it already has is not stored twice.
 int CommandStoreRecentFinal(const long sinceMs, CommandRecord &records[])
 {

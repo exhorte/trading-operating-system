@@ -1,4 +1,4 @@
-"""The live stream: the per-client bounded queue (what is dropped, what never is, when a client is closed), the hub's protocol
+"""The live stream: the per-client bounded queue (what is dropped, what never is, when a client is closed), the stream's protocol
 (snapshot first, subscribe, resync) with a scripted socket, and the whole thing end to end on a real loopback socket."""
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from websockets.typing import Origin
 
 from tests.support.api import ORIGIN, TOKEN, make_api, serving
 from tests.support.harness import Harness
-from trading_os.api.websocket.hub import Client, CockpitHub, Frame, is_droppable
+from trading_os.api.websocket.stream import Client, CockpitStream, Frame, is_droppable
 from trading_os.domain.accounts.models import Environment
 from trading_os.domain.events import (
     AccountConnected,
@@ -153,11 +153,11 @@ def test_only_telemetry_may_be_dropped_and_a_closed_candle_is_a_fact() -> None:
     assert not is_droppable(ExecutionAcknowledged(account_id="A", command_id="c", status="ACCEPTED"))
 
 
-# ------------------------------------------------------------------------------------------------------ the hub's protocol
+# ------------------------------------------------------------------------------------------------------ the stream's protocol
 
 
 class FakeSocket:
-    """The server side of a WebSocket as the hub sees it, scripted by the test."""
+    """The server side of a WebSocket as the stream sees it, scripted by the test."""
 
     def __init__(self) -> None:
         self.accepted = False
@@ -181,14 +181,14 @@ class FakeSocket:
         self.closed_code = code
 
 
-def make_hub() -> tuple[CockpitHub, list[frozenset[str] | None]]:
+def make_stream() -> tuple[CockpitStream, list[frozenset[str] | None]]:
     scopes: list[frozenset[str] | None] = []
 
     async def snapshot(accounts: frozenset[str] | None) -> dict[str, Any]:
         scopes.append(accounts)
         return {"accounts": sorted(accounts) if accounts is not None else "all", "n": len(scopes)}
 
-    return CockpitHub(snapshot, clock=ManualClock(NOW)), scopes
+    return CockpitStream(snapshot, clock=ManualClock(NOW)), scopes
 
 
 def connected(account: str, n: int = 1) -> AccountConnected:
@@ -196,9 +196,9 @@ def connected(account: str, n: int = 1) -> AccountConnected:
 
 
 async def test_the_first_frame_is_the_snapshot_then_events_follow() -> None:
-    hub, _ = make_hub()
+    stream, _ = make_stream()
     socket = FakeSocket()
-    served = asyncio.create_task(hub.serve(socket))  # type: ignore[arg-type]
+    served = asyncio.create_task(stream.serve(socket))  # type: ignore[arg-type]
     await until(lambda: len(socket.sent) == 1)
     first = socket.sent[0]
     assert socket.accepted and first["type"] == "system.snapshot" and first["accountId"] is None
@@ -208,27 +208,27 @@ async def test_the_first_frame_is_the_snapshot_then_events_follow() -> None:
         and first["id"].startswith("snap-")
     )
 
-    await hub.on_event(connected("A"))
+    await stream.on_event(connected("A"))
     await until(lambda: len(socket.sent) == 2)
     assert socket.sent[1]["type"] == "account.connected" and socket.sent[1]["accountId"] == "A"
     assert socket.sent[1]["payload"]["currency"] == "USD"
     socket.incoming.put_nowait(None)
     await asyncio.wait_for(served, 2)
-    assert hub.stats().clients == 0 and hub.stats().frames_sent == 2
+    assert stream.stats().clients == 0 and stream.stats().frames_sent == 2
 
 
 async def test_subscribing_narrows_the_events_and_the_snapshot_and_global_events_always_pass() -> None:
-    hub, scopes = make_hub()
+    stream, scopes = make_stream()
     socket = FakeSocket()
-    served = asyncio.create_task(hub.serve(socket))  # type: ignore[arg-type]
+    served = asyncio.create_task(stream.serve(socket))  # type: ignore[arg-type]
     await until(lambda: len(socket.sent) == 1)
     socket.incoming.put_nowait(json.dumps({"type": "subscribe", "accountIds": ["A"]}))
     await until(lambda: len(socket.sent) == 2)
     assert scopes[-1] == frozenset({"A"}) and socket.sent[1]["payload"]["accounts"] == ["A"]
 
-    await hub.on_event(connected("B"))  # another account: not for this client
-    await hub.on_event(SystemHeartbeat(seq=1, uptime_seconds=1.0))  # global: always
-    await hub.on_event(connected("A"))
+    await stream.on_event(connected("B"))  # another account: not for this client
+    await stream.on_event(SystemHeartbeat(seq=1, uptime_seconds=1.0))  # global: always
+    await stream.on_event(connected("A"))
     await until(lambda: len(socket.sent) == 4)
     assert [f["type"] for f in socket.sent[2:]] == ["system.heartbeat", "account.connected"]
 
@@ -240,9 +240,9 @@ async def test_subscribing_narrows_the_events_and_the_snapshot_and_global_events
 
 
 async def test_a_resync_sends_a_fresh_snapshot_and_garbage_is_ignored() -> None:
-    hub, scopes = make_hub()
+    stream, scopes = make_stream()
     socket = FakeSocket()
-    served = asyncio.create_task(hub.serve(socket))  # type: ignore[arg-type]
+    served = asyncio.create_task(stream.serve(socket))  # type: ignore[arg-type]
     await until(lambda: len(socket.sent) == 1)
     for junk in ("not json", json.dumps([1, 2]), json.dumps({"type": "teleport"}), json.dumps({"no": "type"})):
         socket.incoming.put_nowait(junk)
@@ -254,14 +254,14 @@ async def test_a_resync_sends_a_fresh_snapshot_and_garbage_is_ignored() -> None:
 
 
 async def test_an_event_is_serialised_once_for_all_clients_and_nothing_happens_without_clients() -> None:
-    hub, _ = make_hub()
-    await hub.on_event(connected("A"))  # nobody is listening: no work, no error
+    stream, _ = make_stream()
+    await stream.on_event(connected("A"))  # nobody is listening: no work, no error
     first, second = FakeSocket(), FakeSocket()
-    tasks = [asyncio.create_task(hub.serve(s)) for s in (first, second)]  # type: ignore[arg-type]
+    tasks = [asyncio.create_task(stream.serve(s)) for s in (first, second)]  # type: ignore[arg-type]
     await until(lambda: len(first.sent) == 1 and len(second.sent) == 1)
-    await hub.on_event(connected("A"))
+    await stream.on_event(connected("A"))
     await until(lambda: len(first.sent) == 2 and len(second.sent) == 2)
-    assert first.sent[1] == second.sent[1] and hub.stats().clients == 2
+    assert first.sent[1] == second.sent[1] and stream.stats().clients == 2
     for socket in (first, second):
         socket.incoming.put_nowait(None)
     await asyncio.gather(*tasks)
@@ -271,10 +271,10 @@ async def test_a_failing_snapshot_closes_the_connection_with_1011() -> None:
     async def broken(accounts: frozenset[str] | None) -> dict[str, Any]:
         raise RuntimeError("a defect")
 
-    hub = CockpitHub(broken, clock=ManualClock(NOW))
+    stream = CockpitStream(broken, clock=ManualClock(NOW))
     socket = FakeSocket()
-    await asyncio.wait_for(hub.serve(socket), 2)  # type: ignore[arg-type]
-    assert socket.closed_code == 1011 and hub.stats().clients == 0
+    await asyncio.wait_for(stream.serve(socket), 2)  # type: ignore[arg-type]
+    assert socket.closed_code == 1011 and stream.stats().clients == 0
 
 
 # ------------------------------------------------------------------------------------------------------ on a real socket
@@ -312,7 +312,7 @@ async def test_the_socket_end_to_end_guarded_snapshot_first_then_the_cores_event
                 await ws.send(json.dumps({"type": "subscribe", "accountIds": ["nobody"]}))
                 narrowed = json.loads(await asyncio.wait_for(ws.recv(), 5))
                 assert narrowed["type"] == "system.snapshot" and narrowed["payload"]["accountStates"] == {}
-            await until(lambda: api.app.state.hub.stats().clients == 0)
+            await until(lambda: api.app.state.stream.stats().clients == 0)
             health = (await api.get("/api/system/health")).json()["websocket"]
             assert health["clients"] == 0 and health["framesSent"] >= 3
     finally:
@@ -329,6 +329,6 @@ async def test_a_closed_socket_is_noticed_and_forgotten(h: Harness) -> None:
             await ws.close()
             with pytest.raises(ConnectionClosed):
                 await ws.recv()
-            await until(lambda: api.app.state.hub.stats().clients == 0)
+            await until(lambda: api.app.state.stream.stats().clients == 0)
     finally:
         await api.close()

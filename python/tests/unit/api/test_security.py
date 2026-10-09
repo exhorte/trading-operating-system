@@ -1,5 +1,5 @@
-"""The access guard: the cockpit's token AND an allowed Origin, on every request but one — and fail closed otherwise. Port of
-``LocalAccessGuardTests.cs`` (the same cases, plus reads now being guarded)."""
+"""The access guard: the cockpit's token AND an allowed Origin, on every request but one — and fail closed otherwise. Reads are guarded
+too (ADR 0016), not only writes."""
 
 from __future__ import annotations
 

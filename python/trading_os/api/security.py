@@ -1,4 +1,4 @@
-"""Who may drive the core — the port of ``LocalAccessGuard.cs`` (I0, 2026-09-26), tightened as ADR 0016 asks: **reads too**.
+"""Who may drive the core (I0, 2026-09-26), tightened as ADR 0016 asks: **reads too**.
 
 Every request under ``/api`` and every WebSocket (``/ws``) must carry the cockpit token **and** an allowed Origin; the one
 exception is ``GET /api/system/health``, which a launcher or a monitor can read without a browser.
@@ -51,7 +51,7 @@ class Verdict(StrEnum):
 REFUSALS = {
     Verdict.NO_TOKEN_CONFIGURED: (
         "Le cœur n'a pas de jeton du cockpit : TRADINGOS_COCKPIT_TOKEN manque dans .env "
-        "(scripts/start-live.ps1 l'écrit) — relance le cœur après l'avoir ajouté."
+        "(scripts/start.ps1 l'écrit) — relance le cœur après l'avoir ajouté."
     ),
     Verdict.ORIGIN_REFUSED: "Origine refusée : seul le cockpit local peut interroger le cœur.",
     Verdict.TOKEN_REFUSED: (

@@ -33,7 +33,7 @@ from trading_os.domain.positions.models import ClosedTrade, PendingOrder, Positi
 from trading_os.domain.risk.trading_day import resolve_today_start_utc
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.client import Mt5Client
-from trading_os.infrastructure.mt5.observer_logic import (
+from trading_os.infrastructure.mt5.mt5_semantics import (
     ClosedFact,
     Deal,
     closed_fact,

@@ -151,7 +151,7 @@ class _SocketSink:
             await self._websocket.close(code=code)
 
 
-class CockpitHub:
+class CockpitStream:
     def __init__(self, snapshot: SnapshotBuilder, *, clock: Clock, capacity: int = CLIENT_QUEUE) -> None:
         self._snapshot = snapshot
         self._clock = clock

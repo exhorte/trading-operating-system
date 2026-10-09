@@ -1,5 +1,5 @@
 """``import-candles`` — bulk-load historical candles (JSON Lines, as ``export-history`` writes them) into the ``candles`` table
-(port of ``scripts/import-candles.ts``). Idempotent: an upsert on ``(symbol, timeframe, open_time)``, safe to re-run."""
+Idempotent: an upsert on ``(symbol, timeframe, open_time)``, safe to re-run."""
 
 from __future__ import annotations
 

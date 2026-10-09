@@ -1,4 +1,4 @@
-"""TCP server for the MT5 execution agent (EA-05, ADR 0010) — the Python replacement of the C# ``Mt5AgentServer``.
+"""TCP server for the MT5 execution agent (EA-05, ADR 0010).
 
 The agent dials *in* (plain TCP, newline-delimited JSON, never WSS: the connection is loopback-only between two
 processes of one personal machine). This is not a bridge: the EA can reach the core only through a socket, and this is
@@ -72,7 +72,7 @@ def build_status(hello: AgentHello, beat: AgentHeartbeat | None) -> AgentStatus:
             (beat.attached_experts if beat and beat.attached_experts is not None else hello.attached_experts) or []
         ),
         capabilities=list(hello.capabilities or []),
-        gateway_silent_ms=beat.gateway_silent_ms if beat else None,
+        core_silent_ms=beat.core_silent_ms if beat else None,
         last_heartbeat_ms=beat.time if beat else None,
     )
 

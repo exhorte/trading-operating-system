@@ -162,7 +162,7 @@ async def test_compliance_is_recomputed_from_the_facts(h: Harness) -> None:
 
 async def test_a_call_with_no_account_configured_says_what_to_set(h: Harness) -> None:
     _, _, server = await rig(h, account_id=None)
-    with pytest.raises(ToolError, match="TRADING_OS_ACCOUNT_ID"):
+    with pytest.raises(ToolError, match="ACTIVE_ACCOUNT_ID"):
         await server.call_tool("get_trades", {"start": "2026-10-01", "end": "2026-10-08"})
 
 

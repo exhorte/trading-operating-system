@@ -1,4 +1,4 @@
-"""Numbered, checksummed, transactional migrations — replaces the ``schema.sql`` that used to be replayed at every start.
+"""Numbered, checksummed, transactional migrations — the schema is never replayed at start, only the pending migrations are applied.
 
 * Files are ``migrations/NNNN_name.sql``, applied in order, each in its own transaction, recorded in ``schema_migrations``
   with a SHA-256 of the file. A file edited after it was applied is an error, not a silent drift.

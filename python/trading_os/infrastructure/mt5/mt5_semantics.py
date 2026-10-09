@@ -1,5 +1,4 @@
-"""Pure logic of the former Python observer (``tools/mt5-observer/mt5_observer.py``), kept because it encodes hard-won
-facts about MT5 — and fixed where the audit found it wrong.
+"""Pure rules of how MT5 reports positions, deals and time — hard-won facts, kept in one tested place.
 
 * A position is keyed by ``POSITION_IDENTIFIER`` (``TradePosition.identifier`` / ``TradeDeal.position_id``), **never** by
   ``ticket``: the identifier does not change for the life of a position, the ticket can be rewritten by broker-side
@@ -8,10 +7,10 @@ facts about MT5 — and fixed where the audit found it wrong.
   never one deal alone (a last partial exit can be slightly negative after swap on a net winner).
 * A position that opens **and** closes between two polls never appears in the live list: it is reconstructed from the deal
   history of the scan window (« missed round trips »). They are exactly the trades that matter most for discipline metrics.
-* **Server time is not UTC.** MT5 timestamps are epoch seconds in the *broker's* clock. The old observer used them as UTC —
+* **Server time is not UTC.** MT5 timestamps are epoch seconds in the *broker's* clock. An earlier reading used them as UTC —
   harmless on Exness (GMT+0), wrong by 2–3 h on FTMO (CE(S)T). Everything here converts through the measured server offset,
   and the offset is only measured from a **fresh** tick: on a weekend the last tick is days old and the difference with the
-  real clock is not an offset (the old estimate returned garbage then).
+  real clock is not an offset (the first estimate returned garbage then).
 """
 
 from __future__ import annotations

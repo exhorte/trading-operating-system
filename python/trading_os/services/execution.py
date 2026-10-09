@@ -1,6 +1,6 @@
 """The execution engine: the centralised path from an approved decision to (at most) one order.
 
-    ExecutionRequest ─▶ replay? ─▶ validation ─▶ **persist PENDING** ─▶ route ─▶ gateway ─▶ ack / report ─▶ final state
+    ExecutionRequest ─▶ replay? ─▶ validation ─▶ **persist PENDING** ─▶ route ─▶ sender ─▶ ack / report ─▶ final state
 
 Guarantees held here (each has a test):
 
@@ -12,7 +12,7 @@ Guarantees held here (each has a test):
 * **fail closed.** If the command cannot be persisted nothing is sent (``STORE_UNAVAILABLE``).
 * **UNKNOWN is first-class.** A silence after the send, a lost link, an ambiguous broker return code (10011/10012/10031 or
   none) leave the command UNKNOWN — never FAILED, never replayed. Only reconciliation closes it.
-* **OBSERVE sends nothing.** The route comes from the autonomy mode; OBSERVE and OFF go to a gateway that cannot send.
+* **OBSERVE sends nothing.** The route comes from the autonomy mode; OBSERVE and OFF go to a sender that cannot send.
 
 The agent's replies reach this service through the ``EaLinkHandler`` methods below; the transitions all go through
 ``domain/execution/state.py`` and are applied as compare-and-set on the stored state.
@@ -68,7 +68,7 @@ from trading_os.infrastructure.mt5.wire import (
     side_from_wire,
 )
 from trading_os.services.accounts import AccountService
-from trading_os.services.gateways import OrderGateway, SendResult
+from trading_os.services.senders import OrderSender, SendResult
 from trading_os.shared.errors import Conflict, IllegalTransition, NotFound, Unavailable
 from trading_os.shared.events.dispatcher import EventDispatcher
 from trading_os.shared.time import Clock, from_epoch_ms
@@ -102,7 +102,7 @@ class ExecutionService:
         events: EventDispatcher,
         clock: Clock,
         link: AgentLinkPort,
-        gateways: dict[ExecutionRoute, OrderGateway],
+        senders: dict[ExecutionRoute, OrderSender],
         effective_mode: Callable[[Account], AutonomyMode],
         halted: Callable[[], bool] = lambda: False,
     ) -> None:
@@ -111,7 +111,7 @@ class ExecutionService:
         self._events = events
         self._clock = clock
         self._link = link
-        self._gateways = gateways
+        self._senders = senders
         self._effective_mode = effective_mode
         self._halted = halted
         self._locks: dict[str, asyncio.Lock] = {}
@@ -311,11 +311,11 @@ class ExecutionService:
         return cancelled or command
 
     async def _dispatch(self, command: ExecutionCommand, account: Account) -> ExecutionCommand:
-        gateway = self._gateways.get(command.route) or self._gateways[ExecutionRoute.NONE]
+        sender = self._senders.get(command.route) or self._senders[ExecutionRoute.NONE]
         if command.route in (ExecutionRoute.NONE, ExecutionRoute.PAPER):
-            result = await gateway.send(command, account)
+            result = await sender.send(command, account)
             return await self._after_local(command, result)
-        result = await gateway.send(command, account)
+        result = await sender.send(command, account)
         if result.kind != "sent":
             return await self._failed_unsent(command, result)
         sent = await self._move(command.command_id, CommandEvent.SENT, sent_at=self._clock.now()) or command

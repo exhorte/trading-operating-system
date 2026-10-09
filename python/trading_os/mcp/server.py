@@ -6,13 +6,12 @@ themselves live in ``tools.py`` and can only read. The server writes nothing to 
 Register it by hand in the assistant's configuration — this project never writes into a user's MCP settings::
 
     {"mcpServers": {"trading-os": {"command": "<venv>\\\\Scripts\\\\python.exe", "args": ["-m", "trading_os", "mcp"],
-                                   "env": {"TRADING_OS_ACCOUNT_ID": "<account id>"}}}}
+                                   "env": {"ACTIVE_ACCOUNT_ID": "<account id>"}}}}
 """
 
 from __future__ import annotations
 
 import json
-import os
 import sys
 from collections.abc import Awaitable
 from typing import Any
@@ -94,7 +93,7 @@ def main() -> int:
 
     settings = get_settings()
     container = build_container(settings)
-    account_id = os.environ.get("TRADING_OS_ACCOUNT_ID") or settings.active_account_id
+    account_id = settings.active_account_id
     tools = ReadOnlyTools(
         repos=container.repos, journal=container.journal, clock=container.clock, account_id=lambda: account_id
     )

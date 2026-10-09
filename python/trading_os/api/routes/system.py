@@ -19,7 +19,7 @@ from trading_os.api.schemas.system import (
     TickQueueView,
     WebSocketView,
 )
-from trading_os.api.websocket.hub import CockpitHub
+from trading_os.api.websocket.stream import CockpitStream
 from trading_os.app.container import Container
 from trading_os.app.dependencies import Core
 from trading_os.domain.autonomy.readiness import ReadinessReport
@@ -30,10 +30,10 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 Limit = Annotated[int, Query(ge=1, le=500)]
 
 
-def build_health(c: Container, hub: CockpitHub | None) -> SystemHealthView:
+def build_health(c: Container, stream: CockpitStream | None) -> SystemHealthView:
     now = c.clock.now()
     health = c.db.health
-    stats = hub.stats() if hub is not None else None
+    stats = stream.stats() if stream is not None else None
     return SystemHealthView(
         status=c.supervisor.status(),
         version=__version__,
@@ -76,16 +76,16 @@ def build_health(c: Container, hub: CockpitHub | None) -> SystemHealthView:
     )
 
 
-def hub_of(request: Request) -> CockpitHub | None:
-    hub: CockpitHub | None = getattr(request.app.state, "hub", None)
-    return hub
+def stream_of(request: Request) -> CockpitStream | None:
+    stream: CockpitStream | None = getattr(request.app.state, "stream", None)
+    return stream
 
 
 @router.get("/health", response_model=SystemHealthView, summary="Is the core up, and what is wrong with it")
 async def health(request: Request, c: Core) -> SystemHealthView:
     """The one open endpoint: a launcher or a monitor reads it without a browser. It says whether the secrets are configured,
     never what they are, and names no account."""
-    return build_health(c, hub_of(request))
+    return build_health(c, stream_of(request))
 
 
 @router.get("/status", response_model=SystemStatus, summary="The cockpit's overview of the whole system")
@@ -97,7 +97,7 @@ async def status(request: Request, c: Core) -> SystemStatus:
         accounts=await c.accounts.accounts(),
         agents=[s for login in c.execution.registered_logins() if (s := c.execution.agent_status(login)) is not None],
         autonomy=await c.autonomy.overview(),
-        health=build_health(c, hub_of(request)),
+        health=build_health(c, stream_of(request)),
     )
 
 

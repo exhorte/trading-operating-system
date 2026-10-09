@@ -1,67 +1,67 @@
 //+------------------------------------------------------------------+
 //| TradingOsAgent.mq5 — EA-05                                        |
-//|                                                                    |
-//| Execution agent for the Trading Operating System (ADR 0010). It    |
-//| connects to the Gateway over a local TCP socket, receives          |
-//| commands, validates them against local safety barriers             |
-//| (context/execution/safety.md), and reports the outcome. It decides |
-//| NOTHING: no strategy, no signal, no market analysis, no decision    |
-//| parameter. It does not know why it executes.                       |
-//|                                                                     |
-//| THIS FILE CONTAINS THE ONLY OrderSend CALL IN THE REPOSITORY        |
-//| (EA-05 increment 6, added 2026-09-15 on the separate explicit       |
-//| approval that ADR 0010 requires). It lives in exactly one function, |
-//| ExecuteOrder, whose first statement returns unless the mode is      |
-//| CONFIRM — grep OrderSend and read that function: there is no        |
-//| execution path that reaches the broker without passing that test.   |
-//|                                                                     |
-//| Mode is a physical barrier, not a switch (ADR 0010): g_mode below   |
-//| is a compile-time const set to MODE_OBSERVE, so in THIS build the   |
-//| guard can never pass and the whole execution body is provably dead  |
-//| code. The approvals of 2026-09-25/26 (ADR 0014 arming, EA-07,       |
-//| EA-08, ADR 0015) open that path increment by increment (study I4    |
-//| to I8) — not in this build. A command that passes every local       |
-//| barrier is still acknowledged and reported SIMULATED today.         |
-//|                                                                     |
-//| I1 (2026-09-26) hardens the agent without touching that barrier:    |
-//|  - identity from the terminal (ACCOUNT_LOGIN / ACCOUNT_SERVER), not |
+//|                                                                   |
+//| Execution agent for the Trading Operating System (ADR 0010). It   |
+//| connects to the core over a local TCP socket, receives            |
+//| commands, validates them against local safety barriers            |
+//| (context/execution/safety.md), and reports the outcome. It decides|
+//| NOTHING: no strategy, no signal, no market analysis, no decision  |
+//| parameter. It does not know why it executes.                      |
+//|                                                                   |
+//| THIS FILE CONTAINS THE ONLY OrderSend CALL IN THE REPOSITORY      |
+//| (EA-05 increment 6, added 2026-09-15 on the separate explicit     |
+//| approval that ADR 0010 requires). It lives in exactly one function,|
+//| ExecuteOrder, whose first statement returns unless the mode is    |
+//| CONFIRM — grep OrderSend and read that function: there is no      |
+//| execution path that reaches the broker without passing that test. |
+//|                                                                   |
+//| Mode is a physical barrier, not a switch (ADR 0010): g_mode below |
+//| is a compile-time const set to MODE_OBSERVE, so in THIS build the |
+//| guard can never pass and the whole execution body is provably dead|
+//| code. The approvals of 2026-09-25/26 (ADR 0014 arming, EA-07,     |
+//| EA-08, ADR 0015) open that path increment by increment (study I4  |
+//| to I8) — not in this build. A command that passes every local     |
+//| barrier is still acknowledged and reported SIMULATED today.       |
+//|                                                                   |
+//| I1 (2026-09-26) hardens the agent without touching that barrier:  |
+//|  - identity from the terminal (ACCOUNT_LOGIN / ACCOUNT_SERVER), not|
 //|    from an input — InpAccountId is only an optional expectation, and|
 //|    a mismatch keeps the agent loaded but refusing (never INIT_FAILED,|
-//|    which would detach it on every account switch);                   |
-//|  - a local halt that works with the backend off: chart button,      |
-//|    control.halt (can only set it) or a file; persisted on disk;      |
-//|  - one instance per terminal;                                        |
-//|  - a per-symbol spread limit in price units (a single point limit    |
-//|    of 50 refused every XAUUSDm order, whose normal spread is ~260    |
-//|    points at 3 digits);                                              |
-//|  - the Gateway token (read from MQL5\Files, never an input);         |
-//|  - hello and heartbeat publish the mode ceiling and effective mode,  |
-//|    the build, margin mode and FIFO, the four trading permissions,    |
-//|    the halt, and every other EA attached to this terminal;           |
-//|  - a short order trace (<= 31 chars), filling mode from the symbol,  |
-//|    a store per login whose write failure blocks an order, and final  |
-//|    reports sent again after a reconnection.                          |
-//|                                                                     |
-//| It still decides NOTHING: no strategy, no signal, no market         |
-//| analysis, no decision parameter. It does not know why it executes.  |
+//|    which would detach it on every account switch);                |
+//|  - a local halt that works with the core off: chart button,    |
+//|    control.halt (can only set it) or a file; persisted on disk;   |
+//|  - one instance per terminal;                                     |
+//|  - a per-symbol spread limit in price units (a single point limit |
+//|    of 50 refused every XAUUSDm order, whose normal spread is ~260 |
+//|    points at 3 digits);                                           |
+//|  - the core's agent token (read from MQL5\Files, never an input); |
+//|  - hello and heartbeat publish the mode ceiling and effective mode,|
+//|    the build, margin mode and FIFO, the four trading permissions, |
+//|    the halt, and every other EA attached to this terminal;        |
+//|  - a short order trace (<= 31 chars), filling mode from the symbol,|
+//|    a store per login whose write failure blocks an order, and final|
+//|    reports sent again after a reconnection.                       |
+//|                                                                   |
+//| It still decides NOTHING: no strategy, no signal, no market       |
+//| analysis, no decision parameter. It does not know why it executes.|
 //+------------------------------------------------------------------+
 #property copyright "Trading Operating System — personal use only"
-#property version   "1.10"
+#property version   "1.11"
 #property description "EA-05 execution agent (I1) — OrderSend exists but is unreachable outside CONFIRM; this build is OBSERVE."
 
 #include "Include/JsonLite.mqh"
 #include "Include/CommandStore.mqh"
 
-#define AGENT_VERSION      "1.10"
+#define AGENT_VERSION      "1.11"
 #define INSTANCE_LOCK      "TradingOsAgent.instance"
 #define HALT_BUTTON        "TradingOsAgent.halt"
 #define HALT_FILE_ALL      "tradingos_halt.flag"
-#define GATEWAY_TOKEN_FILE "tradingos_agent.token"
+#define CORE_TOKEN_FILE "tradingos_agent.token"
 
 //--- Inputs: configuration and bounds only (ADR 0007/0010) — never a
 //    decision parameter, and no default is a guess dressed as a fact.
-input string InpGatewayHost       = "127.0.0.1"; // Gateway host — loopback only, this is a personal-use, single-machine system
-input int    InpGatewayPort       = 9765;        // Must match Cockpit:AgentPort on the Gateway
+input string InpCoreHost       = "127.0.0.1"; // The Python core's host — loopback only, this is a personal-use, single-machine system
+input int    InpCorePort       = 9765;        // Must match EA_LINK_PORT of the Python core (default 9765)
 input string InpAccountId         = "";          // OPTIONAL since I1: the login this terminal is expected to be on. Empty = serve whatever login it is on. Set and different = refuse every command (identity "mismatch")
 input int    InpMagicNumber       = 0;           // REQUIRED: unique per environment (ADR 0010 isolation) — refuses to start if <= 0
 input string InpTradableLogins    = "";          // I1: logins on which an order may EVER reach the broker (CONFIRM only, not in this build). CSV; empty = none
@@ -74,6 +74,7 @@ input string InpAllowedSymbolsCsv = "XAUUSDm,EURUSDm"; // local whitelist — br
 input int    InpMaxSlippagePoints = 10;          // EA-05 inc. 6: MqlTradeRequest.deviation — a bound on the fill, never a decision
 input int    InpReconciliationLookbackDays = 7;  // EA-06: how far back HistorySelect searches to resolve an UNKNOWN commandId
 input int    InpReportReplayMinutes = 60;        // I1: final reports recorded this recently are sent again after a reconnection
+input int    InpDeadManSeconds    = 30;          // Python-native core: a NEW order is refused (DEAD_MAN) when no control.ping has arrived from the core for this long. 5..600; anything lower is read as 30 — it can be loosened, never switched off. A received order is not proof the core is alive; only the ping is. Stops already at the broker stay.
 
 //--- Execution mode ladder (ADR 0010): OBSERVE -> PAPER -> CONFIRM.
 //    AUTO (ADR 0015) is not a value of this enum yet: it arrives with its
@@ -104,14 +105,15 @@ string   g_recv_buffer = "";
 
 //--- I1: identity, read from the terminal — never from an input.
 long   g_login = 0;
-string g_account_id = "";          // the Trading OS accountId: the login, as text (the observer uses the same)
+string g_account_id = "";          // the Trading OS accountId: the login, as text (the core uses the same)
 string g_server = "";
 string g_identity = "no_account";  // "ok" | "mismatch" | "no_account"
 bool   g_tradable = false;         // login listed in InpTradableLogins
 bool   g_closable = false;         // login listed in InpClosableLogins
 
 bool   g_owns_instance_lock = false;
-ulong  g_last_gateway_seen_ms = 0; // GetTickCount64() of the last line from the Gateway
+ulong  g_last_core_seen_ms = 0; // GetTickCount64() of the last line from the core
+ulong  g_last_ping_ms = 0;         // GetTickCount64() of the last control.ping — 0 until the first one on THIS connection (dead-man switch)
 bool   g_token_missing_reported = false;
 bool   g_connect_failure_reported = false;
 
@@ -146,10 +148,10 @@ int OnInit()
             "' — staying loaded, refusing every command until they agree.");
    }
 
-   if(g_login > 0 && !ConnectToGateway())
+   if(g_login > 0 && !ConnectToCore())
    {
       g_connect_failure_reported = true;
-      Print("TradingOsAgent: initial connection to ", InpGatewayHost, ":", InpGatewayPort,
+      Print("TradingOsAgent: initial connection to ", InpCoreHost, ":", InpCorePort,
             " failed (error ", GetLastError(), ") — will retry on timer, silently.");
    }
 
@@ -178,7 +180,7 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 //| This agent is timer-driven, not tick-driven: no OnTick is defined. |
 //| It never acts on a price move by itself — only on messages from    |
-//| the Gateway and its own heartbeat clock (ADR 0010: orient event,   |
+//| the core and its own heartbeat clock (ADR 0010: orient event,   |
 //| not tick; avoid the hyperactivity a prop firm's servers would flag |
 //| if a stop were touched on every tick).                             |
 //+------------------------------------------------------------------+
@@ -203,13 +205,13 @@ void OnTimer()
 
    if(g_login <= 0)
    {
-      return; // no account: nothing to serve, nothing to say to the Gateway
+      return; // no account: nothing to serve, nothing to say to the core
    }
 
    if(g_socket == INVALID_HANDLE || !SocketIsConnected(g_socket))
    {
       g_connected = false;
-      if(!ConnectToGateway())
+      if(!ConnectToCore())
       {
          return;
       }
@@ -249,7 +251,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
    RefreshHaltButton();
    if(g_connected)
    {
-      SendHeartbeat(); // the Gateway learns it now, not in up to 5 s
+      SendHeartbeat(); // the core learns it now, not in up to 5 s
    }
 }
 
@@ -365,7 +367,7 @@ string AttachedExpertsJson()
 //+------------------------------------------------------------------+
 //| local halt (context/execution/safety.md: "Kill switch local")      |
 //| Source of truth: a file in MQL5\Files, so it survives a restart    |
-//| and works with the backend off. tradingos_halt.flag halts any      |
+//| and works with the core off. tradingos_halt.flag halts any      |
 //| login (drop it by hand in an emergency); tradingos_halt_<login>.flag|
 //| is what the button and control.halt write. Halting never closes a  |
 //| position, and never stops a close (EA-08, I5).                     |
@@ -442,7 +444,7 @@ void RefreshHaltButton()
 //+------------------------------------------------------------------+
 //| connect                                                            |
 //+------------------------------------------------------------------+
-bool ConnectToGateway()
+bool ConnectToCore()
 {
    if(g_socket != INVALID_HANDLE)
    {
@@ -456,7 +458,7 @@ bool ConnectToGateway()
       return false;
    }
 
-   if(!SocketConnect(g_socket, InpGatewayHost, InpGatewayPort, 1000))
+   if(!SocketConnect(g_socket, InpCoreHost, InpCorePort, 1000))
    {
       SocketClose(g_socket);
       g_socket = INVALID_HANDLE;
@@ -466,11 +468,12 @@ bool ConnectToGateway()
    g_connected = true;
    g_connect_failure_reported = false;
    g_recv_buffer = "";
-   g_last_gateway_seen_ms = GetTickCount64();
+   g_last_core_seen_ms = GetTickCount64();
+   g_last_ping_ms = 0; // a new connection starts without proof of life: the core must ping before any order is accepted
    SendHello();
    g_last_heartbeat_sent = TimeGMT();
    // I1: outcomes recorded while the link was down (or just before it
-   // dropped) reach the Gateway now; it keeps one row per report.
+   // dropped) reach the core now; it keeps one row per report.
    ReplayRecentReports();
    // EA-06: always on connect, including the first one after a restart —
    // that restart is exactly when an UNKNOWN left behind by a crash between
@@ -480,20 +483,20 @@ bool ConnectToGateway()
    return true;
 }
 
-//--- I1: the Gateway token, written by scripts/start-live.ps1 into this
+//--- I1: the core's agent token (TRADINGOS_AGENT_TOKEN), written by scripts/start.ps1 into this
 //    terminal's MQL5\Files. Never an input: an input lands in the preset
 //    file and in the chart's properties. Limit, written down in the study:
 //    any MQL5 program running in this terminal can read MQL5\Files too.
-string ReadGatewayToken()
+string ReadCoreToken()
 {
-   int handle = FileOpen(GATEWAY_TOKEN_FILE, FILE_READ | FILE_TXT | FILE_ANSI);
+   int handle = FileOpen(CORE_TOKEN_FILE, FILE_READ | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
       if(!g_token_missing_reported)
       {
          g_token_missing_reported = true;
-         Print("TradingOsAgent: ", GATEWAY_TOKEN_FILE, " not found in MQL5\\Files — the Gateway will refuse this agent. ",
-               "Run scripts/start-live.ps1: it writes the file.");
+         Print("TradingOsAgent: ", CORE_TOKEN_FILE, " not found in MQL5\\Files — the core will refuse this agent. ",
+               "Run scripts/start.ps1: it writes the file.");
       }
       return "";
    }
@@ -626,7 +629,7 @@ string JsonBool(const bool value)
 
 //--- Broker ids and retcodes are STRINGS on the wire (lib/contracts/mt5-wire.ts:
 //    a 64-bit ticket does not survive a JavaScript number). Until I1 they went
-//    out as bare numbers, which the Gateway's parser refused: the report of the
+//    out as bare numbers, which the core's parser refused: the report of the
 //    first real fill would have been dropped as a malformed frame. 0 = null.
 string JsonIdOrNull(const long value)
 {
@@ -667,8 +670,8 @@ void SendHello()
    json += "\"accountId\":\"" + JsonEscape(g_account_id) + "\",";
    json += "\"time\":" + IntegerToString(timeMs) + ",";
    json += "\"agentId\":\"" + JsonEscape(GetAgentId()) + "\",";
-   // NOTE: agent.hello carries a single `symbol` field (lib/contracts/mt5-wire.ts)
-   // — a legacy of the single-symbol observer prototype. This agent's
+   // NOTE: agent.hello carries a single `symbol` field (python/trading_os/infrastructure/mt5/wire.py)
+   // — a legacy of the single-symbol prototype. This agent's
    // whitelist may name several symbols; only the first is reported here.
    // Known limitation, not silently papered over — see EA-05 fiche journal.
    json += "\"symbol\":\"" + JsonEscape(symbol) + "\",";
@@ -683,10 +686,10 @@ void SendHello()
    json += "\"mode\":\"" + ModeToWireString(g_mode) + "\",";
    json += "\"agentVersion\":\"" + AGENT_VERSION + "\",";
    json += "\"serverUtcOffsetMinutes\":" + IntegerToString(ServerUtcOffsetMinutes()) + ",";
-   // I1 — everything below is new. The token is checked by the Gateway and
+   // I1 — everything below is new. The token is checked by the core and
    // never stored or logged there.
-   json += "\"token\":\"" + JsonEscape(ReadGatewayToken()) + "\",";
-   json += "\"capabilities\":[\"ping\",\"halt\"],";
+   json += "\"token\":\"" + JsonEscape(ReadCoreToken()) + "\",";
+   json += "\"capabilities\":[\"ping\",\"halt\",\"dead_man\"],"; // dead_man: refuses new orders when the core stops pinging (1.11)
    json += "\"buildId\":\"" + JsonEscape(BuildId()) + "\",";
    json += "\"modeCeiling\":\"" + ModeToWireString(g_mode_ceiling) + "\",";
    json += "\"identity\":\"" + g_identity + "\",";
@@ -721,7 +724,7 @@ void SendHeartbeat()
    json += "\"identity\":\"" + g_identity + "\",";
    json += PermissionsJsonFields();
    json += "\"halted\":" + JsonBool(IsHalted()) + ",";
-   json += "\"gatewaySilentMs\":" + IntegerToString((long)(GetTickCount64() - g_last_gateway_seen_ms)) + ",";
+   json += "\"coreSilentMs\":" + IntegerToString((long)(GetTickCount64() - g_last_core_seen_ms)) + ",";
    json += "\"attachedExperts\":" + AttachedExpertsJson();
    json += "}";
    if(SendRawLine(json))
@@ -743,7 +746,7 @@ bool SendRawLine(const string line)
    uchar data[];
    // count -1: copies the terminating 0 and counts it, in UTF-8 bytes. An
    // explicit StringLen() count copies no terminator, so the "- 1" below
-   // stripped the "\n" instead and the Gateway, which reads line by line,
+   // stripped the "\n" instead and the core, which reads line by line,
    // never saw a single message (EA-05 fiche, 2026-09-24).
    int written = StringToCharArray(withNewline, data, 0, -1, CP_UTF8);
    int len = written - 1; // exclude the terminating 0 from the wire
@@ -786,7 +789,7 @@ void PollIncoming()
       StringTrimRight(line);
       if(StringLen(line) > 0)
       {
-         g_last_gateway_seen_ms = GetTickCount64();
+         g_last_core_seen_ms = GetTickCount64();
          HandleMessage(line);
       }
    }
@@ -801,15 +804,17 @@ void HandleMessage(const string json)
    }
    else if(type == "control.ping")
    {
-      // I1: the Gateway's liveness beat — the last-seen clock above is the
-      // whole point. With arming (ADR 0014, I4) a silent Gateway disarms.
+      // The core's liveness beat (every 5 s). It is the ONLY thing that feeds
+      // the dead-man clock: g_last_core_seen_ms moves on every line, an
+      // order included, and an order is not proof the core is alive.
+      g_last_ping_ms = GetTickCount64();
    }
    else if(type == "control.halt")
    {
-      // I1: the Gateway may SET the halt, never lift it — only a human on
+      // I1: the core may SET the halt, never lift it — only a human on
       // the chart does that (OnChartEvent).
       string reason = JsonGetString(json, "reason");
-      SetHalt("the Gateway" + (reason == "" ? "" : " (" + reason + ")"));
+      SetHalt("the core" + (reason == "" ? "" : " (" + reason + ")"));
       SendHeartbeat(); // carries halted:true — the acknowledgement
    }
    else if(type == "control.set_mode")
@@ -827,6 +832,33 @@ void HandleMessage(const string json)
 }
 
 //+------------------------------------------------------------------+
+//| dead-man switch                                                    |
+//| The agent refuses every NEW order while the core's liveness is in   |
+//| doubt: no control.ping since the connection was made, or none for    |
+//| DeadManSeconds(). A refusal only — it opens nothing and closes       |
+//| nothing, and it never touches a stop already placed at the broker.   |
+//| Empty return = the core is alive as far as this agent can tell.      |
+//+------------------------------------------------------------------+
+int DeadManSeconds()
+{
+   return (InpDeadManSeconds >= 5 && InpDeadManSeconds <= 600) ? InpDeadManSeconds : 30;
+}
+
+string DeadManReason()
+{
+   if(g_last_ping_ms == 0)
+   {
+      return "DEAD_MAN: no ping received yet on this connection — the core's liveness is not established";
+   }
+   ulong silentMs = GetTickCount64() - g_last_ping_ms;
+   if(silentMs > (ulong)DeadManSeconds() * 1000)
+   {
+      return "DEAD_MAN: no ping for " + IntegerToString((long)(silentMs / 1000)) + "s (limit " + IntegerToString(DeadManSeconds()) + "s)";
+   }
+   return "";
+}
+
+//+------------------------------------------------------------------+
 //| validate                                                           |
 //| Local barriers, last line of defense — never a decision (ADR 0007/ |
 //| 0010); context/execution/safety.md documents the reasoning behind   |
@@ -835,6 +867,11 @@ void HandleMessage(const string json)
 //+------------------------------------------------------------------+
 string ValidateOrderCommand(const string symbol, const string orderType, const double volume, const double sl)
 {
+   string dead = DeadManReason();
+   if(dead != "")
+   {
+      return dead;
+   }
    if(!IsAllowedSymbol(symbol))
    {
       return "SYMBOL_MISMATCH: symbol '" + symbol + "' is not in the local whitelist";
@@ -900,7 +937,7 @@ void SendAck(const string commandId, const string status, const string reason)
 //    rest of the repo runs on. Only a real fill (increment 6) passes them.
 //    I1: the report's time is the record's — a report sent again after a
 //    reconnection carries its original time, which is what lets the
-//    Gateway recognise it (report id = commandId + status + time).
+//    core recognise it (report id = commandId + status + time).
 void SendReportRecord(const CommandRecord &rec, const bool replayed)
 {
    string json = "{";
@@ -924,7 +961,7 @@ void SendReportRecord(const CommandRecord &rec, const bool replayed)
 }
 
 //--- Records a final outcome, then reports it. Returns whether the record
-//    was persisted (the report goes out either way: the Gateway must know).
+//    was persisted (the report goes out either way: the core must know).
 bool RecordAndReport(const string commandId, const string status, const string symbol, const string side,
                      const string detail)
 {
@@ -1125,7 +1162,7 @@ void HandleOrderCommand(const string json)
    }
 
    // I1: the local kill switch. Checked before anything that could lead to
-   // the broker, and it needs no link to the backend to hold.
+   // the broker, and it needs no link to the core to hold.
    if(IsHalted())
    {
       string detail = "HALTED: the local kill switch is set on this terminal — lifted only on the chart";

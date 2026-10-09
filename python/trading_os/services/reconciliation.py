@@ -50,7 +50,7 @@ from trading_os.domain.positions.reconciliation import (
 from trading_os.domain.primitives import Side
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.client import ORDER_SIDES, Mt5Client
-from trading_os.infrastructure.mt5.observer_logic import DEAL_ENTRY_IN, DEAL_ENTRY_OUT, Deal, HistoryOrder, side_of_deal
+from trading_os.infrastructure.mt5.mt5_semantics import DEAL_ENTRY_IN, DEAL_ENTRY_OUT, Deal, HistoryOrder, side_of_deal
 from trading_os.infrastructure.mt5.protocol import WorkerError
 from trading_os.infrastructure.mt5.wire import side_to_wire
 from trading_os.services.accounts import AccountService

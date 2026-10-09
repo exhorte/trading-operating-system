@@ -167,7 +167,7 @@ export function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
     halted: false,
     attachedExperts: [],
     capabilities: [],
-    gatewaySilentMs: 100,
+    coreSilentMs: 100,
     lastHeartbeatMs: 100,
     ...overrides,
   };

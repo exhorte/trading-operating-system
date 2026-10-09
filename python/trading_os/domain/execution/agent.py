@@ -14,7 +14,7 @@ from pydantic import Field
 from trading_os.domain.primitives import DomainModel
 
 # Fields that are clocks, not state: a heartbeat that changes only these says nothing new.
-_CLOCK_FIELDS = frozenset({"gateway_silent_ms", "last_heartbeat_ms"})
+_CLOCK_FIELDS = frozenset({"core_silent_ms", "last_heartbeat_ms"})
 _AGENT_MAGIC = re.compile(r"-(\d+)$")
 
 
@@ -46,7 +46,7 @@ class AgentStatus(DomainModel):
         default_factory=list
     )  # every OTHER expert in the terminal — Algo Trading arms them all
     capabilities: list[str] = Field(default_factory=list)
-    gateway_silent_ms: int | None = None  # how long the agent has gone without hearing from the core
+    core_silent_ms: int | None = None  # how long the agent has gone without hearing from the core
     last_heartbeat_ms: int | None = None
 
     def can(self, capability: str) -> bool:

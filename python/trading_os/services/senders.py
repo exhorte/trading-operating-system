@@ -1,8 +1,8 @@
-"""Order gateways: where an approved, persisted command goes. Three of them exist because three execution routes are real:
+"""Order senders: where an approved, persisted command goes. Three of them exist because three execution routes are real:
 
-* ``ObserveGateway`` — OBSERVE / OFF: the command is validated and recorded, and **nothing is sent anywhere**;
-* ``PaperGateway`` — PAPER: a simulated fill at the live quote, in this process, never MT5;
-* ``EaLinkGateway`` — CONFIRM / ARMED / AUTONOMOUS: the one and only way an order leaves the core, over the local socket
+* ``ObserveSender`` — OBSERVE / OFF: the command is validated and recorded, and **nothing is sent anywhere**;
+* ``PaperSender`` — PAPER: a simulated fill at the live quote, in this process, never MT5;
+* ``AgentSender`` — CONFIRM / ARMED / AUTONOMOUS: the one and only way an order leaves the core, over the local socket
   to the MetaTrader 5 execution agent, which holds the single ``OrderSend`` (and refuses anything its own barriers refuse).
 
 The core never calls an order function of the ``MetaTrader5`` package: there is none in its read-only worker. Making
@@ -28,26 +28,26 @@ class SendResult(DomainModel):
     filled_volume: float | None = None
 
 
-class OrderGateway(Protocol):
+class OrderSender(Protocol):
     name: str
 
     async def send(self, command: ExecutionCommand, account: Account) -> SendResult: ...
 
 
 class AgentLink(Protocol):
-    """The part of the execution-agent socket a gateway needs."""
+    """The part of the execution-agent socket a sender needs."""
 
     async def send_line(self, login: str, line: bytes) -> bool: ...
 
 
-class ObserveGateway:
+class ObserveSender:
     name = "observe"
 
     async def send(self, command: ExecutionCommand, account: Account) -> SendResult:
         return SendResult(kind="simulated", detail="OBSERVE: validated and recorded — nothing was sent anywhere")
 
 
-class PaperGateway:
+class PaperSender:
     name = "paper"
 
     def __init__(self, market: MarketDataService) -> None:
@@ -67,7 +67,7 @@ class PaperGateway:
         )
 
 
-class EaLinkGateway:
+class AgentSender:
     name = "ea"
 
     def __init__(self, link: AgentLink, clock: Clock) -> None:

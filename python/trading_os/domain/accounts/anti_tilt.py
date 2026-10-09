@@ -9,7 +9,7 @@ prevent, hence the rule lives where the change is persisted, not in a disabled b
 « No live account » defers too: without a connection nothing can confirm that no position is open. **Every** account
 is checked, not only the connected one — switching accounts in MT5 must not be enough to slip a change past the rule.
 
-Port of ``AccountSettingsGuard.cs`` (same codes, same order of reasons).
+The reason codes, and their order, are stored with every deferred change (``deferral_reasons``): they are part of the ledger.
 """
 
 from __future__ import annotations

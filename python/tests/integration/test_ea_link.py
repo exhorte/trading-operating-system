@@ -1,4 +1,4 @@
-"""The execution-agent link over **real loopback sockets** (port of ``Mt5AgentServerTests.cs``): registry, token,
+"""The execution-agent link over **real loopback sockets** : registry, token,
 duplicate refusal, dead-agent replacement, watchdog, ping, halt, framing and concurrency."""
 
 from __future__ import annotations
@@ -440,10 +440,12 @@ class TestFramingAndRouting:
             "halted": False,
             "attachedExperts": [],
         }
-        await agent.send({**beat, "time": 10, "gatewaySilentMs": 1000})
-        await agent.send({**beat, "time": 20, "gatewaySilentMs": 6000})
+        await agent.send({**beat, "time": 10, "coreSilentMs": 1000})
+        await agent.send({**beat, "time": 20, "gatewaySilentMs": 6000})  # the name agents built before 1.11 still send
         await eventually(lambda: len(rec.heartbeats) == 2)
         assert rec.status_changes == []  # only the two clocks moved
+        status = server.status(LOGIN)
+        assert status is not None and status.core_silent_ms == 6000  # …and both spellings reach the same field
         await agent.send({**beat, "time": 30, "halted": True})
         await eventually(lambda: len(rec.status_changes) == 1)
         status = server.status(LOGIN)

@@ -1,5 +1,4 @@
-"""``spread-history`` — the spread measured from the broker's own tick history, per New York window (port of
-``tools/mt5-observer/spread_history.py``). A throwaway measurement for S01's cost gate, not part of the domain.
+"""``spread-history`` — the spread measured from the broker's own tick history, per New York window. A throwaway measurement for S01's cost gate, not part of the domain.
 
 Read-only like everything here: no order call exists in the worker, nothing is written to the database. It prints the account's trade
 mode and server — never the login or the holder's name.

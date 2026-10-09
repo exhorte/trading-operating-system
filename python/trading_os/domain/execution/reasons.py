@@ -20,7 +20,7 @@ class RejectCode(StrEnum):
     KILL_SWITCH = "KILL_SWITCH"
     AGENT_UNREACHABLE = "AGENT_UNREACHABLE"
     AGENT_CAPABILITY_MISSING = "AGENT_CAPABILITY_MISSING"  # e.g. MODIFY/CLOSE before the agent can handle them
-    DEAD_MAN = "DEAD_MAN"  # the core's own liveness is in doubt: no new orders
+    DEAD_MAN = "DEAD_MAN"  # liveness in doubt, so no new orders: refused by the agent when the core's ping falls silent (EA 1.11)
     STORE_UNAVAILABLE = "STORE_UNAVAILABLE"  # the command could not be persisted *before* sending: nothing was sent
     # Risk Engine (ADR 0007: the single control point)
     RISK_NOT_APPROVED = "RISK_NOT_APPROVED"

@@ -1,11 +1,11 @@
-"""Port of ``tools/mt5-observer/test_mt5_observer.py`` (the pure parts) + the server-clock fixes."""
+"""The pure rules of how MT5 reports positions, deals and time: identifier vs ticket, partial closes, missed round trips, the broker's clock."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
 from trading_os.domain.primitives import Side
-from trading_os.infrastructure.mt5.observer_logic import (
+from trading_os.infrastructure.mt5.mt5_semantics import (
     DEAL_ENTRY_IN,
     DEAL_ENTRY_OUT,
     DEAL_TYPE_BUY,

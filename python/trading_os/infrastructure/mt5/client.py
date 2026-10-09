@@ -23,7 +23,7 @@ from trading_os.domain.accounts.models import AccountSnapshot
 from trading_os.domain.market.models import Candle, SymbolSpec, Tick
 from trading_os.domain.positions.models import PendingOrder, Position
 from trading_os.domain.primitives import Side, Timeframe
-from trading_os.infrastructure.mt5.observer_logic import (
+from trading_os.infrastructure.mt5.mt5_semantics import (
     Deal,
     HistoryOrder,
     measure_server_offset_minutes,
@@ -53,7 +53,7 @@ ORDER_SIDES = {
     1: Side.SELL,
 }
 
-# Fresh enough to measure the broker's clock against ours (see observer_logic.measure_server_offset_minutes).
+# Fresh enough to measure the broker's clock against ours (see mt5_semantics.measure_server_offset_minutes).
 FRESH_TICK_SECONDS = 15 * 3600
 
 
@@ -371,7 +371,7 @@ class Mt5Client:
         risk = abs(entry - stop)
         move = (current - entry) * side.direction
         return Position(
-            # POSITION_IDENTIFIER: stable for the life of the position. The ticket is NOT (see observer_logic).
+            # POSITION_IDENTIFIER: stable for the life of the position. The ticket is NOT (see mt5_semantics).
             position_id=str(row["identifier"]),
             account_id=self.account_id,
             symbol=row["symbol"],

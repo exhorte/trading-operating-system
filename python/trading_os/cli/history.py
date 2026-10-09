@@ -1,5 +1,5 @@
-"""``export-history`` — one-shot export of historical candles from the terminal as JSON Lines (port of
-``tools/mt5-observer/import_history.py``), and ``list-symbols`` (port of ``list_symbols.py``). Read-only, no credentials.
+"""``export-history`` — one-shot export of historical candles from the terminal as JSON Lines, and ``list-symbols`` (the broker
+symbols behind a canonical name). Read-only, no credentials.
 
 ``--from`` is inclusive, ``--to`` is EXCLUSIVE, so the exported set is reproducible bit for bit whenever the export runs. ``--bars``
 exports the last N bars instead (only the newest may still be forming). Load the file with ``import-candles``.

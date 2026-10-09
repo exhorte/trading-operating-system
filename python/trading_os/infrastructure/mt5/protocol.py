@@ -7,7 +7,7 @@ through the execution agent (``ea_link``) and nowhere else.
 
 Arguments cross the pipe as JSON; two markers cover what JSON lacks:
 
-* ``{"$dt": "<ISO 8601>"}`` → ``datetime`` (history functions take datetimes — in the **broker's** clock, see ``observer_logic``)
+* ``{"$dt": "<ISO 8601>"}`` → ``datetime`` (history functions take datetimes — in the **broker's** clock, see ``mt5_semantics``)
 * ``{"$tf": "M15"}``        → the ``TIMEFRAME_M15`` constant of the package
 """
 
