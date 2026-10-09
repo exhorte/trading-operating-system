@@ -1,5 +1,7 @@
 # ADR 0013 — Connexion au compte depuis l'application
 
+> **Amendement du 2026-10-09 (ADR 0016).** Le Gateway et l'observateur dont parle cet ADR n'existent plus : le cœur Python lit le terminal lui-même (un processus enfant par terminal) et porte la connexion (`POST /api/accounts/{id}/connect`, `…/disconnect`, `…/reconnect`). Le stockage opt-in des identifiants est amendé par l'ADR 0016 ; la règle de fond tient — aucun mot de passe dans le cockpit, les journaux, la base ni les événements.
+
 Date : 2026-09-26 (rédaction). Statut : **accepté** — accord nommé de
 l'utilisateur le 2026-09-25 : « J'approuve l'ADR 0013 (connexion depuis
 l'application) », sur la conception de l'étude

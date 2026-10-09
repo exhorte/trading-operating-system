@@ -1,9 +1,9 @@
 # Architecture cible — Trading OS Python-native
 
-> Phase 1 de la migration. Spécification contre laquelle le cœur Python est implémenté et testé.
-> Décision : `context/adr/0016-architecture-python-native.md`. État mesuré de départ et dispositions fichier par
-> fichier : `docs/architecture/migration-map.md`. Ce document décrit la **cible** ; ce qui n'est pas encore
-> livré est signalé dans le rapport de migration, jamais présenté comme fait ici.
+> Phase 1 de la migration. Spécification contre laquelle le cœur Python a été implémenté et testé, **mise à jour le 2026-10-09 avec
+> ce qui a été construit** (noms de modules, du fil et des écarts). Décision : `context/adr/0016-architecture-python-native.md`. État de
+> départ et dispositions fichier par fichier : `docs/architecture/migration-map.md`. Ce qui a été livré, ce qui ne l'est pas et les écarts
+> assumés : `docs/architecture/python-native-migration-report.md` — jamais présenté comme fait ici sans y figurer.
 
 ## 1. Principes
 
@@ -42,7 +42,7 @@ Arborescence (`python/trading_os/`) — celle de la mission, ajustée par l'audi
 | `api/routes/`, `api/websocket/`, `api/schemas/`, **`api/security.py`** | REST, WebSocket, schémas propres à l'API, garde jeton+Origin | aucune règle métier |
 | `domain/<accounts,market,strategy,risk,execution,positions,autonomy,journal,system>/` | modèles pydantic, règles pures, machines à états | **aucune E/S, aucun import d'infrastructure** (test d'architecture) |
 | `services/` | un service par capacité (liste ci-dessus) | orchestre domaine + infrastructure ; état en mémoire propre |
-| `infrastructure/mt5/` | `client.py`, `transport.py`, `worker.py`, `fake.py`, `observer_logic.py`, `wire.py`, `ea_link.py` | **seul** endroit qui parle à MT5 |
+| `infrastructure/mt5/` | `client.py`, `transport.py`, `worker.py`, `fake.py`, `mt5_semantics.py`, `wire.py`, `ea_link.py` | **seul** endroit qui parle à MT5 |
 | `infrastructure/database/` | pool, migrations SQL, dépôts, `event_store.py` | seul endroit qui écrit en SQL |
 | `infrastructure/news/`, **`infrastructure/security/`**, `infrastructure/filesystem/` | FRED ; `CredentialStore` ; lecture `.env`/fichiers jeton | — |
 | `runtime/` | `engine.py` (cycle de vie), `supervisor.py`, `heartbeat.py`, `scheduler.py` | — |
@@ -50,7 +50,7 @@ Arborescence (`python/trading_os/`) — celle de la mission, ajustée par l'audi
 | **`cli/`**, **`mcp/`** | `serve`, `db migrate`, `import-candles`, `spread-history`, `list-symbols`, `weekly-review`, serveur MCP en lecture seule | outils, pas de logique |
 
 Chaque service est un module de ce processus (pas de port, pas de file externe). Un **dispatcher d'événements interne**
-(`shared/events/dispatcher.py`, ≈ 80 lignes : `subscribe(type, handler)` / `publish(event)` asynchrone) relie les
+(`shared/events/dispatcher.py`, ≈ 45 lignes : `subscribe(type, handler)` / `publish(event)` asynchrone) relie les
 services ; trois abonnés génériques seulement : persistance (`event_store`), diffusion WebSocket, journalisation.
 
 ### Responsabilités par service
@@ -134,7 +134,7 @@ commande humaine vise un `accountId` explicite qui doit être connecté et égal
 
 Pipeline unique : `TradeIntent → RiskService → RiskDecision → ExecutionService`. Jamais `Strategy → Execution`.
 
-`can_i_trade(account, intent?) → {decision: ALLOWED|DENIED, reasons[], checks[]}` — 17 contrôles explicables :
+`can_i_trade(account, intent?) → {decision: ALLOWED|DENIED, reasons[], checks[]}` — 18 contrôles explicables (un par identifiant : compte sain, compte verrouillé, règles du compte, autonomie, courtier connecté, agent d'exécution, kill switch, perte du jour, drawdown, trades, pertes consécutives, risque ouvert, corrélation, positions, spread, session, actualité, symbole) :
 compte sain · courtier connecté · MT5 sain · règles du compte · budget de perte du jour · drawdown total · risque ouvert ·
 risque corrélé · actualité · spread (porte de coût S01, pas de plafond fixe : ADR 0015) · session · symbole autorisé ·
 limite de positions · nombre de trades · verrou/kill switch · état d'autonomie · santé EA/MT5. Sortie type :
@@ -187,19 +187,20 @@ preuve de vie, seul le ping l'est ; les stops chez le courtier restent. Côté c
 ## 8. Intégration MT5
 
 **Lecture** — `Mt5Client` (async) pilote un **processus enfant** par terminal (`worker.py`, JSON par ligne sur stdio) qui
-importe `MetaTrader5` et n'exécute que la **liste blanche** : `initialize, login, shutdown, last_error, account_info,
-terminal_info, symbol_info, symbol_info_tick, symbol_select, symbols_get, positions_get, orders_get, history_deals_get,
-history_orders_get, copy_rates_from_pos, copy_rates_range, copy_ticks_range, order_calc_profit, order_calc_margin`.
+importe `MetaTrader5` et n'exécute que la **liste blanche** (25 fonctions de lecture) : `initialize, login, shutdown, last_error,
+version, account_info, terminal_info, symbol_info, symbol_info_tick, symbol_select, symbols_get, symbols_total, positions_get,
+positions_total, orders_get, orders_total, history_deals_get, history_orders_get, copy_rates_from, copy_rates_from_pos,
+copy_rates_range, copy_ticks_from, copy_ticks_range, order_calc_profit, order_calc_margin`.
 `order_send`, `order_check` et tout appel de modification/clôture n'y figurent pas : un test lit la liste et échoue si un
-nom d'ordre apparaît (équivalent du « grep ce fichier : il n'y en a pas » de l'observateur historique). Raisons : module
+nom d'ordre apparaît. Raisons : module
 global au processus, appels bloquants, isolation des plantages natifs. `FakeMt5` implémente la même surface pour les tests
 et le mode simulé (`MT5_ENABLED=false`).
 
 **Exécution** — lien TCP NDJSON avec l'EA (`ea_link.py`) : serveur asyncio sur `127.0.0.1:9765`, registre par compte
 (refus d'un second `hello` tant que l'agent existant est vivant, silencieux > 30 s = mort), jeton comparé en temps constant
-(fail-closed), watchdog, `control.ping` 5 s, `control.halt`. Le protocole (`wire.py`) reprend `lib/contracts/mt5-wire.ts` :
-messages de l'agent `agent.hello/heartbeat, execution.ack/report/reconciled/position.scan` ; du cœur `execution.order,
-control.ping, control.halt`. **L'EA reste inchangé sur le fil** ; seul ajout : refus `DEAD_MAN`.
+(fail-closed), watchdog, `control.ping` 5 s, `control.halt`. Le protocole est défini par `wire.py`, l'unique endroit où le
+vocabulaire du bord MT5 devient celui du domaine : messages de l'agent `agent.hello/heartbeat, execution.ack/report/reconciled/position.scan` ; du cœur `execution.order,
+control.ping, control.halt`. **Sur le fil, l'EA ne change que par la build 1.11** : le refus `DEAD_MAN` (premier contrôle de validation, jamais désactivable), la capacité `dead_man` annoncée dans le `hello`, et le champ du battement `gatewaySilentMs` rebaptisé `coreSilentMs` (le cœur lit encore l'ancien nom : une ligne à retirer quand tous les agents sont recompilés).
 
 **EA** — connexion, heartbeat, exécution locale, accusés, télémétrie, réconciliation, sécurité locale, arrêt d'urgence. Aucune
 stratégie, aucun Risk Engine principal, aucun journal métier, aucune IA. Orienté événements : il réagit à une commande, publie
@@ -207,7 +208,7 @@ un heartbeat/scan toutes les 5 s, ne modifie rien « à chaque tick ». Plafond 
 
 ## 9. Intégration frontend
 
-REST (JSON camelCase, schémas = modèles pydantic → OpenAPI → `lib/api/schema.ts` généré) + un WebSocket `/ws`.
+REST (JSON camelCase, schémas = modèles pydantic → OpenAPI → `lib/api/generated.ts` généré, avec la table des opérations nommées) + un WebSocket `/ws`.
 Authentification : jeton du cockpit (`/api/cockpit-token`, même origine) en `Authorization: Bearer` (REST) ou
 `?access_token=` (WS) **et** Origin autorisée ; lectures comprises (hors `/api/system/health`). Contrat WebSocket (« gates temps réel ») :
 
@@ -221,7 +222,7 @@ Authentification : jeton du cockpit (`/api/cockpit-token`, même origine) en `Au
 | Contre-pression | file bornée par client (500) ; en cas de débordement les **ticks** les plus anciens sont jetés, jamais un événement de cycle de vie ; au-delà, fermeture 1013 → resynchronisation |
 | Observabilité | `GET /api/system/health` : clients WS, compteur de trames, file, événements perdus |
 
-Le navigateur n'évalue plus aucune règle : il affiche `risk.state.updated`, `analysis.market_context.updated`, etc. Il ne
+Le navigateur n'évalue plus aucune règle : il affiche `risk.state_updated`, `account.snapshot`, etc., et lit le contexte de marché par `GET /api/market/{symbol}/context`. Il ne
 publie plus de faits de verrou (`PublishEvent`) : `POST /api/risk/lockouts` (kill switch) et `…/acknowledge`.
 
 ## 10. Base de données
@@ -296,7 +297,7 @@ données de marché, Risk Engine (dernier cycle), moteur d'exécution, réconcil
 | processus de lecture MT5 (worker) | module global + appels bloquants + plantages natifs (E-06) ; ajoute la liste blanche structurelle |
 | `Mt5Transport` (sous-processus / en processus) | tests et mode simulé sans terminal ; une seule ligne de séparation |
 | dispatcher d'événements | relie les services sans qu'ils se connaissent ; < 100 lignes ; pas de bus distribué |
-| `OrderGateway` (Null, Paper, EaLink) | trois modes d'exécution réels ; c'est ce qui rend « OBSERVE n'envoie rien » testable |
+| `OrderSender` (Observe, Paper, Agent) | trois routes d'exécution réelles ; c'est ce qui rend « OBSERVE n'envoie rien » testable |
 | `CredentialStore` | exigé par la mission ; trois implémentations réelles (none, windows, env/test) |
 | `Repository` (par agrégat) | SQL explicite isolé de la logique ; pas de classe générique |
 | `ProfileFactory` (registre) | remplace les `if ftmo` : c'est la demande explicite de la mission |
@@ -319,15 +320,15 @@ Rejetées : usine de dépôts, adaptateurs de courtier génériques (Alpaca/Snap
 | # | Invariant | Mécanisme | Test |
 |---|---|---|---|
 | 1 | Python est le cœur | tout le domaine/les services sont Python | arborescence |
-| 2–3 | .NET et SignalR inutiles | dossiers supprimés | recherche globale (rapport) |
+| 2–3 | .NET et SignalR inutiles | `backend/` et le client SignalR supprimés | recherche globale (rapport, § « Recherche globale ») |
 | 4–5 | pas d'Alpaca / SnapTrade | aucune référence | recherche globale |
-| 6–7 | Exness/FTMO via MT5, encapsulé | `infrastructure/mt5/` seul | test d'architecture (import de `MetaTrader5` limité à `worker.py` et `observer`) |
+| 6–7 | Exness/FTMO via MT5, encapsulé | `infrastructure/mt5/` seul | test d'architecture (import de `MetaTrader5` limité à `worker.py`) |
 | 8 | le frontend parle au cœur | `lib/api`, `lib/websocket` | build + tests |
 | 9–10 | Risk Engine avant Exécution, aucun contournement | `ExecutionService.submit` exige une décision approuvée | `test_execution_requires_risk_decision` |
 | 11 | chaque ordre a un `accountId` | champ requis du schéma | test API |
 | 12 | un seul compte actif reçoit des ordres automatiques | `active_account` unique | test autonomie/exécution |
 | 13 | identifiants jamais hors du cœur | `SecretStr`, filtre, sentinelles | test de sentinelle |
-| 14–16 | EA ni cerveau, ni stratégie, événementiel | EA inchangé hors `DEAD_MAN` | revue du diff MQL5 |
+| 14–16 | EA ni cerveau, ni stratégie, événementiel | EA inchangé hors build 1.11 (`DEAD_MAN`, renommage du Gateway) | revue du diff MQL5, `tests/architecture/test_execution_agent.py` |
 | 17–18 | réconciliation et idempotence obligatoires | services + base | tests dédiés |
 | 19–20 | kill switch, homme mort | `halt`, ping/`DEAD_MAN` | tests autonomie + lien EA |
 | 21–22 | autonomie seulement si READY ; erreur critique ⇒ HALT | `AutonomyService`, supervisor | tests autonomie |

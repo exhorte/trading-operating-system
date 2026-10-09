@@ -1,5 +1,7 @@
 # EA-02 — Mode OBSERVE et taux d'accord
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/strategy/s01/reconciliation.py` (rapprochement proposé / pris), `api/routes/strategy.py` (`GET /api/strategy/agreement`, fenêtre de 31 jours au plus), cockpit `components/cockpit/setups-screen.tsx` (`/setups`).
+
 Statut : **livré** (code) · Vague EA · Effort 1–2 j (révisé, voir note) · Valeur 5 · Dépend de : EA-01
 
 C'est l'instrument de mesure, pas un écran de signaux : ce panneau existe pour comparer la machine à l'utilisateur, pas pour dire quoi faire. Aucune exécution, aucun ordre.

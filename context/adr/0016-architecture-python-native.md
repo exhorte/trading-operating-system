@@ -130,3 +130,14 @@ Next.js ──HTTP/WS──▶ FastAPI ─▶ Cœur Python (domaine, services, s
   jetable) et de contrat ; recherche globale prouvant l'absence de dépendance
   fonctionnelle à .NET/SignalR/Gateway ; rapport final
   (`docs/architecture/python-native-migration-report.md`).
+
+## Réalisation (2026-10-09)
+
+Les phases 0 à 7 de la mission sont faites : le cœur Python porte le métier, le cockpit lui parle en REST et en un WebSocket, le Gateway .NET, SignalR, l'observateur Python et leurs scripts, conteneur et documents sont supprimés. Inventaire, preuves et dette : `docs/architecture/python-native-migration-report.md`. Écarts avec le texte ci-dessus, tous assumés :
+
+- **L'entrée de l'agent s'appelle désormais `InpCorePort`** (`InpGatewayPort` avant la build 1.11) ; le défaut 9765 est inchangé, un préréglage ancien se relit avec les mêmes valeurs. « L'EA reste inchangé sur le fil » est amendé : la build 1.11 ajoute le refus `DEAD_MAN`, la capacité `dead_man` et renomme `gatewaySilentMs` en `coreSilentMs` (le cœur lit encore l'ancien nom jusqu'à ce que tous les agents soient recompilés).
+- **Le diffuseur du WebSocket** s'appelle `CockpitStream` et **les routes d'envoi d'ordres** `OrderSender` : « hub » et « gateway » ne désignent plus rien dans le code.
+- **L'activation du compte** se fait par `PUT /api/active-account` (un réglage idempotent), non `POST`.
+- **L'ADR 0018** supprime la capture graphique et supersède le rendu à la demande de l'ADR 0009.
+- **Les « interprétations à confirmer »** ci-dessus n'ont été contredites par rien : elles attendent toujours la confirmation de l'utilisateur, avec les jugements consignés dans `migration-map.md` § 10.
+- **Rien n'a tourné contre un vrai terminal, un vrai agent ni la vraie base** ; le premier essai réel est à faire par l'utilisateur, en `OBSERVE`.

@@ -1,5 +1,7 @@
 # T03 — Gate calendrier économique
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/infrastructure/news/fred.py`, `services/news.py`, `domain/market/calendar.py` et `domain/risk/gates.py::news_gate` ; `GET /api/market/calendar`.
+
 Statut : **livré** (2026-09-05) · Vague 1 · Effort 1–2 j · Valeur 5 · Dépend de : rien
 
 ## Problème

@@ -1,5 +1,7 @@
 # Roadmap
 
+> **Amendement du 2026-10-09 (ADR 0016).** Les chemins `lib/…`, `backend/` et `tools/mt5-observer` cités ici sont ceux de l'époque : ils sont devenus `python/trading_os/…` (voir « Ancrage actuel » en tête de chaque fiche d'outil, et la correspondance du rapport `docs/architecture/python-native-migration-report.md`). Le « hub SignalR », l'« observer » et le « Gateway » n'existent plus ; leur rôle est tenu par le cœur Python.
+
 Version 2 — 2026-09-04. L'unité de travail est **l'outil**, groupé en **vagues**. Les phases numérotées de la série 1 n'existent plus (ADR 0006).
 
 Effort en jours de travail effectif, à la louche. Valeur = impact quotidien réel, 1 à 5.

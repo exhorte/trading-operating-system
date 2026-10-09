@@ -1,5 +1,7 @@
 # S01 — Stratégie « Sweep aligné »
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/strategy/s01/` (une étape de la séquence par module) et `services/strategy.py`.
+
 Statut : **à faire** · Vague EA · Effort 3–5 j · Valeur 5 · Dépend de : rien pour
 la détection ; l'exécution dépend de EA-01 à EA-06.
 

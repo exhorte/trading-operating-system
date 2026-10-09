@@ -1,5 +1,7 @@
 # Backlog — T06 à T19 et outils standalone
 
+> **Amendement du 2026-10-09 (ADR 0016).** Les chemins `lib/…`, `backend/` et `tools/mt5-observer` cités ici sont ceux de l'époque : ils sont devenus `python/trading_os/…` (voir « Ancrage actuel » en tête de chaque fiche d'outil, et la correspondance du rapport `docs/architecture/python-native-migration-report.md`). Le « hub SignalR », l'« observer » et le « Gateway » n'existent plus ; leur rôle est tenu par le cœur Python.
+
 Une fiche s'écrit au moment de démarrer l'outil, pas avant : une fiche
 rédigée trois mois trop tôt décrit un problème qui a changé.
 

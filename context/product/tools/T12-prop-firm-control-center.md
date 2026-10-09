@@ -1,5 +1,7 @@
 # T12 — Prop Firm Control Center
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/accounts/` et `services/accounts.py` ; cockpit `app/(cockpit)/{account,settings}/` et `components/accounts/`.
+
 Statut : **en cours** — incrément 1 « un compte à la fois » **livré** (2026-09-21) ;
 incrément 2 « Account & Settings » **livré** (2026-09-23) · Vague 3 ·
 Effort backlog 1–2 sem (incrément 1 : 1–2 j) · Valeur 5 · Dépend de : T11

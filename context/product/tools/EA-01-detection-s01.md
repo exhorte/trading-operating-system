@@ -1,5 +1,7 @@
 # EA-01 — Détection S01, en TypeScript pur
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/strategy/s01/` (détecteurs purs), `services/strategy.py` (évaluation à chaque clôture de bougie, verdict écrit dans `setup_proposals`). Le pipeline en trois processus (exportateur, fichiers JSONL, worker Node) n'existe plus.
+
 Statut : **livré** · Vague EA · Effort 2–3 j · Valeur 5 · Dépend de : rien pour la détection (l'exécution dépendra d'EA-01 à EA-06)
 
 ## Problème

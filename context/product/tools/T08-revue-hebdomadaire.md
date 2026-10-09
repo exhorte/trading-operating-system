@@ -1,5 +1,7 @@
 # T08 — Revue hebdomadaire générée
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python -m trading_os weekly-review` (`python/trading_os/cli/weekly_review.py`). Le script Node `tools/weekly-review` n'existe plus.
+
 Statut : **livré** (3 incréments, 2026-09-17) · Vague 2 · Effort 1–2 j ·
 Valeur 4 · Dépend de : T06 (livré)
 

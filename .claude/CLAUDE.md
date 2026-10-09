@@ -15,7 +15,7 @@ Ce dépôt est un **poste de travail personnel pour trader intraday**. Depuis l'
 ## Direction non négociable
 
 - **Le process est le produit, pas le signal.** Aucun module n'invente quoi trader, quand, ni dans quel sens (ADR 0001). Seule la stratégie formalisée et configurée par l'utilisateur (S01 aujourd'hui) décide des entrées, dans les limites du Risk Engine (ADR 0015) : jamais une IA, jamais une optimisation, jamais un seuil assoupli pour « faire trader ».
-- **La recherche d'edge est close** (ADR 0002). Ne pas proposer de backtester, d'optimiseur, de générateur de signaux, ni de « juste tester rapidement une idée ». `lib/analysis/` fournit du contexte, pas des signaux.
+- **La recherche d'edge est close** (ADR 0002). Ne pas proposer de backtester, d'optimiseur, de générateur de signaux, ni de « juste tester rapidement une idée ». `python/trading_os/domain/market/analysis/` fournit du contexte, pas des signaux.
 - **L'EA n'est pas le cerveau.** MT5 est un point d'exécution et de télémétrie.
 - **Le Risk Engine est le point de contrôle unique** (ADR 0007). Toute règle passe par une gate testée, jamais par un bouton grisé.
 - **L'IA reste en lecture** (ADR 0005). Classer, résumer, retrouver, expliquer. Jamais décider, jamais ordonner.
@@ -41,7 +41,7 @@ Le cycle complet est décrit dans `context/workflows/development_workflow.md`. C
 
 ## Piège le plus fréquent dans ce dépôt
 
-Réécrire du code qui existe déjà. `lib/risk/`, `lib/analysis/`, `lib/domain/`, `lib/contracts/` et toute la chaîne temps réel sont écrits, testés et **validés en live**. Les fiches d'outil nomment les fichiers d'ancrage : les lire avant de créer quoi que ce soit.
+Réécrire du code qui existe déjà. `python/trading_os/domain/` (risque, analyse, stratégie S01, exécution, autonomie…), `services/`, `infrastructure/` et le cockpit (`lib/api`, `lib/realtime`) sont écrits et testés ; le cœur n'a été vérifié qu'avec un terminal simulé — rien n'a tourné contre un vrai MT5 depuis la migration (ADR 0016). Les fiches d'outil nomment les fichiers d'ancrage : les lire avant de créer quoi que ce soit.
 
 ## Sécurité
 

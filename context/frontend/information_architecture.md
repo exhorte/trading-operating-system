@@ -1,5 +1,13 @@
 # Architecture d'information du cockpit
 
+> **Amendement du 2026-10-09 (ADR 0016, 0017, 0018).** Ce document est l'archive de la conception des écrans ; les sections datées décrivent
+> le cockpit tel qu'il était à leur date. Depuis la migration Python-native : le cockpit lit le cœur (`lib/api`, `lib/realtime`), il n'y a plus de
+> préversion mock (`NEXT_PUBLIC_MOCK_ACCOUNT_ID` n'existe plus : pour regarder le cockpit sans courtier on lance le cœur en mode simulé,
+> `MT5_ENABLED=false`), plus de « hub » ni d'« observer » (la chaîne de liaison d'Account nomme maintenant le cœur, le terminal MT5, le compte transmis, le profil, l'agent d'exécution et le mode),
+> `lib/journal/types.ts` et `lib/compliance/summarize.ts` n'existent plus (les types viennent de `lib/api/generated.ts`, les chiffres de conformité du cœur),
+> **Settings édite** désormais les limites de chaque compte (formulaire avec aperçu, enregistrées en ajout seul, ADR 0007 et 0015), et le dossier d'un
+> trade est une page de chiffres, sans graphique (ADR 0018).
+
 Décidé le 2026-09-20. Complète `final_interface_spec.md` (qui décrit le *feel*
 et les panneaux) en tranchant la question que la spec laissait ouverte : quel
 écran répond à quelle question, et donc ce qui n'a rien à faire ailleurs.

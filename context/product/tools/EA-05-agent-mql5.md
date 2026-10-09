@@ -1,5 +1,7 @@
 # EA-05 — Agent MQL5
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `tools/mt5-execution-agent/` (build 1.11), `python/trading_os/infrastructure/mt5/{ea_link,wire}.py` (le serveur du lien et ses messages), `services/execution.py` et `services/senders.py` (moteur et routes d'envoi), `context/realtime/mt5_wire_protocol.md`.
+
 Statut : **livré** (2026-09-15, incrément 6 compris) · Vague EA · Effort 3–5 j ·
 Dépend de : EA-03 (protocole, machine à états), EA-04 (profils de compte)
 

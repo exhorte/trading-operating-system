@@ -1,5 +1,7 @@
 # T05 — Captures automatiques entrée / sortie
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/services/journal.py` (faits de capture écrits sur `position.opened` et `position.closed`), `infrastructure/database/repositories/positions.py`, `GET /api/journal/trades/{id}` ; cockpit `app/(cockpit)/journal/[brokerPositionId]/page.tsx`.
+
 > **Amendement du 2026-10-09 (ADR 0018) — la fonction graphique est supprimée.**
 > Il n'y a plus de capture d'écran, plus d'image du graphique, plus de rendu
 > rejoué de la transaction. T05 est désormais **un enregistrement de chiffres** :

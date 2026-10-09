@@ -1,5 +1,7 @@
 # T15 — Serveur MCP « mon trading »
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python -m trading_os mcp` (`python/trading_os/mcp/`) : lecture seule, un test d'architecture le garde. Le serveur Node `tools/mcp-server` n'existe plus.
+
 Statut : **livré** (4 incréments, 2026-09-17) · Vague 2 (avancé
 délibérément — catalogue.md le note explicitement) · Effort 1–2 j ·
 Valeur 4 · Dépend de : T06 (livré)

@@ -6,6 +6,51 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-10-09 (**fin de la migration Python : API, cockpit, capture graphique supprimée, agent 1.11, suppression du Gateway .NET**)
+
+Demandes, mot pour mot : « reprends la migration python », « continu », puis en cours de route
+« nous allons ajouter une modification on suprimant totalement la fonction de capture graphique, image du
+graphique , capture de l'image de la transaction et juste garder les donner » (ADR 0018), puis, avec le texte
+de la mission (`restructuration.md`) : « assure toi que cette restructuration soit completement mis en place
+ainsi que la supressio total de l'ensemble du .NET Gateway ainsi que tout les elements lier a lui ».
+
+**Fait** — branche `refactor/python-native-architecture`, commits **locaux** (rien de poussé, rien de déployé) :
+- **API et flux** : FastAPI (garde jeton + Origin sur chaque requête, lectures comprises), WebSocket `/ws`
+  (instantané, abonnement, contre-pression), 59 opérations, types TypeScript **générés** depuis les schémas du
+  cœur ; S01 et l'analyse portés avec vecteurs d'or ; CLI et serveur MCP en lecture seule.
+- **Cockpit** réécrit sur `lib/api` + `lib/websocket` + un store pur : plus de SignalR, plus de Risk Engine dans
+  l'onglet, plus de source « mock » (le cœur a un mode simulé, `MT5_ENABLED=false`). Settings édite les limites de
+  chaque compte, avec aperçu et report au prochain jour de trading ; le dossier d'un trade est une page de chiffres.
+- **ADR 0018** : plus aucune capture graphique, on garde les chiffres (migration 0003 additive, script manuel pour
+  la colonne de fenêtre).
+- **Agent 1.11** : interrupteur d'homme mort (`DEAD_MAN`), capacité `dead_man`, `InpGatewayHost/Port` →
+  `InpCoreHost/Port`, `gatewaySilentMs` → `coreSilentMs` ; compile à 0 erreur / 0 avertissement ; ses garanties
+  structurelles sont des tests qui lisent sa source (éprouvés par mutation).
+- **Suppression radicale** : `backend/` (.NET), `tools/mt5-observer/`, `scripts/start-live.ps1`, le service
+  `backend` de Docker (et le conteneur et l'image `tradingos-backend` de la machine), les documents qui ne
+  décrivaient que cela ; `docker-compose.yml` ne porte plus que la base ; `scripts/start.ps1` remplace le lanceur
+  (`-Simulated`, `-Plan`). Les exports de bougies de l'observateur, que Git ne peut pas rendre, ont été **déplacés**
+  dans `exports/observer-2026-09/` (gitignoré). Documentation vivante réécrite ; ADR, fiches et archives amendés
+  par une note datée.
+
+**Défauts trouvés en vérifiant pour de vrai, corrigés** : un verrou « Max drawdown guard » ouvert avant la première
+lecture d'un compte ; le jeton du WebSocket écrit en clair dans le journal d'uvicorn ; un fichier de types généré
+différemment selon les tests déjà exécutés ; un journal qui demandait 90 jours à une lecture limitée à 31 et affichait
+« 0 / 3 » au lieu de tirets ; la confirmation d'un enregistrement de limites perdue avec le formulaire ; une
+métrique « niveaux enregistrés » qui comptait des lignes et pas des stops ; deux contrastes sous 4,5 : 1.
+
+**Vérifié** : 2094 tests Python, `ruff`, `mypy --strict` ; 171 tests Vitest, `tsc`, `eslint`, `next build` ;
+12 écrans × clair/sombre × bureau/mobile dans un vrai Chrome contre le vrai cœur (terminal simulé) ; le parcours des
+limites de bout en bout ; l'agent compilé par MetaEditor. **Non vérifié** : tout contre un vrai terminal MT5, un vrai
+agent attaché, la vraie base `tradingos` (migrations 0001–0003 jamais appliquées dessus), `scripts/start.ps1` hors
+`-Plan`. Rapport : `docs/architecture/python-native-migration-report.md`.
+
+**À l'utilisateur** : relire et fusionner ; sauvegarder la base ; premier essai réel en `OBSERVE` (état,
+« Prochaine action ») ; décider du sort des tables héritées (`db manual drop_legacy_tables`). Rien dans cette
+session n'a relevé le plafond de mode, armé quoi que ce soit ni envoyé une commande.
+
+---
+
 ## 2026-10-09 (**reprise de la migration Python** : réconciliation, autonomie, FRED, journal, runtime)
 
 Demande, mot pour mot : « reprends la migration python » (2026-10-08, 17:50), puis

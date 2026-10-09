@@ -1,5 +1,7 @@
 # T06 — Journal auto-alimenté, zéro saisie
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/services/journal.py`, `GET /api/journal/trades` ; cockpit `app/(cockpit)/journal/page.tsx`, `components/journal/`, `lib/journal/`.
+
 > **Amendement du 2026-10-09 (ADR 0018).** La capture graphique n'existe plus : la colonne
 > « lien Capture » de ce journal devient **« Dossier → »** (un lien par ligne, pour tout trade
 > clôturé), qui ouvre `/journal/{id}` — les chiffres enregistrés (entrée, stop, objectif, sortie)

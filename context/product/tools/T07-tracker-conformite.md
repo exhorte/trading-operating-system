@@ -1,5 +1,7 @@
 # T07 — Tracker d'erreurs et taux de conformité
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/journal/compliance.py`, `services/journal.py`, `GET /api/journal/compliance` ; cockpit `lib/compliance/`.
+
 Statut : **livré** (4 incréments, 2026-09-16) · Vague 2 · Effort 1–2 j ·
 Valeur 5 · Dépend de : T06 (livré)
 

@@ -1,80 +1,35 @@
-# ICT/SMC Analysis Engine MVP (v0.1)
+# Moteur d'analyse ICT/SMC
 
-Home: `lib/analysis/`. Consumes `Candle[]`, emits the canonical
-`MarketContextState` (`lib/domain/analysis.ts`). Pure and transport-agnostic —
-imports only `lib/domain`. Decision recorded in ADR 0006; vocabulary source is
-`context/domain/ict_smc_framework.md`.
+Réécrit le 2026-10-09 (ADR 0016, 0006). Domicile : `python/trading_os/domain/market/analysis/` — pur et indépendant du transport ; consomme des bougies, produit le `MarketContextState` canonique. Le vocabulaire vient de `context/domain/ict_smc_framework.md`. Il tourne dans le cœur (`services/market_data.py`) et le cockpit n'en reçoit que le résultat (`GET /api/market/{symbol}/context`).
 
-> Everything here is a **hypothesis, not a validated edge**. The engine is
-> version `v0.1`; weights and tolerances are placeholders.
+> Tout ceci est une **hypothèse, pas un edge validé**. Poids et tolérances sont des valeurs de départ. Le moteur fournit du **contexte**, jamais de signal (ADR 0002).
 
 ## Pipeline
 
 ```text
-Candle[]
-  → detectSwings            (fractal pivots)
-  → detectStructureShifts   (BOS / CHOCH) → structuralBias
-  → detectLiquidity         (equal highs/lows, PDH/PDL, swept flags)
-  → detectFairValueGaps     (3-candle imbalance, fill/mitigation)
-  → detectOrderBlocks       (last opposing candle before a shift)
-  → sessionForTimestamp     (ICT session bucket)
-  → priceLocationOf         (premium / discount / equilibrium)
-  → scoreContext            (weighted confluence + breakdown)
-  → MarketContextState
+bougies
+  → swings        (pivots fractals)                         swings.py
+  → structure     (BOS / CHOCH) → biais structurel          structure.py
+  → liquidité     (égaux hauts/bas, PDH/PDL, balayés)       liquidity.py
+  → PD arrays     (FVG avec remplissage/mitigation, order blocks)   pd_arrays.py
+  → session       (fenêtre ICT, DST-aware)                  ../sessions.py
+  → localisation  (premium / discount / équilibre)          bias.py
+  → score         (confluence pondérée + décomposition)     scoring.py
+  → MarketContextState                                      market_context.py
 ```
 
-`analyzeMarketContext(input)` composes all stages. Public surface is
-`lib/analysis/index.ts`.
-
-## In scope (MVP)
-
-| Engine (from framework doc) | MVP implementation |
-| --- | --- |
-| Swing | strict fractal highs/lows, `swingLookback` bars each side |
-| Market Structure | BOS (continuation) and CHOCH (first counter-trend break) |
-| Liquidity | equal highs/lows (within tolerance), previous-day high/low, swept flag |
-| PD Array | fair value gaps (+ fill % and mitigation), basic order blocks |
-| Session | timestamp → ICT session via configured UTC windows |
-| Bias | follows market structure |
-| Premium/Discount | location of price inside the latest swing range |
-| Scoring | weighted `ScoreComponent[]` → `score` / `maxScore` |
-
-## Deferred (not in v0.1)
-
-- SMT / cross-asset divergence (Gold/DXY, Gold/Silver, …)
-- News & macro engine (NFP, CPI, FOMC gating)
-- Premium/discount **OTE** zones, consequent encroachment, 50% equilibrium entries
-- Breaker / mitigation / rejection blocks, inverse FVG, volume imbalance
-- Entry-sequence engine (sweep → displacement → FVG/OB → retracement → trigger)
-- Trade-management engine (SL/TP/BE/trailing/partials)
-
-Bias and Scoring are the extension points: new engines add components without
-reshaping the pipeline.
+`aggregate.py` agrège une série de bougies vers une période supérieure ; `atr.py` calcule l'ATR de Wilder ; `config.py` regroupe les réglages (`swing_lookback`, tolérance des niveaux égaux, taille minimale d'un FVG, fenêtres de session, poids du score).
 
 ## Invariants
 
-- **No look-ahead.** A bar's state uses only candles up to that bar. Swings
-  confirm `lookback` bars after they form; sweep and mitigation scans move
-  forward only. Asserted in tests.
-- **Purity.** `lib/analysis` imports only `lib/domain`. The domain→read-model
-  projection lives in `lib/contracts/projections.ts`, never inside the engine.
-- **Determinism.** Same candles + same config → same `MarketContextState`.
+- **Pas d'anticipation.** L'état d'une bougie n'utilise que les bougies jusqu'à elle ; un swing se confirme `lookback` bougies après sa formation ; les balayages et les mitigations ne regardent que vers l'avant.
+- **Pureté.** Aucun import d'infrastructure ; la lecture du marché et la publication sont dans `services/`.
+- **Déterminisme.** Mêmes bougies, même configuration, même contexte — vérifié par des **vecteurs d'or** hérités de l'implémentation TypeScript d'origine (`python/tests/golden/README.md` en donne la provenance) et par des scénarios lisibles.
 
-## Config knobs (`config.ts`)
+## Hors périmètre
 
-`swingLookback`, `equalLevelTolerance`, `minFvgSize`, `structureSwingWindow`,
-`sessionWindows`, and `scoreWeights`. Tolerances are raw price units in v0.1; a
-later revision should derive them from ATR / symbol `tickSize`.
+SMT / divergences entre actifs ; moteur d'actualité macro (NFP, CPI, FOMC) comme porte — la porte calendrier est dans le Risk Engine, alimentée par FRED ; zones OTE ; breakers, blocs de rejet, FVG inverse ; moteur de séquence d'entrée complet (c'est S01, dans `domain/strategy/s01/`) ; gestion de trade (SL/TP/BE/partiels : dette TD-09, aucune sortie S01 aujourd'hui). Biais et score sont les points d'extension : un nouveau moteur ajoute des composantes sans changer le pipeline.
 
-## Consumption
+## Testé
 
-The mock cockpit feeds a deterministic synthetic series (`lib/mock/candles.ts`)
-through the engine and `toMarketContextReadModel`, so the Market Context panel
-renders computed output while staying MOCK-badged. A future MT5/market-data feed
-replaces the synthetic candles with no engine change.
-
-## Testing
-
-Vitest, `npm test`. Each detector has deterministic-fixture unit tests plus an
-orchestrator integration test and a projection test (`lib/**/*.test.ts`). See
-`context/engineering/testing_strategy.md`.
+`python/tests/unit/domain/analysis/` — un détecteur, un fichier ; un test d'orchestration ; les vecteurs d'or. Voir `context/engineering/testing_strategy.md`.

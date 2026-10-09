@@ -14,7 +14,7 @@ Un travail qui ne rentre pas dans une fiche est soit une correction de bug (comm
 
 ## Règle de conception temps réel
 
-Pour tout ce qui touche aux données de marché, à l'état live, à l'exécution, à l'observer MT5 ou aux alertes de risque, la conception du flux précède l'implémentation :
+Pour tout ce qui touche aux données de marché, à l'état live, à l'exécution, au lien MT5 ou aux alertes de risque, la conception du flux précède l'implémentation :
 
 - propriétaire de la connexion ;
 - topic d'abonnement ;

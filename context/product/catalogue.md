@@ -1,4 +1,6 @@
 > **Note de reprise (2026-09-04).** Ce document est la recherche qui a produit la roadmap.
+
+> **Amendement du 2026-10-09 (ADR 0016).** Les chemins `lib/…`, `backend/` et `tools/mt5-observer` cités ici sont ceux de l'époque : ils sont devenus `python/trading_os/…` (voir « Ancrage actuel » en tête de chaque fiche d'outil, et la correspondance du rapport `docs/architecture/python-native-migration-report.md`). Le « hub SignalR », l'« observer » et le « Gateway » n'existent plus ; leur rôle est tenu par le cœur Python.
 > Il est conservé dans le dépôt comme référence : le raisonnement, les efforts estimés et la
 > section « ce que je ne recommande pas de construire » y sont argumentés en entier.
 > La numérotation `#1..#19` correspond aux identifiants `T01..T19` de la roadmap.

@@ -1,5 +1,7 @@
 # ADR 0014 — Armement de l'agent depuis l'application
 
+> **Amendement du 2026-10-09 (ADR 0016).** « Gateway », « hub » et « backend » se lisent « cœur Python » : le bail est renouvelé par le cœur, l'armement passe par `POST /api/autonomy/arm` (gardé par le jeton et l'Origin), un cœur redémarré revient désarmé. Les propriétés décrites sont inchangées.
+
 Date : 2026-09-26 (rédaction). Statut : **accepté** — accord nommé de
 l'utilisateur le 2026-09-25 : « J'approuve l'ADR 0014, volet armement », sur
 la conception de l'étude (`02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`,

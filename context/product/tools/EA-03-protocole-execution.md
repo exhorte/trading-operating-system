@@ -1,5 +1,7 @@
 # EA-03 — Protocole d'exécution et machine à états
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/execution/` (commandes, états, refus) et `context/execution/{protocol,state-machine,safety}.md`, réécrits le même jour.
+
 Statut : **livré** · Vague EA · Effort 1–2 j · Dépend de : EA-01 (contrats de
 commande existants), ADR 0010
 

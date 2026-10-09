@@ -1,5 +1,7 @@
 # Migration map — Trading OS vers une architecture Python-native
 
+> **Archive de départ.** Ce document est l'audit de la phase 0 ; il décrit l'ancien système (.NET, SignalR, observateur) tel qu'il était et reste tel quel. Le suivi (§ 10) dit que la migration est terminée ; l'état final est dans `python-native-migration-report.md`.
+>
 > Phase 0 de la mission « restructuration radicale » — **audit**. Produit le 2026-10-07 sur la branche
 > `refactor/python-native-architecture` (point de départ : commit de snapshot `e53a4ac`).
 > Chaque affirmation de ce document a été recoupée avec le code ; quand le rapport d'audit existant
@@ -907,45 +909,23 @@ simulé du cœur** (`MT5_ENABLED=false`) — un seul chemin de données, pas un 
 | `vitest.config.ts` | 15 | **KEEP** | — | Configuration Next.js / outillage frontend | — |
 
 
-## 10. Suivi d'avancement (à mettre à jour à chaque phase — c'est le point de reprise)
+## 10. Suivi d'avancement
 
-État au **2026-10-09**. La migration a **repris le 2026-10-08 à 17:50**, la refonte visuelle (ADR 0017)
-étant terminée et commitée : la branche `refactor/python-native-architecture` a été avancée en
-*fast-forward* sur le sommet de la refonte (`f364122`) — le cockpit redessiné et le cœur Python sont donc
-sur la même branche, et la fusion que ce tableau demandait avant la phase 6 est faite. Cinq commits
-depuis, tous **locaux** (rien n'est poussé, la branche n'est pas sur le dépôt distant), rien n'est
-déployé. L'ancienne pile (.NET, SignalR, observer Python) reste la seule qui existe en service, et
-elle est **éteinte** (aucun conteneur du projet depuis le 2026-09-28, MT5 fermé). Dernière
-vérification complète : **653 tests**, `ruff` propre, `mypy --strict` propre sur 109 fichiers.
+État au **2026-10-09 : la migration est terminée** (phases 0 à 7), sur la branche `refactor/python-native-architecture`, **en local** (rien n'est poussé). Ce document est l'audit de départ (2026-10-07) : ses §§ 1 à 9 décrivent l'ancien système tel qu'il était, et ne sont pas réécrits. Ce qui a été livré, supprimé, créé et les écarts assumés sont dans `docs/architecture/python-native-migration-report.md`.
 
 | Phase | État | Preuve |
 |---|---|---|
 | 0 — audit, migration-map | ✅ fait | ce document (`dcf6b0b`) |
 | 1 — architecture cible + ADR | ✅ fait | `docs/architecture/python-native-architecture.md`, `context/adr/0016-…` (`dcf6b0b`) |
-| 2 — cœur Python | 🔶 en cours | noyau partagé, configuration, base de données (`1d362a3`, `8c9910c`) ; **`runtime/` : ordonnanceur, battement, superviseur, moteur, et le conteneur qui assemble tout (`9da8445`)**. **Reste** : application FastAPI + WebSocket + sécurité + OpenAPI, CLI et MCP |
-| 3 — comptes + MT5 | ✅ fait | domaine des comptes, lecteur MT5 en processus fils à liste blanche, lien EA, simulateur, services comptes / données de marché / positions (`48df6c0`, `751c580`, `89affb7`) ; **service de réconciliation** (`efde785` : règle les commandes en doute depuis les données du courtier) ; **actualités FRED** (`c97ad69`) |
-| 4 — risque | 🔶 en cours | `domain/risk` et `services/risk` (`1d362a3`, `89affb7`). **Reste** : portage de `lib/analysis` (24 fichiers, contexte de marché) |
-| 5 — exécution | 🔶 en cours | moteur d'exécution, passerelles, cycle de vie des commandes (`48df6c0`, `66d4274`) ; **autonomie** (`bc96a20`) ; **journal, captures T05, conformité T07 côté serveur** (`03a7f41`) ; **readiness des 16 contrôles** (`9da8445`). **Reste** : portage de `lib/setup` (S01, 22 fichiers) et de sa gestion de sortie (TD-09) |
-| 6 — frontend | ⏳ pas commencé | à faire : `lib/api`, `lib/websocket`, retrait de SignalR. La refonte visuelle (ADR 0017) est déjà dans la branche et ne touche à rien de cela |
-| 7 — suppression radicale | ⏳ pas commencé | — |
-| EA `DEAD_MAN` | ⏳ pas commencé | refus fondé sur le ping ; vérification de compilation seulement (MetaEditor en ligne de commande) |
-| Validation finale + rapport | ⏳ | `docs/architecture/python-native-migration-report.md` |
+| 2 — cœur Python | ✅ fait | noyau, configuration, base de données, `runtime/` (`1d362a3`, `8c9910c`, `9da8445`), API FastAPI + WebSocket + garde (`4de57ca`, `117c500`), CLI et MCP (`600f90b`) |
+| 3 — comptes + MT5 | ✅ fait | domaine des comptes, lecteur MT5 en processus fils à liste blanche, lien EA, simulateur, services comptes / données de marché / positions, réconciliation, FRED (`48df6c0`, `751c580`, `89affb7`, `efde785`, `c97ad69`) ; suite de contrat du terminal (simulé toujours, réel avec `MT5_LIVE_TESTS=1`) |
+| 4 — risque | ✅ fait | `domain/risk`, `services/risk` (`1d362a3`, `89affb7`), portage de `lib/analysis` avec vecteurs d'or (`6f2887a`) |
+| 5 — exécution | ✅ fait | moteur d'exécution, routes d'envoi, cycle de vie (`48df6c0`, `66d4274`), autonomie (`bc96a20`), journal et conformité (`03a7f41`), S01 porté et intégré (`6f2887a`, `4849d78`), readiness (`9da8445`) |
+| 6 — frontend | ✅ fait | types générés (`dc8db3e`), cœur au service du cockpit (`fb2840f`), cockpit réécrit sur `lib/api` + `lib/websocket` (`f01a62d`) |
+| 7 — suppression radicale | ✅ fait | `backend/` (.NET), SignalR, `tools/mt5-observer`, `scripts/start-live.ps1`, service `backend` de `docker-compose.yml`, conteneur et image `tradingos-backend`, documents qui ne décrivaient que cela (voir le rapport) |
+| EA `DEAD_MAN` | ✅ fait | build 1.11 de l'agent : refus `DEAD_MAN`, capacité `dead_man`, `coreSilentMs` ; compile sans erreur ni avertissement ; garde par `tests/architecture/test_execution_agent.py` |
+| Validation finale + rapport | ✅ fait | `docs/architecture/python-native-migration-report.md` |
 
-**Reprendre ici** — dans l'ordre : application FastAPI (garde jeton + Origin, routes du § 5, WebSocket
-`/ws` avec instantané / abonnement / contre-pression, OpenAPI) → portage de `lib/analysis` puis de
-`lib/setup` → CLI / MCP → frontend (phase 6) → EA `DEAD_MAN` → suppressions (phase 7) → documents
-vivants et rapport final.
+**Ce qui n'est PAS fait, et qui ne se règle pas par du code** : rien n'a tourné contre un vrai terminal MT5, un vrai agent ou la vraie base `tradingos` depuis la migration (le cœur est vérifié avec un terminal simulé, des sockets réels et un PostgreSQL jetable). Le premier rattachement d'un vrai compte est un essai à faire par l'utilisateur, en `OBSERVE` : voir le rapport, § « Reprendre ».
 
-- Tests : depuis `04_code/python`, `.venv\Scripts\python.exe -m pytest -q` (un cluster PostgreSQL jetable
-  lancé depuis les binaires PG 18 installés, jamais la base `tradingos` ; 6 à 20 min selon la charge de la
-  machine). Pour itérer : lancer soi-même un cluster de longue durée et pointer
-  `TRADINGOS_TEST_DATABASE_URL` dessus. Puis `-m ruff check .` et `-m mypy trading_os tests`. Banc du cœur
-  complet : `tests/support/core.py`.
-- Décisions de jugement prises depuis la reprise, à confirmer (elles ne se déduisent pas de la mission) :
-  une commande `UNKNOWN` fait SAFE + RECONCILE mais **pas** HALT ; une position inattendue, ou qui
-  contredit une commande enregistrée comme échouée, fait HALT ; un terminal perdu désarme (DISARM) une fois
-  la panne persistante (> 60 s) sans halt ; la fenêtre ARMED (30 min) est renouvelée **par l'humain** (le
-  « bail côté serveur » des ADR 0014/0015 est le ping de l'homme mort) ; la conformité « hors session »
-  se juge avec les fenêtres de trading du compte (killzones, heure de New York), le prédicat de la porte
-  live, et non plus les tranches UTC fixes du navigateur ; un HALT survit à un redémarrage, tout autre
-  mode retombe à OFF.
+Décisions de jugement prises pendant la migration, à confirmer (elles ne se déduisent pas de la mission) : une commande `UNKNOWN` fait SAFE + RECONCILE mais **pas** HALT ; une position inattendue, ou qui contredit une commande enregistrée comme échouée, fait HALT ; un terminal perdu désarme (DISARM) une fois la panne persistante (> 60 s) sans halt ; la fenêtre ARMED (30 min) est renouvelée **par l'humain** (le « bail côté serveur » des ADR 0014/0015 est le ping de l'homme mort) ; la conformité « hors session » se juge avec les fenêtres de trading du compte (killzones, heure de New York) ; un HALT survit à un redémarrage, tout autre mode retombe à OFF ; « Arrêt d'urgence » du cockpit engage le verrou du kill switch, il ne déclenche pas le HALT d'autonomie ; l'activation du compte se fait par `PUT /api/active-account` (et non `POST`) ; la suppression de la capture graphique est l'ADR 0018.

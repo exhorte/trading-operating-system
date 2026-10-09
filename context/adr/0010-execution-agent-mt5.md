@@ -1,5 +1,7 @@
 # ADR 0010 — Le Trading OS exécute, l'EA est un agent
 
+> **Amendement du 2026-10-09 (ADR 0016).** Le chemin d'exécution est inchangé ; seul l'émetteur change : c'est le cœur Python (plus de backend .NET ni d'observateur séparé — la lecture du terminal est un processus enfant du cœur, en lecture seule). L'agent est désormais le build 1.11, avec un interrupteur d'homme mort (`DEAD_MAN`). Le dépôt compte trois langages : Python, TypeScript, MQL5.
+
 Date : 2026-09-11. Statut : accepté. Amende l'ADR 0001 : la clause « aucun appel
 de trade n'existe dans ce dépôt » ne tient plus. Le reste de l'ADR 0001 — le
 process est le produit, aucun module ne dit quoi trader — tient intégralement.

@@ -1,5 +1,7 @@
 # ADR 0015 — Mode autonome : le Trading OS exécute la stratégie configurée
 
+> **Chemins déplacés (2026-10-09, ADR 0016).** `lib/analysis/` est devenu `python/trading_os/domain/market/analysis/`, `lib/risk/` `python/trading_os/domain/risk/` : le principe de cet ADR est inchangé.
+
 Date : 2026-09-25. Statut : **accepté le 2026-09-26** — accord nommé de
 l'utilisateur : « J'approuve l'ADR 0015 » (voir « Accord » en fin
 d'ADR) ; **amendé le même jour** (spread, levée des limites de perte,

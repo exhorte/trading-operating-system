@@ -1,6 +1,6 @@
 # Quality Gates
 
-Version 2 — 2026-09-04. Les gates de backtesting ont disparu avec la recherche d'edge (ADR 0002).
+Version 3 — 2026-10-09 (ADR 0016 : le cœur est en Python). Les gates de backtesting ont disparu avec la recherche d'edge (ADR 0002) ; les gates .NET avec le Gateway.
 
 ## Avant de modifier du code produit
 
@@ -10,30 +10,26 @@ Version 2 — 2026-09-04. Les gates de backtesting ont disparu avec la recherche
 
 ## Avant de clore un outil
 
-```bash
-npm run lint          # ESLint
-npx tsc --noEmit      # typage, doit sortir 0
-npm test              # Vitest
-npm run build         # compilation Next.js
-cd backend && dotnet build && dotnet test   # C#
-python -m py_compile tools/mt5-observer/*.py
+```powershell
+# cœur Python (depuis 04_code\python)
+.venv\Scripts\python.exe -m pytest -q                 # unitaires, intégration, base jetable, architecture
+.venv\Scripts\python.exe -m ruff check . ; .venv\Scripts\python.exe -m ruff format --check .
+.venv\Scripts\python.exe -m mypy trading_os           # --strict
+# cockpit (depuis 04_code)
+npm run lint ; npm run typecheck ; npm test ; npm run build
 ```
 
-Depuis EA-05, si `tools/mt5-execution-agent/*.mq5` a changé, en plus des gates
-ci-dessus — compilation headless via MetaEditor (aucune gate MQL5 n'existait
-avant EA-05) :
+Si un modèle, une route ou un événement du cœur a changé : `python -m trading_os gen-types` (un test échoue si `lib/api/generated.ts` est périmé).
+
+Si `tools/mt5-execution-agent/*.mq5` a changé, en plus : compilation headless via MetaEditor **sur une copie du dossier** (le `.ex5` est écrit à côté de la source) :
 
 ```powershell
-& "C:\Program Files\MetaTrader 5\MetaEditor64.exe" `
-  /compile:"tools\mt5-execution-agent\TradingOsAgent.mq5" `
-  /log:"tools\mt5-execution-agent\compile.log"
+& "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"<copie>\TradingOsAgent.mq5" /log:"<copie>\compile.log"
 ```
 
-Lire `compile.log` : doit afficher `0 errors`. Ne vérifie que la syntaxe et
-le typage — pas le comportement réseau ni l'exécution, qui restent à valider
-à la main contre le terminal (voir `tools/mt5-execution-agent/README.md`).
-Le chemin de MetaEditor suppose une installation locale de MetaTrader 5 ;
-adapter s'il diffère.
+Le dernier message du journal doit être `0 errors, 0 warnings` (le code de sortie de MetaEditor est 1 en cas de succès). Cela ne vérifie que la syntaxe et le typage — pas le comportement réseau ni l'exécution, qui se valident à la main contre un terminal (`tools/mt5-execution-agent/README.md`) ; les garanties structurelles de l'agent (un seul `OrderSend` derrière le plafond `OBSERVE`, interrupteur d'homme mort) sont, elles, des tests (`python/tests/architecture/test_execution_agent.py`). Le chemin de MetaEditor suppose une installation locale de MetaTrader 5 ; adapter s'il diffère.
+
+Si l'interface a changé : la vérifier **dans un vrai navigateur** contre le vrai cœur en mode simulé (`MT5_ENABLED=false`) — clair et sombre, bureau et mobile, aucune erreur console, aucun débordement, contraste AA ; un onglet caché ne se peint pas (voir `testing_strategy.md`).
 
 - Toutes vertes, sans exception tolérée en silence.
 - La nouvelle logique de domaine a des tests, ou l'absence de test est écrite dans la fiche.
@@ -57,9 +53,9 @@ Aucune fonctionnalité touchant à l'exécution n'est acceptable si elle ne remp
 
 ## Gates temps réel
 
-Toute fonctionnalité WebSocket/SignalR doit définir : états de connexion, hypothèses d'authentification, portée d'abonnement, enveloppe d'événement, reconnexion, comportement en donnée périmée, resynchronisation par snapshot, champs d'observabilité.
+Toute fonctionnalité de flux (WebSocket) doit définir : états de connexion, hypothèses d'authentification, portée d'abonnement, forme de la trame, reconnexion, comportement en donnée périmée, resynchronisation par instantané, champs d'observabilité (`context/realtime/`).
 
-Authentification, depuis I0 (2026-09-26) : le hub, les écritures `/api` et l'observateur exigent leur jeton, le hub aussi une Origin autorisée — `context/security/security_principles.md`, « Surface locale ». Toute nouvelle porte (méthode de hub, endpoint d'écriture, port) passe derrière la même garde, avec un test de refus.
+Authentification : l'API REST et le WebSocket du cœur exigent le jeton du cockpit **et** une Origin autorisée, lectures comprises (seul `GET /api/system/health` s'en passe) ; le lien agent exige le jeton de l'agent — `context/security/security_principles.md`, « Surface locale ». Toute nouvelle porte (route, port, type de message) passe derrière la même garde, avec un test de refus.
 
 ## Gate IA
 
