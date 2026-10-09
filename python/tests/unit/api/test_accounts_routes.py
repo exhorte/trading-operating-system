@@ -6,23 +6,16 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator
-from typing import Any
 
 import pytest
 
-from tests.support.api import Api, make_api
+from tests.support.api import Api, create_second, make_api, new_account
 from tests.support.core import MemoryCredentialStore
 from tests.support.harness import Harness
-from trading_os.infrastructure.database.pool import Database
 
 pytestmark = pytest.mark.db
 
 SENTINEL = "S3NTINEL-must-never-leave-this-request-7f3a"
-
-
-@pytest.fixture
-async def h(db: Database) -> Harness:
-    return Harness.create(db)
 
 
 @pytest.fixture
@@ -35,21 +28,6 @@ async def api(h: Harness, vault: MemoryCredentialStore) -> AsyncIterator[Api]:
     instance = await make_api(h, credentials=vault)
     yield instance
     await instance.close()
-
-
-def new_account(login: int = 1_000_002, **extra: Any) -> dict[str, Any]:
-    return {
-        "name": "Second demo", "provider": "EXNESS", "accountType": "DIRECT", "login": login,
-        "server": "Exness-MT5Trial", "environment": "DEMO", "referenceBalance": 10_000,
-        "terminalPath": f"C:/MT5/exness-{login}", **extra,
-    }  # fmt: skip
-
-
-async def create_second(api: Api, login: int = 1_000_002) -> dict[str, Any]:
-    response = await api.post("/api/accounts", new_account(login))
-    assert response.status_code == 201, response.text
-    created: dict[str, Any] = response.json()
-    return created
 
 
 async def everything_the_api_says(api: Api) -> str:

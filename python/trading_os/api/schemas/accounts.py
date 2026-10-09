@@ -11,8 +11,11 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic.alias_generators import to_camel
 
+from trading_os.api.schemas.common import StrictRequest
+from trading_os.domain.accounts.models import AccountRules
 from trading_os.domain.accounts.rules_ledger import CancelOutcome
 from trading_os.domain.primitives import DomainModel
+from trading_os.services.accounts import AccountCreate
 
 
 class SecretRequest(BaseModel):
@@ -34,17 +37,31 @@ class CredentialRequest(SecretRequest):
     password: SecretStr = Field(min_length=1)
 
 
-class AccountUpdate(DomainModel):
+class CreateAccountRequest(AccountCreate):
+    """Registering an account: ``AccountCreate``, strict about unknown fields. No secret is part of it — the password goes to the
+    connection (``ConnectRequest``) or the vault (``CredentialRequest``), never into the registry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RulesRequest(AccountRules):
+    """New rules for an account. The top level is strict; the nested profiles stay lenient on purpose, because the same models
+    read the stored versions back and an older row must still load."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UpdateAccountRequest(StrictRequest):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     terminal_path: str | None = None
     symbol_suffix: str | None = Field(default=None, max_length=10)
 
 
-class TradingSwitch(DomainModel):
+class TradingSwitchRequest(StrictRequest):
     enabled: bool
 
 
-class ActiveAccountRequest(DomainModel):
+class ActiveAccountRequest(StrictRequest):
     account_id: str
 
 

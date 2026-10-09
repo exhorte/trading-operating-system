@@ -2,28 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-
 import pytest
 
-from tests.support.api import ORIGIN, TOKEN, Api, make_api
-from tests.support.harness import Harness
-from trading_os.infrastructure.database.pool import Database
+from tests.support.api import ORIGIN, TOKEN, Api
 from trading_os.shared.errors import Conflict
 
 pytestmark = pytest.mark.db
-
-
-@pytest.fixture
-async def h(db: Database) -> Harness:
-    return Harness.create(db)
-
-
-@pytest.fixture
-async def api(h: Harness) -> AsyncIterator[Api]:
-    instance = await make_api(h)
-    yield instance
-    await instance.close()
 
 
 # ------------------------------------------------------------------------------------------------------ health and guard

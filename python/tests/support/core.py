@@ -5,6 +5,7 @@ runs them, so a scenario is deterministic and a fault can be introduced between 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any
 
 from pydantic import SecretStr
@@ -78,6 +79,15 @@ class MemoryCredentialStore:
 
     async def has(self, account_id: str) -> bool:
         return account_id in self.secrets
+
+
+class QuietCalendar:
+    """A calendar client whose every release is a month away: after a refresh the calendar is *known* and no blackout is near,
+    which is what lets the news gate pass. (An empty answer is not enough: the service reads « no rows » as « unknown ».) Without
+    a client the calendar stays unknown and the gate fails closed — the production default without a FRED key."""
+
+    async def fetch_upcoming(self, spec: object, now: datetime) -> list[datetime]:
+        return [now + timedelta(days=30)]
 
 
 def green(detail: str = "provided by the test") -> Fact:
@@ -178,14 +188,17 @@ async def make_core(
     providers: bool = True,
     settings: dict[str, Any] | None = None,
     credentials: CredentialStore | None = None,
+    calendar: bool = False,
 ) -> Core:
-    """``providers=False``: no strategy and no exit management are registered — the readiness says so (as it does today)."""
+    """``calendar=True``: the news calendar has been synced and nothing is near (otherwise it is unknown, as without a FRED key).
+    ``providers=False``: no strategy and no exit management are registered — the readiness says so (as it does today)."""
     link = ScriptedLink()
     options: dict[str, Any] = {"trading_mode": TradingMode(ceiling.value), "market_backfill_bars": 50}
     options.update(settings or {})
     container = build_container(
         Settings(_env_file=None, **options),
         clock=h.clock, db=h.db, mt5_factory=h.mt5_factory, agent_link=link, credentials=credentials,
+        news_client=QuietCalendar() if calendar else None,
         strategy_check=(lambda account: green("test strategy")) if providers else None,
         exits_check=(lambda account: green("test exits")) if providers else None,
     )  # fmt: skip
@@ -193,14 +206,20 @@ async def make_core(
     container.events.subscribe_all(recorder)
     engine = Engine(container)
     await engine.prepare()
+    if calendar:
+        await container.news.refresh()
     return Core(h=h, c=container, engine=engine, link=link, recorder=recorder)
 
 
 async def make_ready_core(
-    h: Harness, *, top: AutonomyMode = AutonomyMode.OBSERVE, credentials: CredentialStore | None = None
+    h: Harness,
+    *,
+    top: AutonomyMode = AutonomyMode.OBSERVE,
+    credentials: CredentialStore | None = None,
+    calendar: bool = False,
 ) -> Core:
     """A core with a connected account, an agent, a few cycles behind it — and the autonomy ladder climbed to ``top``."""
-    core = await make_core(h, credentials=credentials)
+    core = await make_core(h, credentials=credentials, calendar=calendar)
     await core.add_account()
     await core.register_agent()
     for _ in range(2):

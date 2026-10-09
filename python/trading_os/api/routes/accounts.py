@@ -12,14 +12,16 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response
 
 from trading_os.api.schemas.accounts import (
-    AccountUpdate,
     ActiveAccountRequest,
     ActiveAccountView,
     CancelResult,
     ConnectRequest,
+    CreateAccountRequest,
     CredentialRequest,
     CredentialStatus,
-    TradingSwitch,
+    RulesRequest,
+    TradingSwitchRequest,
+    UpdateAccountRequest,
 )
 from trading_os.app.dependencies import Core
 from trading_os.domain.accounts.models import Account, AccountRules, AccountSnapshot
@@ -41,8 +43,8 @@ async def list_accounts(c: Core) -> list[Account]:
 
 
 @router.post("", response_model=Account, status_code=201, summary="Register an account (no secret is stored)")
-async def create_account(body: AccountCreate, c: Core) -> Account:
-    return await c.accounts.create(body)
+async def create_account(body: CreateAccountRequest, c: Core) -> Account:
+    return await c.accounts.create(AccountCreate.model_validate(body.model_dump()))
 
 
 @router.get("/{account_id}", response_model=Account)
@@ -51,7 +53,7 @@ async def get_account(account_id: str, c: Core) -> Account:
 
 
 @router.patch("/{account_id}", response_model=Account, summary="Rename, or change the terminal path / symbol suffix")
-async def update_account(account_id: str, body: AccountUpdate, c: Core) -> Account:
+async def update_account(account_id: str, body: UpdateAccountRequest, c: Core) -> Account:
     return await c.accounts.update(
         account_id, name=body.name, terminal_path=body.terminal_path, symbol_suffix=body.symbol_suffix
     )
@@ -64,7 +66,7 @@ async def archive_account(account_id: str, c: Core) -> Response:
 
 
 @router.put("/{account_id}/trading", response_model=Account, summary="The « Enable / Disable Trading » switch")
-async def set_trading(account_id: str, body: TradingSwitch, c: Core) -> Account:
+async def set_trading(account_id: str, body: TradingSwitchRequest, c: Core) -> Account:
     return await c.accounts.set_trading_enabled(account_id, body.enabled)
 
 
@@ -128,8 +130,8 @@ async def rules(account_id: str, c: Core) -> RulesOverview:
     "/{account_id}/rules", response_model=RuleVersion, status_code=201,
     summary="Ask for new rules: applied now only if no session is in progress (anti-tilt), else at the next trading day",
 )  # fmt: skip
-async def request_rules(account_id: str, body: AccountRules, c: Core) -> RuleVersion:
-    return await c.accounts.request_rules(account_id, body)
+async def request_rules(account_id: str, body: RulesRequest, c: Core) -> RuleVersion:
+    return await c.accounts.request_rules(account_id, AccountRules.model_validate(body.model_dump()))
 
 
 @router.post(

@@ -49,17 +49,70 @@ class Api:
         await self.client.aclose()
 
 
+def new_account(login: int = 1_000_002, **extra: Any) -> dict[str, Any]:
+    return {
+        "name": "Second demo", "provider": "EXNESS", "accountType": "DIRECT", "login": login,
+        "server": "Exness-MT5Trial", "environment": "DEMO", "referenceBalance": 10_000,
+        "terminalPath": f"C:/MT5/exness-{login}", **extra,
+    }  # fmt: skip
+
+
+async def create_second(api: Api, login: int = 1_000_002) -> dict[str, Any]:
+    response = await api.post("/api/accounts", new_account(login))
+    assert response.status_code == 201, response.text
+    created: dict[str, Any] = response.json()
+    return created
+
+
+async def quoted(api: Api, bid: float = 1.08492, ask: float = 1.08500) -> None:
+    """Pin the simulated EURUSDm quote (the default one drifts with the clock) and let the core read it."""
+    assert api.core.account is not None
+    api.core.terminal.set_quote("EURUSDm", bid, ask)
+    await api.core.c.market.poll_ticks(api.core.account.id)
+
+
+def review_body(api: Api, **changes: Any) -> dict[str, Any]:
+    assert api.core.account is not None
+    body: dict[str, Any] = {
+        "accountId": api.core.account.id, "symbol": "EURUSDm", "side": "buy",
+        "entryPrice": 1.0850, "stopLoss": 1.0840, "takeProfit": 1.0880,
+    }  # fmt: skip
+    body.update(changes)
+    return body
+
+
 async def make_api(
-    h: Harness, *, top: AutonomyMode = AutonomyMode.OBSERVE, credentials: CredentialStore | None = None
+    h: Harness,
+    *,
+    top: AutonomyMode = AutonomyMode.OBSERVE,
+    credentials: CredentialStore | None = None,
+    calendar: bool = True,
 ) -> Api:
-    """A ready core (one connected account, one agent, a few cycles behind it) behind the real application."""
-    core = await make_ready_core(h, top=top, credentials=credentials)
+    """A ready core (one connected account, one agent, a synced, quiet news calendar, a few cycles behind it) behind the
+    real application."""
+    core = await make_ready_core(h, top=top, credentials=credentials, calendar=calendar)
     core.c.settings.trading_os_cockpit_token = SecretStr(TOKEN)  # (read by alias only: assigned after construction)
     app = create_app(core.c.settings, container=core.c, start_engine=False)
     client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app, raise_app_exceptions=False), base_url=BASE, headers=HEADERS
     )
     return Api(core=core, app=app, client=client)
+
+
+@asynccontextmanager
+async def open_api(
+    h: Harness,
+    *,
+    top: AutonomyMode = AutonomyMode.OBSERVE,
+    credentials: CredentialStore | None = None,
+    calendar: bool = True,
+) -> AsyncIterator[Api]:
+    """``make_api`` that cleans up after itself."""
+    api = await make_api(h, top=top, credentials=credentials, calendar=calendar)
+    try:
+        yield api
+    finally:
+        await api.close()
 
 
 @asynccontextmanager

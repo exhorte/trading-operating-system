@@ -29,7 +29,6 @@ from trading_os.domain.events import (
 from trading_os.domain.market.models import Candle, Tick
 from trading_os.domain.positions.models import ClosedTrade
 from trading_os.domain.primitives import Side, Timeframe
-from trading_os.infrastructure.database.pool import Database
 from trading_os.shared.time import ManualClock
 
 NOW = datetime(2026, 10, 9, 12, 0, tzinfo=UTC)
@@ -279,11 +278,6 @@ async def test_a_failing_snapshot_closes_the_connection_with_1011() -> None:
 
 
 # ------------------------------------------------------------------------------------------------------ on a real socket
-
-
-@pytest.fixture
-async def h(db: Database) -> Harness:
-    return Harness.create(db)
 
 
 @pytest.mark.db

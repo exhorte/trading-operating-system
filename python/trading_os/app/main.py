@@ -20,7 +20,7 @@ from fastapi.routing import APIRoute
 
 from trading_os import __version__
 from trading_os.api.errors import install_error_handlers
-from trading_os.api.routes import accounts, system
+from trading_os.api.routes import accounts, autonomy, execution, journal, market, risk, system
 from trading_os.api.security import AccessGuardMiddleware
 from trading_os.api.websocket.hub import CockpitHub
 from trading_os.api.websocket.snapshot import build_snapshot
@@ -81,9 +81,11 @@ def create_app(
         max_age=600,
     )
 
-    app.include_router(system.router)
-    app.include_router(accounts.router)
-    app.include_router(accounts.active_router)
+    for router in (
+        system.router, accounts.router, accounts.active_router, autonomy.router, risk.router, execution.router,
+        market.router, journal.router,
+    ):  # fmt: skip
+        app.include_router(router)
 
     @app.websocket("/ws")
     async def live(websocket: WebSocket) -> None:
