@@ -45,7 +45,7 @@ export function DisciplineGauge() {
 
   if (rate === null) {
     // "Could not read" and "still reading" must not look alike: an endless
-    // skeleton reads as patience when the backend is actually down.
+    // skeleton reads as patience when the core is actually down.
     return (
       <Panel title="Score de discipline" icon={Target}>
         {failed ? (

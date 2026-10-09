@@ -18,7 +18,7 @@ interface EmptyStateProps {
  * Illustrated empty state (ADR 0017): a large thin-line icon ringed by
  * four-pointed stars, a title and a sentence, an optional action. It stands in
  * for the screen's main card when there is nothing to show — never to say that
- * something FAILED: an unreachable backend is a `Callout variant="warning"`,
+ * something FAILED: an unreachable core is a `Callout variant="warning"`,
  * because « nothing happened » and « we could not ask » must not look alike.
  */
 export function EmptyState({ title, description, hint, icon: Icon = Inbox, action, className }: EmptyStateProps) {

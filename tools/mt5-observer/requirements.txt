@@ -1,3 +1,0 @@
-# MT5 observe-only producer (Phase 05 prototype), Windows only.
-MetaTrader5>=5.0.45
-websockets>=12.0

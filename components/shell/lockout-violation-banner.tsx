@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 /**
  * T02c — a position opened while a lockout was already active, flagged the
- * instant the Gateway detects it (journal.lockout_violated), not only after
+ * instant the core detects it (journal.lockout_violated), not only after
  * the fact in /journal (T07). Distinct from LockoutAckBanner on purpose: that
  * one says "you are locked right now"; this one says "a lockout was just
  * bypassed" — a fact that already happened and can't be undone, so dismissing

@@ -2,7 +2,7 @@
  * The cockpit's live stream: one WebSocket to the core's `/ws`, kept alive.
  *
  * Transport only — it knows how to connect, how to tell a dead link from a quiet one, how to come back, and nothing about what
- * a frame means (that is the store's business). The contract it speaks is the core's (`CockpitHub`):
+ * a frame means (that is the store's business). The contract it speaks is the core's (`CockpitStream`):
  *
  *   - the **first** frame of every connection is `system.snapshot`, the whole state; so a client that connects or reconnects
  *     never has to guess what it missed. The link is called *connected* only once that frame has arrived: a socket that is

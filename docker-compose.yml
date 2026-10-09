@@ -1,8 +1,13 @@
-# Local infrastructure (TimescaleDB persistence + the .NET backend).
+# Local infrastructure: the database, and only the database.
 # TimescaleDB = PostgreSQL + the timescaledb extension, one container.
-#   docker compose up -d      start both
-#   docker compose down       stop (TimescaleDB's data survives in the volume)
-# Runbook: context/backend/persistence.md, context/infrastructure/runbook.md
+#
+# The Python core (python/trading_os) and the cockpit (Next.js) run on the Windows host — MetaTrader5's Python package is
+# Windows-only and talks to a terminal on this machine, so the core cannot live in a container (ADR 0016). `scripts/start.ps1`
+# starts this container, applies the schema (`python -m trading_os db migrate`), then the core and the cockpit.
+#
+#   docker compose up -d timescaledb     create/start the database
+#   docker compose down                  stop it (the data survives in the volume)
+# Runbook: context/infrastructure/runbook.md
 services:
   timescaledb:
     image: timescale/timescaledb:latest-pg17
@@ -26,72 +31,10 @@ services:
       timeout: 3s
       retries: 10
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: src/TradingOs.Host/Dockerfile
-    container_name: tradingos-backend
-    depends_on:
-      timescaledb:
-        condition: service_healthy
-    ports:
-      # Host side stays loopback-only — same personal/single-machine posture
-      # as the native `dotnet run` path (Mt5AgentServer's doc comment). The
-      # container binds all interfaces internally (env below) only because
-      # a container's own loopback isn't reachable through Docker's port
-      # mapping; nothing outside 127.0.0.1 on this host can reach either port.
-      - "127.0.0.1:5080:5080"
-      - "127.0.0.1:9765:9765"
-    environment:
-      # Container port 5432 (compose network), not the host-mapped 5433 above.
-      ConnectionStrings__TradingOs: "Host=timescaledb;Port=5432;Database=tradingos;Username=tradingos;Password=tradingos_dev"
-      # 3000 = backend mode, 3001 = mock preview (.claude/launch.json). Also
-      # the Origin allow-list of the hub and of /api writes (LocalAccessGuard):
-      # both host spellings, since `next dev` is bound to 127.0.0.1.
-      Cockpit__DashboardOrigin: "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
-      # I0 (2026-09-26): shared secrets, substituted from the gitignored `.env`
-      # beside this file — scripts/start-live.ps1 generates them once. The
-      # cockpit token guards the hub and /api writes; the observer token is
-      # presented to the Python observer. Empty = the guarded surface refuses
-      # everything (fail closed). Never inline a value here: this file is
-      # committed.
-      Cockpit__CockpitToken: "${TRADINGOS_COCKPIT_TOKEN:-}"
-      Cockpit__ObserverToken: "${TRADINGOS_OBSERVER_TOKEN:-}"
-      # I1: the MT5 execution agent's token — start-live also writes it to the
-      # terminal's MQL5\Files\tradingos_agent.token, where the agent reads it.
-      Cockpit__AgentToken: "${TRADINGOS_AGENT_TOKEN:-}"
-      # The Python observer + MT5 terminal stay on the Windows host, never
-      # containerized — host.docker.internal is Docker Desktop's built-in
-      # route back to the host (nothing extra to configure on Windows).
-      Cockpit__ObserverUrl: "ws://host.docker.internal:8765"
-      Cockpit__AgentPort: "9765"
-      Cockpit__ListenUrl: "http://0.0.0.0:5080"
-      Cockpit__AgentBindAny: "true"
-      # T03's news gate fails closed by design, so with no FRED key it is not a
-      # safety gate at all — it's an off switch: `news_releases` has been empty
-      # since the table was created, and it blocked every S01 evaluation that
-      # reached it. Substituted from a gitignored `.env` beside this file
-      # (`.gitignore` covers `.env*`); empty when absent, i.e. today's
-      # behaviour unchanged. Never inline the key here — this file is committed.
-      Fred__ApiKey: "${FRED_API_KEY:-}"
-
 volumes:
-  # Same story as the network below: the data volume was created under the
-  # compose project that first ran this service. Declaring it external by that
-  # exact name is what keeps a recreate from this directory on the real data —
-  # otherwise compose mounts `04_code_tradingos-pgdata` (it exists, stale) and
-  # TradingOS silently starts on the wrong database (checked live 2026-09-25).
+  # The data volume was created under the compose project that first ran this service. Declaring it external by that exact
+  # name is what keeps a recreate from this directory on the real data — otherwise compose mounts `04_code_tradingos-pgdata`
+  # (it exists, stale) and TradingOS silently starts on the wrong database (checked live 2026-09-25). Never create it empty.
   tradingos-pgdata:
     name: trading_operating_system_algorithmique_tradingos-pgdata
-    external: true
-
-networks:
-  # timescaledb already exists on this network (created before this file
-  # declared a backend service, under a compose project name that predates
-  # the current directory-derived one — checked live via `docker inspect`,
-  # not guessed). Pinning `default` to it, rather than letting compose mint
-  # a fresh `04_code_default`, is what lets `backend` resolve `timescaledb`
-  # by name without recreating the running container or its data volume.
-  default:
-    name: trading_operating_system_algorithmique_default
     external: true

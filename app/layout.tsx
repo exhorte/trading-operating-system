@@ -7,7 +7,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Trading OS — Cockpit",
   description:
-    "Operational cockpit of the Trading Operating System Algorithmique (mock realtime data).",
+    "Operational cockpit of the Trading Operating System: accounts, risk, execution, journal.",
 };
 
 /**

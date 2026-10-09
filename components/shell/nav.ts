@@ -31,7 +31,7 @@ export interface NavItem {
  * filled from what the Command Center was carrying (market context, risk,
  * agents); the two with nothing to receive were removed:
  *
- *   /settings — no auth, no backend switch, no strategy parameter to set
+ *   /settings — no auth, no source switch, no strategy parameter to set
  *   /replay   — needs the analytics pipeline (ADR 0011), not started
  *
  * Both come back when they have content. /settings did, in two steps:

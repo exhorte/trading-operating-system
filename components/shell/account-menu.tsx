@@ -38,7 +38,7 @@ const PROVIDER: Record<Provider, { name: string; initials: string }> = {
   EXNESS: { name: "Exness", initials: "EX" },
 };
 
-const HUB: Record<ConnectionState, { label: string; tone: Tone }> = {
+const LINK: Record<ConnectionState, { label: string; tone: Tone }> = {
   connecting: { label: "Connexion…", tone: "warning" },
   connected: { label: "Connecté", tone: "profit" },
   reconnecting: { label: "Reconnexion…", tone: "warning" },
@@ -111,7 +111,7 @@ export function AccountMenu() {
       : `${registered.login} · non connecté · ${env}`;
   const initials = firm?.initials ?? null;
   const tone = overallTone(connection, persistence, environment);
-  const hub = HUB[connection];
+  const link = LINK[connection];
   const store = persistenceLine(persistence);
 
   return (
@@ -157,7 +157,7 @@ export function AccountMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="flex flex-col gap-2 px-2 py-2 text-xs">
-          <StatusRow label="Cœur" value={hub.label} tone={hub.tone} />
+          <StatusRow label="Cœur" value={link.label} tone={link.tone} />
           {connectionIssue && connection !== "connected" ? (
             <p className="text-[11px] leading-snug text-warning">{connectionIssue}</p>
           ) : null}

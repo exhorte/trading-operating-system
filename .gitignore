@@ -38,15 +38,13 @@ yarn-error.log*
 # vercel
 .vercel
 
-# .NET backend build artifacts
-backend/**/bin/
-backend/**/obj/
-
-# Python caches and generated history exports
+# Python caches
 __pycache__/
 *.pyc
-tools/mt5-observer/*.jsonl
-tools/mt5-observer/spread_*.json
+
+# Data exported from a terminal (`python -m trading_os export-history`, `spread-history`) and personal trading data:
+# never source, never committed.
+/exports/
 
 # MQL5 compiled binaries and MetaEditor headless-compile logs (EA-05)
 tools/mt5-execution-agent/*.ex5
@@ -63,7 +61,7 @@ tools/mt5-execution-agent/tradingos_commands*.log
 next-env.d.ts
 
 # T08 — generated weekly review documents (personal trading data, not
-# source; regenerate with `npm run weekly-review`)
+# source; regenerate with `python -m trading_os weekly-review`)
 /weekly-reviews/
 
 # Python core (ADR 0016): virtualenv and tool caches
