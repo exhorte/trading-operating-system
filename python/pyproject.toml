@@ -27,8 +27,12 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
 ]
-# Read-only MCP server (trading_os.mcp) — optional, only for the AI assistant interface.
-mcp = ["mcp>=1.0"]
+# Read-only MCP server (trading_os.mcp) — optional, only for the AI assistant interface. The SDK's 2.x renamed FastMCP to MCPServer:
+# the server is written against it, so the major version is pinned.
+mcp = ["mcp>=2.3,<3"]
+
+[project.scripts]
+tradingos = "trading_os.cli.main:main"
 
 [tool.setuptools.packages.find]
 include = ["trading_os*"]

@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.util
 import pkgutil
 import re
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, ClassVar, get_args
 
 from pydantic import BaseModel, SecretStr
 
@@ -128,6 +129,8 @@ def import_all_modules() -> None:
     for module in pkgutil.walk_packages(trading_os.__path__, prefix="trading_os."):
         if module.name.endswith(".worker") and "mt5" in module.name:
             continue  # importing it would import MetaTrader5 on Windows; the worker is exercised through its process
+        if module.name.startswith("trading_os.mcp") and importlib.util.find_spec("mcp.server") is None:
+            continue  # the MCP server is an optional extra (`pip install .[mcp]`)
         importlib.import_module(module.name)
 
 
@@ -237,3 +240,42 @@ class TestSecretsTravelInOneDirection:
                     for media in response.get("content", {}).values():
                         walk(media.get("schema", {}), f"{method.upper()} {path} -> {status}", set())
         assert not offenders, "\n".join(offenders)
+
+
+class TestMcpCanOnlyRead:
+    """ADR 0005: the AI stays in reading. The MCP package may import the journal, the repositories and the domain — never a service
+    that can act — and it calls exactly the repository reads it declares."""
+
+    ALLOWED_PREFIXES = (
+        "trading_os.mcp", "trading_os.domain", "trading_os.shared", "trading_os.infrastructure.database",
+        "trading_os.services.journal", "trading_os.app.config", "trading_os.app.container", "trading_os.cli.main",
+    )  # fmt: skip
+    READS: ClassVar[frozenset[str]] = frozenset(
+        {"candles", "evaluations_since", "query", "in_doubt"}
+    )  # what tools.py may call
+
+    def modules(self) -> list[Path]:
+        return python_files("mcp")
+
+    def test_the_package_imports_nothing_that_can_act(self) -> None:
+        offenders = []
+        for path in self.modules():
+            for name in sorted(imports_of(path)):
+                if (
+                    name.startswith("trading_os")
+                    and name != "trading_os"
+                    and not name.startswith(self.ALLOWED_PREFIXES)
+                ):
+                    offenders.append(f"{path.relative_to(PACKAGE_ROOT)} imports {name}")
+        assert not offenders, "\n".join(offenders)
+
+    def test_the_tools_call_only_repository_reads(self) -> None:
+        source = (PACKAGE_ROOT / "mcp" / "tools.py").read_text(encoding="utf-8")
+        called = set(re.findall(r"self\._repos\.\w+\.(\w+)\(", source))
+        assert called and called <= self.READS, called - self.READS
+
+    def test_every_tool_is_declared_read_only(self) -> None:
+        source = (PACKAGE_ROOT / "mcp" / "server.py").read_text(encoding="utf-8")
+        tools = re.findall(r"@server\.tool\(([^)]*)\)", source)
+        assert len(tools) == 6 and all("annotations=READ_ONLY" in t for t in tools)
+        assert "readOnlyHint=True, destructiveHint=False" in source

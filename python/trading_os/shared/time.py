@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
+from trading_os.shared.errors import ValidationFailed
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -23,6 +25,16 @@ def parse_iso(value: str) -> datetime:
     if parsed.tzinfo is None:
         raise ValueError(f"timestamp without a timezone: {value!r}")
     return parsed.astimezone(UTC)
+
+
+def parse_when(value: str) -> datetime:
+    """An ISO 8601 date (``2026-10-01``) or time (``2026-10-01T08:30:00Z``) → an aware UTC instant. A value without a zone is read
+    as UTC. For the command line and the tools an assistant calls: a malformed value is a validation error, not a crash."""
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValidationFailed(f"{value!r} is not an ISO 8601 date or time", code="invalid_date") from error
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
 def from_epoch_ms(ms: int | float) -> datetime:
