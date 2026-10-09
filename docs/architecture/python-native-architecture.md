@@ -223,7 +223,7 @@ Authentification : jeton du cockpit (`/api/cockpit-token`, même origine) en `Au
 | Observabilité | `GET /api/system/health` : clients WS, compteur de trames, file, événements perdus |
 
 Le navigateur n'évalue plus aucune règle : il affiche `risk.state_updated`, `account.snapshot`, etc., et lit le contexte de marché par `GET /api/market/{symbol}/context`. Il ne
-publie plus de faits de verrou (`PublishEvent`) : `POST /api/risk/lockouts` (kill switch) et `…/acknowledge`.
+publie plus aucun fait de verrou : le kill switch est `POST /api/risk/lockouts`, l'accusé de réception `…/acknowledge`, et c'est le cœur qui écrit et diffuse.
 
 ## 10. Base de données
 

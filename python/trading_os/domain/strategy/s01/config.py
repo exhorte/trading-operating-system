@@ -1,4 +1,4 @@
-"""The parameters S01 poses for its detectors (port of ``FX_DETECTION_CONFIG`` and the constants of ``scripts/run-setup-detection.ts``).
+"""The parameters S01 poses for its detectors (port of ``FX_DETECTION_CONFIG`` and the constants of the former TypeScript detection worker).
 
 Provisional FX-scale defaults for EURUSD (5-digit quotes) — NOT the analysis engine's defaults, which are tuned for a gold price near
 4000 (an ``equal_level_tolerance`` of 0.3 would be 3000 pips on EURUSD). Posed, not derived: to be revisited once an observation

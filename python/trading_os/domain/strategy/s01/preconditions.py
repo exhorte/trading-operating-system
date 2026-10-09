@@ -52,7 +52,7 @@ def blocking_precondition(
     max_trades_per_day: int,
 ) -> BlockedOutcome | None:
     """The first of S01's five pre-conditions that does not hold, or ``None`` when all do (port of the checks of
-    ``scripts/run-setup-detection.ts``, in its order): « si une seule manque, il n'y a pas de recherche ».
+    the former TypeScript detection worker, in its order): « si une seule manque, il n'y a pas de recherche ».
 
     ``now`` is the open time of the last candle evaluated (the original's convention, which keeps a replay reproducible). ``releases is
     None`` is a calendar that was never synced or is stale — unknown, and the pre-condition fails closed, as the news gate does.

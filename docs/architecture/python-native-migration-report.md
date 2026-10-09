@@ -38,7 +38,7 @@ Liste exacte : `python-native-migration-files.md`, § « Supprimés ». Par ense
 
 | Ensemble | Ce qui est parti |
 |---|---|
-| Le Gateway .NET | `backend/` en entier : 5 projets (`Contracts`, `Gateway`, `Host`, `Persistence`, `Gateway.Tests`), `TradingOs.slnx`, `Dockerfile`, `.dockerignore`, `appsettings*.json`, `launchSettings.json`, ~ 60 fichiers C# dont `Mt5AgentServer`, `Mt5ObserverClient`, `Mt5WireTranslator`, `GatewayBridgeService`, `LocalAccessGuard`, `AccountSettingsGuard`, `PersistenceMapper`, `RedactingConsoleFormatter`, `NewsCalendarService` — et leurs 16 fichiers de tests |
+| Le Gateway .NET | `backend/` en entier : 5 projets (`Contracts`, `Gateway`, `Host`, `Persistence`, `Gateway.Tests`), `TradingOs.slnx`, `Dockerfile`, `.dockerignore`, `appsettings*.json`, `launchSettings.json`, 60 fichiers (49 en C#) dont `Mt5AgentServer`, `Mt5ObserverClient`, `Mt5WireTranslator`, `GatewayBridgeService`, `LocalAccessGuard`, `AccountSettingsGuard`, `PersistenceMapper`, `RedactingConsoleFormatter`, `NewsCalendarService` — et leurs 16 fichiers de tests |
 | L'observateur Python et ses outils | `tools/mt5-observer/` (observateur, exportateur de bougies, sonde de terminal, journal et analyse de spread, importeur d'historique, `list_symbols`, `spread_history`, leurs tests, `requirements.txt`, README) — les fonctions utiles sont devenues des commandes du cœur (`python -m trading_os export-history | import-candles | list-symbols | spread-history`) |
 | Les scripts et le lanceur | `scripts/start-live.ps1`, `scripts/{run-setup-detection,dev-submit-command,import-candles}.ts` |
 | SignalR et le transport d'avant | `lib/realtime/{signalr-client,mock-client,client,backend-url,mt5-translate}`, la source « mock » du navigateur (`lib/mock/`), `lib/contracts/` (13 fichiers : enveloppes, événements, wire recopiés) |
@@ -55,7 +55,7 @@ Liste exacte : `python-native-migration-files.md`, § « Supprimés ». Par ense
 
 Liste exacte : `python-native-migration-files.md`, § « Créés ». Par ensemble :
 
-- **Le cœur** : `python/` (pyproject, `trading_os/` : ≈ 180 modules sur `app`, `api`, `domain`, `services`, `infrastructure`, `runtime`, `cli`, `mcp`, `devtools`, `shared` ; 3 migrations SQL et 2 scripts manuels ; `tests/` : domaine, services, API, intégration, base, architecture, vecteurs d'or).
+- **Le cœur** : `python/` (pyproject, `trading_os/` : 179 modules sur `app`, `api`, `domain`, `services`, `infrastructure`, `runtime`, `cli`, `mcp`, `devtools`, `shared` ; 3 migrations SQL et 2 scripts manuels ; `tests/` : 85 fichiers — domaine, services, API, intégration, base, architecture, vecteurs d'or).
 - **Le cockpit** : `lib/api/` (client typé, `useApi`, types générés), `lib/websocket/`, `lib/realtime/` (store, contrôleur, fournisseur), `lib/cockpit/`, `lib/accounts/`, `lib/journal/`, `lib/compliance/`, `lib/account-analysis/`, et les composants de Settings, Account, journal et dossier de trade réécrits.
 - **L'infrastructure et la documentation** : `scripts/start.ps1`, `docker-compose.yml` (réduit à la base), `.env.example`, `docs/architecture/` (carte de migration, architecture cible, ce rapport et sa liste), ADR 0016 et 0018, `context/infrastructure/persistence.md`, `python/tests/golden/README.md`.
 - **L'agent** : build 1.11 de `TradingOsAgent.mq5` (modifié, pas créé) et `python/tests/architecture/test_execution_agent.py`, qui lit sa source.
