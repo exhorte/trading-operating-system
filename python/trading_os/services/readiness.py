@@ -4,12 +4,13 @@ Every check answers from what the services *observe now* — an age, a count, a 
 None of them is given the benefit of the doubt: a component that has not spoken yet is not healthy, and a check that
 cannot be evaluated is red, not green.
 
-Two checks are red on purpose until their pieces exist, and say so:
+One check is red on purpose until its piece exists, and says so:
 
-* ``strategy_valid`` — no strategy is registered in the Python core yet (S01 is being ported); a ``strategy`` provider
-  replaces the default when the strategy service exists;
 * ``position_management`` — S01 defines no exit management (debt TD-09): an automatic position could not be managed.
   Autonomy refuses to start over that, deliberately.
+
+``strategy_valid`` is answered by the strategy service (S01 registered for the active account, evaluating, not failing or silent
+on an open market); the default below only serves a collector built without one.
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ RECONCILIATION_FRESH = timedelta(seconds=90)
 
 AccountCheck = Callable[[Account], Fact]
 
-NO_STRATEGY = Fact(ok=False, detail="no strategy is registered in the Python core yet (S01 is not ported)")
+NO_STRATEGY = Fact(ok=False, detail="no strategy is registered (S01 is expected to run for the active account)")
 NO_EXITS = Fact(
     ok=False, detail="S01 defines no exit management yet (TD-09): an automatic position could not be managed"
 )

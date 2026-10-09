@@ -164,7 +164,9 @@ class Core:
         for account_id in list(c.accounts.connected_ids()):
             await c.positions.poll(account_id)
             await c.market.poll_ticks(account_id)
+            await c.market.poll_candles(account_id)
             await c.risk.evaluate(account_id)
+        await c.strategy.run_pending()
         await c.execution.sweep()
         await c.reconciliation.reconcile_connected()
         await c.autonomy.tick()

@@ -315,3 +315,35 @@ def test_utc_hours_map_to_sessions_including_the_window_that_wraps_midnight() ->
 def test_a_session_is_enabled_as_its_window_says() -> None:
     assert session_enabled(TradingSession.LONDON, DEFAULT_SESSION_WINDOWS) is True
     assert session_enabled(TradingSession.ASIA, DEFAULT_SESSION_WINDOWS) is False
+
+
+# ------------------------------------------------------------------------------------------------------ the original's two decimals
+
+
+FIVE_DIGITS = series(
+    [(1.0810, 1.0800), (1.0831, 1.0805), (1.0815, 1.0802), (1.0829, 1.0806), (1.0812, 1.0801), (1.0840, 1.0805)],
+    symbol="EURUSDm",
+    timeframe=Timeframe.M5,
+)  # two swing highs a hair apart (1.0831 and 1.0829), then a wick above them
+
+
+def test_a_level_keeps_two_decimals_like_the_original_which_is_golds_not_a_pairs() -> None:
+    swings = detect_swings(FIVE_DIGITS, 1)
+    original = next(
+        level for level in detect_liquidity(FIVE_DIGITS, swings, 0.0005) if level.kind is LiquidityKind.EQUAL_HIGHS
+    )
+    assert original.price == 1.08  # the cluster is at 1.0830: up to 50 pips lost on a five-digit pair
+
+
+def test_the_precision_of_a_level_is_a_parameter_and_the_sweep_scan_never_uses_the_rounded_price() -> None:
+    swings = detect_swings(FIVE_DIGITS, 1)
+    original = next(
+        level for level in detect_liquidity(FIVE_DIGITS, swings, 0.0005) if level.kind is LiquidityKind.EQUAL_HIGHS
+    )
+    precise = next(
+        level
+        for level in detect_liquidity(FIVE_DIGITS, swings, 0.0005, price_decimals=5)
+        if level.kind is LiquidityKind.EQUAL_HIGHS
+    )
+    assert precise.price == pytest.approx(1.0830)
+    assert original.swept_at == precise.swept_at == FIVE_DIGITS[5].open_time  # swept by the wick to 1.0840, either way

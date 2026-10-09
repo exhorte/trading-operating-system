@@ -49,14 +49,15 @@ SURFACE: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/execution/reconciliation"), ("POST", "/api/execution/reconciliation/run"),
         # market
         ("GET", "/api/market/calendar"), ("GET", "/api/market/quotes"), ("GET", "/api/market/{symbol}"),
-        ("GET", "/api/market/{symbol}/candles"),
+        ("GET", "/api/market/{symbol}/candles"), ("GET", "/api/market/{symbol}/context"),
         # journal
         ("GET", "/api/journal/trades"), ("GET", "/api/journal/compliance"),
         ("GET", "/api/journal/trades/{broker_position_id}"), ("GET", "/api/journal/captures/{broker_position_id}"),
+        # strategy
+        ("GET", "/api/strategy/proposals"), ("GET", "/api/strategy/intents"), ("GET", "/api/strategy/agreement"),
     }
 )  # fmt: skip
-# (the strategy routes — proposals, intents — arrive with the strategy port; the commands have no "execute" shortcut: an order
-# is a command that went through a risk decision, and only the EA ever sends it.)
+# (the commands have no "execute" shortcut: an order is a command that went through a risk decision, and only the EA ever sends it.)
 
 FORBIDDEN_WORDS = re.compile(r"order[-_/]?send|place[-_]?order|execute[-_]?trade|close[-_]?all", re.IGNORECASE)
 

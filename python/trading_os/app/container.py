@@ -42,6 +42,7 @@ from trading_os.services.positions import PositionService
 from trading_os.services.readiness import AccountCheck, ReadinessCollector
 from trading_os.services.reconciliation import ReconciliationService
 from trading_os.services.risk import RiskService
+from trading_os.services.strategy import StrategyService
 from trading_os.shared.errors import ValidationFailed
 from trading_os.shared.events.dispatcher import EventDispatcher
 from trading_os.shared.time import Clock, SystemClock
@@ -74,6 +75,7 @@ class Container:
     risk: RiskService
     reconciliation: ReconciliationService
     journal: JournalService
+    strategy: StrategyService
     scheduler: Scheduler
     heartbeat: Heartbeat
     supervisor: Supervisor
@@ -174,6 +176,11 @@ def build_container(
         repos=repos, events=events, clock=clock, accounts=accounts, positions=positions, market=market
     )
 
+    strategy = StrategyService(
+        accounts=accounts, market=market, news=news, risk=risk, execution=execution, autonomy=autonomy, repos=repos,
+        events=events, clock=clock,
+    )  # fmt: skip
+
     scheduler = Scheduler(clock)
     heartbeat = Heartbeat(events=events, clock=clock)
     supervisor = Supervisor(
@@ -184,7 +191,7 @@ def build_container(
     readiness = ReadinessCollector(
         accounts=accounts, positions=positions, market=market, risk=risk, execution=execution,
         reconciliation=reconciliation, supervisor=supervisor, scheduler=scheduler, heartbeat=heartbeat, db=db,
-        clock=clock, strategy=strategy_check, exits=exits_check,
+        clock=clock, strategy=strategy_check or strategy.readiness, exits=exits_check,
     )  # fmt: skip
 
     autonomy.wire(readiness=readiness, halt_agents=execution.halt_agents)
@@ -196,5 +203,6 @@ def build_container(
         settings=settings, clock=clock, db=db, repos=repos, events=events, audit=audit, credentials=credentials,
         accounts=accounts, tick_writer=tick_writer, market=market, positions=positions, news=news, autonomy=autonomy,
         agent_link=agent_link, ea_server=ea_server, execution=execution, risk=risk, reconciliation=reconciliation,
-        journal=journal, scheduler=scheduler, heartbeat=heartbeat, supervisor=supervisor, readiness=readiness,
+        journal=journal, strategy=strategy, scheduler=scheduler, heartbeat=heartbeat, supervisor=supervisor,
+        readiness=readiness,
     )  # fmt: skip

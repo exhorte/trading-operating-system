@@ -61,9 +61,14 @@ def liquidity_pool(
     swings: Sequence[Swing],
     equal_level_tolerance: float,
     session_windows: Sequence[SessionWindow],
+    price_decimals: int = 2,
 ) -> list[LiquidityLevel]:
-    """PDH/PDL and equal highs/lows (analysis engine) plus the Asia high/low, unified."""
-    return [*detect_liquidity(candles, swings, equal_level_tolerance), *_asia_levels(candles, session_windows)]
+    """PDH/PDL and equal highs/lows (analysis engine) plus the Asia high/low, unified. ``price_decimals`` is the analysis engine's
+    (see ``detect_liquidity``); the Asia levels are never rounded."""
+    return [
+        *detect_liquidity(candles, swings, equal_level_tolerance, price_decimals),
+        *_asia_levels(candles, session_windows),
+    ]
 
 
 def _nearest_unswept(

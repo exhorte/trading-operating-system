@@ -17,6 +17,7 @@ from tests.unit.domain.s01.scenario import (
     base_input,
 )
 from trading_os.domain.market.analysis.models import FairValueGap, LiquidityKind, LiquidityLevel, OrderBlock
+from trading_os.domain.market.analysis.swings import detect_swings
 from trading_os.domain.market.sessions import DEFAULT_SESSION_WINDOWS
 from trading_os.domain.primitives import Bias, Side, Timeframe
 from trading_os.domain.strategy.s01 import BlockedOutcome, ProposedOutcome, SetupStage, evaluate_setup, propose_setup
@@ -433,3 +434,28 @@ def test_a_trade_goes_to_the_nearest_proposal_and_only_once() -> None:
     assert len(taken) == 1 and taken[0].proposal_detected_at == datetime(2026, 1, 5, 10, 1, tzinfo=UTC)
     assert [r.agreement for r in rows].count(AgreementClass.PROPOSED_AND_REFUSED) == 1
     assert [r.agreement for r in rows].count(AgreementClass.TAKEN_WITHOUT_PROPOSAL) == 0
+
+
+# ------------------------------------------------------------------------------------------------------ the original's two decimals
+
+
+def test_the_levels_of_the_pool_keep_two_decimals_unless_told_otherwise() -> None:
+    candles = series(
+        [(1.0810, 1.0800), (1.0831, 1.0805), (1.0815, 1.0802), (1.0829, 1.0806), (1.0812, 1.0801), (1.0840, 1.0805)],
+        symbol="EURUSDm", timeframe=Timeframe.M5,
+    )  # fmt: skip
+    swings = detect_swings(candles, 1)
+    rounded = liquidity_pool(candles, swings, 0.0005, DEFAULT_SESSION_WINDOWS)
+    exact = liquidity_pool(candles, swings, 0.0005, DEFAULT_SESSION_WINDOWS, price_decimals=5)
+    highs = {
+        pool_name: next(lv for lv in pool if lv.kind is LiquidityKind.EQUAL_HIGHS)
+        for pool_name, pool in (("rounded", rounded), ("exact", exact))
+    }
+    assert highs["rounded"].price == 1.08 and highs["exact"].price == pytest.approx(1.083)
+
+
+def test_the_proposal_input_carries_the_precision_to_the_pool() -> None:
+    assert base_input().level_decimals == 2 and base_input(level_decimals=5).level_decimals == 5
+    assert (
+        propose_setup(base_input(level_decimals=5)) is not None
+    )  # the reference scenario's prices have two decimals: same result

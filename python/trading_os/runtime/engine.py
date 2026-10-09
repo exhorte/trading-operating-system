@@ -58,6 +58,7 @@ class Engine:
 
         c.risk.subscribe()
         c.journal.subscribe()
+        c.strategy.subscribe()
         c.supervisor.subscribe()
         c.events.subscribe(AccountDisconnected, self._forget_account)
 
@@ -149,6 +150,7 @@ class Engine:
         add("ticks", self._each(c.market.poll_ticks), interval_s=s.tick_poll_interval_s, timeout_s=30)
         add("candles", self._each(c.market.poll_candles), interval_s=5.0, timeout_s=30)
         add("risk", self._each(c.risk.evaluate), interval_s=s.positions_poll_interval_s, timeout_s=30, critical=True)
+        add("strategy", self._once(c.strategy.run_pending), interval_s=5.0, timeout_s=60)
         add("execution", self._once(c.execution.sweep), interval_s=2.0, timeout_s=30, critical=True)
         add(
             "reconciliation", self._once(c.reconciliation.reconcile_connected), interval_s=15.0, timeout_s=90,

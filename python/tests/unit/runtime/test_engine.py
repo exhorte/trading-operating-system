@@ -30,8 +30,8 @@ FAST = {
     "supervisor_interval_s": 0.05,
 }
 JOBS = {
-    "heartbeat", "positions", "ticks", "candles", "risk", "execution", "reconciliation", "autonomy", "supervisor",
-    "tick_writer", "news",
+    "heartbeat", "positions", "ticks", "candles", "risk", "strategy", "execution", "reconciliation", "autonomy",
+    "supervisor", "tick_writer", "news",
 }  # fmt: skip
 
 
@@ -86,8 +86,12 @@ async def test_start_registers_every_job_with_its_cadence_and_marks_the_critical
         stats = {s.name: s for s in core.c.scheduler.stats()}
         assert set(stats) == JOBS
         assert {name for name, s in stats.items() if s.critical} == {
-            "positions", "risk", "execution", "reconciliation", "supervisor",
-        }  # fmt: skip
+            "positions",
+            "risk",
+            "execution",
+            "reconciliation",
+            "supervisor",
+        }  # fmt: skip  (the strategy is not a safety function: it is watched through the readiness, not the supervisor)
         assert stats["heartbeat"].interval_s == 0.05 and stats["news"].interval_s == 6 * 3600
         assert all(s.timeout_s for name, s in stats.items() if name != "heartbeat")
     finally:

@@ -56,11 +56,18 @@ def _day_key(candle: Candle) -> date:
     return candle.open_time.astimezone(UTC).date()
 
 
-def detect_liquidity(candles: Sequence[Candle], swings: Sequence[Swing], tolerance: float) -> list[LiquidityLevel]:
+def detect_liquidity(
+    candles: Sequence[Candle], swings: Sequence[Swing], tolerance: float, price_decimals: int = 2
+) -> list[LiquidityLevel]:
+    """Equal highs/lows and the previous day's high/low. ``price_decimals`` is how many decimals a level's price keeps: **2 is the
+    original's, and it is gold's** (a level at 4012.34 loses nothing) — on a five-digit pair it moves a level by up to 50 pips
+    (1.0830 becomes 1.08). It is a parameter so the port can stay identical by default and the correction be one value, taken
+    deliberately (the sweep scan itself always uses the unrounded price)."""
     levels: list[LiquidityLevel] = []
     if len(candles) == 0:
         return levels
     symbol, timeframe = candles[0].symbol, candles[0].timeframe
+    scale = 10**price_decimals
 
     def push_level(
         kind: LiquidityKind, price: float, formed_at: int, detected_at: datetime, side: Literal["above", "below"]
@@ -68,7 +75,7 @@ def detect_liquidity(candles: Sequence[Candle], swings: Sequence[Swing], toleran
         levels.append(
             LiquidityLevel(
                 level_id=f"liq-{kind.value}-{formed_at}", symbol=symbol, timeframe=timeframe, kind=kind,
-                price=js_round(price * 100) / 100, swept_at=first_sweep(candles, formed_at, price, side),
+                price=js_round(price * scale) / scale, swept_at=first_sweep(candles, formed_at, price, side),
                 detected_at=detected_at,
             )
         )  # fmt: skip

@@ -62,6 +62,8 @@ class SetupProposalInput(DomainModel):
     cost_threshold: float
     min_risk_reward: float
     max_stop_distance: float | None = None
+    # decimals kept by the equal highs/lows and previous-day levels: the original's 2 (gold's) unless the caller decides otherwise
+    level_decimals: int = 2
 
 
 def _blocked(stage: SetupStage, detail: str) -> BlockedOutcome:
@@ -98,7 +100,9 @@ def evaluate_setup(setup: SetupProposalInput) -> BlockedOutcome | ProposedOutcom
         return _blocked(SetupStage.RANGE_LOCATION, f"price is {location}, need {needed} for a {side.value}")
 
     context_swings = detect_swings(setup.context_candles, setup.swing_lookback)
-    pool = liquidity_pool(setup.context_candles, context_swings, setup.equal_level_tolerance, setup.session_windows)
+    pool = liquidity_pool(
+        setup.context_candles, context_swings, setup.equal_level_tolerance, setup.session_windows, setup.level_decimals
+    )
     if not setup.context_candles:
         return _blocked(SetupStage.LIQUIDITY, "no context candles")
     reference_price = setup.context_candles[-1].close
