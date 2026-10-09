@@ -3,7 +3,8 @@
 * the domain is pure (no I/O, no framework, no import from the outer layers);
 * `MetaTrader5` is imported in exactly one module, and no order function exists anywhere in the Python core;
 * no `if provider == …` outside the provider profiles;
-* no model — domain, event or API — has a field that could carry a secret.
+* no model — domain, event or API — has a field that could carry a secret, except the ``…Request`` models through which a
+  password *arrives* (typed ``SecretStr``) and the settings: a secret travels in one direction, and never out.
 """
 
 from __future__ import annotations
@@ -12,8 +13,11 @@ import ast
 import importlib
 import pkgutil
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
+
+from pydantic import BaseModel, SecretStr
 
 import trading_os
 from trading_os.domain.primitives import DomainModel
@@ -157,3 +161,79 @@ class TestNoSecretCanRideAModel:
         for wire_type, cls in EVENT_REGISTRY.items():
             assert re.fullmatch(r"[a-z]+(\.[a-z_]+)+", wire_type), wire_type
             assert cls.wire_type == wire_type
+
+
+class TestSecretsTravelInOneDirection:
+    """A password can come *in* — a ``…Request`` model of the API, typed ``SecretStr`` — and cannot go *out*: no response of the
+    OpenAPI document reaches a secret-looking property or a write-only value."""
+
+    SECRETISH = TestNoSecretCanRideAModel.SECRETISH
+    ALLOWED = TestNoSecretCanRideAModel.ALLOWED
+
+    @staticmethod
+    def is_secret_str(annotation: Any) -> bool:
+        return annotation is SecretStr or any(arg is SecretStr for arg in get_args(annotation))
+
+    def secret_fields(self) -> Iterator[tuple[type[BaseModel], str, Any]]:
+        import_all_modules()
+        for model in TestNoSecretCanRideAModel().all_subclasses(BaseModel):
+            if not model.__module__.startswith("trading_os."):
+                continue
+            for name, field in model.model_fields.items():
+                if self.SECRETISH.search(name) and name not in self.ALLOWED:
+                    yield model, name, field.annotation
+
+    def test_a_secret_is_a_secret_str_in_a_request_model_of_the_api_or_in_the_settings(self) -> None:
+        from trading_os.api.schemas.accounts import SecretRequest
+        from trading_os.app.config import Settings
+
+        offenders = []
+        for model, name, annotation in self.secret_fields():
+            where = f"{model.__module__}.{model.__name__}.{name}"
+            home = model is Settings or (
+                model.__module__.startswith("trading_os.api.schemas")
+                and model.__name__.endswith("Request")
+                and issubclass(model, SecretRequest)
+            )
+            if not home:
+                offenders.append(f"{where}: only a ...Request model of the API (or the settings) may carry a secret")
+            elif not self.is_secret_str(annotation):
+                offenders.append(f"{where}: must be typed SecretStr")
+        assert not offenders, "\n".join(offenders)
+
+    def test_no_response_of_the_api_reaches_a_secret(self) -> None:
+        from trading_os.app.config import Settings
+        from trading_os.app.main import create_app
+
+        settings = Settings(_env_file=None, database_url=SecretStr("postgresql://nobody@127.0.0.1:1/none"))
+        document = create_app(settings, start_engine=False).openapi()
+        components = document["components"]["schemas"]
+
+        offenders: list[str] = []
+
+        def walk(node: Any, trail: str, seen: set[str]) -> None:
+            if isinstance(node, list):
+                for item in node:
+                    walk(item, trail, seen)
+            elif isinstance(node, dict):
+                if node.get("writeOnly") or node.get("format") == "password":
+                    offenders.append(f"{trail}: a write-only value in a response")
+                reference = node.get("$ref")
+                if reference:
+                    name = reference.rsplit("/", 1)[-1]
+                    if name not in seen:
+                        walk(components[name], f"{trail}>{name}", seen | {name})
+                for key, value in node.get("properties", {}).items():
+                    if self.SECRETISH.search(key) and key not in self.ALLOWED:
+                        offenders.append(f"{trail}.{key}: a secret-looking property in a response")
+                    walk(value, f"{trail}.{key}", seen)
+                for key in ("items", "additionalProperties", "anyOf", "oneOf", "allOf", "prefixItems"):
+                    if key in node:
+                        walk(node[key], trail, seen)
+
+        for path, operations in document["paths"].items():
+            for method, operation in operations.items():
+                for status, response in operation.get("responses", {}).items():
+                    for media in response.get("content", {}).values():
+                        walk(media.get("schema", {}), f"{method.upper()} {path} -> {status}", set())
+        assert not offenders, "\n".join(offenders)

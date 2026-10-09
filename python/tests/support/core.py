@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import SecretStr
+
 from tests.support.harness import Harness, Recorder
 from tests.unit.services.test_accounts_service import exness
 from trading_os.app.config import Settings, TradingMode
@@ -17,6 +19,7 @@ from trading_os.domain.autonomy.state import AutonomyMode
 from trading_os.domain.execution.agent import AgentStatus
 from trading_os.infrastructure.mt5.fake import FakeMt5
 from trading_os.infrastructure.mt5.wire import AgentHeartbeat
+from trading_os.infrastructure.security.credentials import CredentialStore
 from trading_os.runtime.engine import Engine
 from trading_os.shared.time import to_epoch_ms
 
@@ -54,6 +57,27 @@ class ScriptedLink:
             return False
         self.lines.append((login, line))
         return True
+
+
+class MemoryCredentialStore:
+    """A vault that lives in the test: ``put``/``get``/``has``/``delete`` like the real ones, and a ``secrets`` dict to peek at."""
+
+    name = "memory"
+
+    def __init__(self) -> None:
+        self.secrets: dict[str, SecretStr] = {}
+
+    async def get(self, account_id: str) -> SecretStr | None:
+        return self.secrets.get(account_id)
+
+    async def put(self, account_id: str, password: SecretStr) -> None:
+        self.secrets[account_id] = password
+
+    async def delete(self, account_id: str) -> None:
+        self.secrets.pop(account_id, None)
+
+    async def has(self, account_id: str) -> bool:
+        return account_id in self.secrets
 
 
 def green(detail: str = "provided by the test") -> Fact:
@@ -153,6 +177,7 @@ async def make_core(
     ceiling: AutonomyMode = AutonomyMode.AUTONOMOUS,
     providers: bool = True,
     settings: dict[str, Any] | None = None,
+    credentials: CredentialStore | None = None,
 ) -> Core:
     """``providers=False``: no strategy and no exit management are registered — the readiness says so (as it does today)."""
     link = ScriptedLink()
@@ -160,7 +185,7 @@ async def make_core(
     options.update(settings or {})
     container = build_container(
         Settings(_env_file=None, **options),
-        clock=h.clock, db=h.db, mt5_factory=h.mt5_factory, agent_link=link,
+        clock=h.clock, db=h.db, mt5_factory=h.mt5_factory, agent_link=link, credentials=credentials,
         strategy_check=(lambda account: green("test strategy")) if providers else None,
         exits_check=(lambda account: green("test exits")) if providers else None,
     )  # fmt: skip
@@ -171,9 +196,11 @@ async def make_core(
     return Core(h=h, c=container, engine=engine, link=link, recorder=recorder)
 
 
-async def make_ready_core(h: Harness, *, top: AutonomyMode = AutonomyMode.OBSERVE) -> Core:
+async def make_ready_core(
+    h: Harness, *, top: AutonomyMode = AutonomyMode.OBSERVE, credentials: CredentialStore | None = None
+) -> Core:
     """A core with a connected account, an agent, a few cycles behind it — and the autonomy ladder climbed to ``top``."""
-    core = await make_core(h)
+    core = await make_core(h, credentials=credentials)
     await core.add_account()
     await core.register_agent()
     for _ in range(2):
