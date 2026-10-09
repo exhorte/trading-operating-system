@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 
 from trading_os import __version__
-from trading_os.api.errors import install_error_handlers
+from trading_os.api.errors import document_error_envelope, install_error_handlers
 from trading_os.api.routes import accounts, autonomy, execution, journal, market, risk, strategy, system
 from trading_os.api.security import AccessGuardMiddleware
 from trading_os.api.websocket.hub import CockpitHub
@@ -30,8 +30,13 @@ from trading_os.runtime.engine import Engine
 
 
 def _operation_id(route: APIRoute) -> str:
-    """``accounts_connect`` rather than ``connect_api_accounts__account_id__connect_post``: stable, readable generated names."""
-    return f"{route.tags[0]}_{route.name}" if route.tags else route.name
+    """``accounts_connect`` rather than ``connect_api_accounts__account_id__connect_post``: stable, readable generated names — the
+    tag first, then the function's name without a word that only repeats the tag (``list_accounts`` → ``accounts_list``)."""
+    if not route.tags:
+        return route.name
+    tag = str(route.tags[0])
+    words = [word for word in route.name.split("_") if word.rstrip("s") != tag.rstrip("s")]
+    return "_".join([tag, *words])
 
 
 def create_app(
@@ -68,6 +73,7 @@ def create_app(
     app.state.engine = engine
     app.state.hub = hub
     install_error_handlers(app)
+    document_error_envelope(app)
 
     token = settings.trading_os_cockpit_token
     app.add_middleware(

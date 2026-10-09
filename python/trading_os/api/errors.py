@@ -11,10 +11,12 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from trading_os.shared.errors import TradingOsError
@@ -54,3 +56,40 @@ def install_error_handlers(app: FastAPI) -> None:
     async def unexpected(request: Request, error: Exception) -> JSONResponse:
         logger.error("unhandled error on %s %s", request.method, request.url.path, exc_info=error)
         return JSONResponse({"code": "internal_error", "message": "internal error", "details": {}}, status_code=500)
+
+
+class ErrorBody(BaseModel):
+    """What every refusal looks like, whatever its status. ``code`` is stable and is what a client switches on; ``details`` carries
+    the structure of the refusal (the reasons a disconnect was refused, the fields a body was refused for — never the values)."""
+
+    code: str
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+def document_error_envelope(app: FastAPI) -> None:
+    """Make the OpenAPI document say what the handlers above really answer: the same ``ErrorBody`` for a validation refusal (422)
+    and, as the default response, for every other status — instead of FastAPI's stock ``HTTPValidationError``, which this API never
+    returns. The generated TypeScript client types its errors from this."""
+    build = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        schema = build()
+        if schema.get("x-error-envelope"):
+            return schema
+        components = schema.setdefault("components", {}).setdefault("schemas", {})
+        body = ErrorBody.model_json_schema(ref_template="#/components/schemas/{model}")
+        components["ErrorBody"] = {k: v for k, v in body.items() if k != "$defs"}
+        for name in ("HTTPValidationError", "ValidationError"):
+            components.pop(name, None)
+        reference = {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorBody"}}}
+        for item in schema.get("paths", {}).values():
+            for operation in item.values():
+                responses = operation.get("responses", {})
+                if "422" in responses:
+                    responses["422"] = {"description": "Validation refused", "content": reference}
+                responses["default"] = {"description": "Refused: the code says why", "content": reference}
+        schema["x-error-envelope"] = True
+        return schema
+
+    app.openapi = openapi  # type: ignore[method-assign]

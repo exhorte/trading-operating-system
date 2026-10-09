@@ -75,6 +75,11 @@ class Bias(StrEnum):
 
 
 class DomainModel(BaseModel):
-    """Base of every domain model: immutable, camelCase on the wire, built from either spelling."""
+    """Base of every domain model: immutable, camelCase on the wire, built from either spelling.
 
-    model_config = ConfigDict(frozen=True, populate_by_name=True, alias_generator=to_camel)
+    ``json_schema_serialization_defaults_required``: a field that has a default is *optional to send* but always *present when read*;
+    the schema that describes what the server returns (and the TypeScript generated from it) must say so."""
+
+    model_config = ConfigDict(
+        frozen=True, populate_by_name=True, alias_generator=to_camel, json_schema_serialization_defaults_required=True
+    )

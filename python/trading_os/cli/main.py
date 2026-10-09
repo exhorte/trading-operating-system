@@ -8,6 +8,7 @@
     spread-history              the spread per New York window from the broker's tick history (read-only)
     weekly-review               a Markdown review of a week, from the journal
     mcp                         the read-only MCP server (needs the ``mcp`` extra)
+    gen-types                   generate the cockpit's TypeScript types from the core's own schemas
 
 Nothing here places an order, arms the autonomy or changes a rule: those are gestures a person makes in the cockpit.
 """
@@ -93,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
     review.set_defaults(handler=_weekly_review)
 
     commands.add_parser("mcp", help="the read-only MCP server on stdio").set_defaults(handler=_mcp)
+
+    types = commands.add_parser("gen-types", help="generate the cockpit's TypeScript types (lib/api/generated.ts)")
+    types.add_argument("--out", type=Path, help="default: lib/api/generated.ts at the repository root")
+    types.add_argument("--check", action="store_true", help="write nothing; exit 1 when the file on disk is stale")
+    types.set_defaults(handler=_gen_types)
     return parser
 
 
@@ -319,3 +325,15 @@ def _mcp(args: argparse.Namespace) -> int:
     from trading_os.mcp.server import main as run_server
 
     return run_server()
+
+
+def _gen_types(args: argparse.Namespace) -> int:
+    from trading_os.devtools import gen
+
+    out: Path = args.out or gen.DEFAULT_OUT
+    if args.check:
+        stale = gen.is_stale(out)
+        print(f"{out}: {'STALE — run `python -m trading_os gen-types`' if stale else 'up to date'}")
+        return 1 if stale else 0
+    print(f"wrote {gen.write(out)} lines to {out}")
+    return 0

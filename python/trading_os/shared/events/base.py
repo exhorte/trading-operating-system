@@ -24,7 +24,9 @@ class Event(BaseModel):
     to False: it is broadcast to the cockpit but would only bloat the audit trail.
     """
 
-    model_config = ConfigDict(frozen=True, populate_by_name=True, alias_generator=to_camel)
+    model_config = ConfigDict(
+        frozen=True, populate_by_name=True, alias_generator=to_camel, json_schema_serialization_defaults_required=True
+    )
 
     wire_type: ClassVar[str] = ""
     persist: ClassVar[bool] = True
