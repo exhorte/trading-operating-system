@@ -21,10 +21,13 @@ import sys
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from trading_os.domain.primitives import Timeframe
 from trading_os.shared.errors import TradingOsError, ValidationFailed
+
+if TYPE_CHECKING:
+    import uvicorn
 
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 
@@ -157,12 +160,23 @@ def _serve(args: argparse.Namespace) -> int:
             "warning: TRADINGOS_COCKPIT_TOKEN is not set — every request but /api/system/health will be refused",
             file=sys.stderr,
         )
-    # Access logs stay off: the WebSocket may carry its credential in the query string.
-    config = uvicorn.Config(
-        create_app(settings), host=host, port=port, log_level=settings.log_level.lower(), access_log=False, loop="none"
-    )
-    run(uvicorn.Server(config).serve())
+    run(uvicorn.Server(server_config(create_app(settings), host, port, settings.log_level)).serve())
     return 0
+
+
+def server_config(app: Any, host: str, port: int, level: str) -> uvicorn.Config:
+    """The uvicorn configuration of the core. Two settings are deliberate, both about the WebSocket's credential, which travels in
+    the query string (a browser cannot set a header on a WebSocket):
+
+    * ``access_log=False`` — the access line prints the URL;
+    * ``log_config=None`` — uvicorn's own logging set-up would replace the masked handler ``setup_logging`` installed, and its
+      handshake line (``"WebSocket /ws?access_token=…" [accepted]``) is not an access line: it is written at INFO, whatever
+      ``access_log`` says."""
+    import uvicorn
+
+    return uvicorn.Config(
+        app, host=host, port=port, log_level=level.lower(), access_log=False, log_config=None, loop="none"
+    )
 
 
 def _db_migrate(args: argparse.Namespace) -> int:

@@ -99,6 +99,10 @@ class _Built:
     context: TradingContext
     today: RiskToday
     problems: list[str]
+    # Whether the account's figures were *read* (a snapshot exists). Without one the engine still answers — the gates close,
+    # fail-closed — but equity is a zero standing in for a number nobody has, and a persistent lockout must never be opened
+    # over that: it would wait for a human to acknowledge a drawdown that never happened.
+    measured: bool
 
 
 class RiskService:
@@ -263,7 +267,7 @@ class RiskService:
         )
         if agent_problem:
             problems.append(agent_problem)
-        return _Built(context, today, problems)
+        return _Built(context, today, problems, measured=snapshot is not None)
 
     async def _streak_for_gate(self, account_id: str, today: RiskToday) -> int:
         """The loss streak the gate sees. A streak whose last loss is no later than the end of a pause already served
@@ -342,7 +346,7 @@ class RiskService:
                 LockoutCleared(account_id=account_id, lockout_id=lockout_id, cleared_by="pause-expired")
             )
         active = ctx.active_lockout
-        if active is None:
+        if active is None and built.measured:
             hard_blocked = [g for g in state.gates if g.blocked and g.gate_id in _HARD_GATES]
             only_streak = bool(hard_blocked) and all(g.gate_id == CONSECUTIVE_LOSS_GATE_ID for g in hard_blocked)
             new = (
@@ -371,7 +375,9 @@ class RiskService:
         existing = await self._repos.risk.active_lockout(account_id, now)
         if existing is not None and existing.reason == KILL_SWITCH_REASON:
             return existing
-        return await self._open_lockout(account_id, KILL_SWITCH_REASON, None, now)
+        lockout = await self._open_lockout(account_id, KILL_SWITCH_REASON, None, now)
+        await self.evaluate(account_id)  # the read model carries the lock now, not at the next cycle
+        return lockout
 
     async def acknowledge(self, account_id: str) -> str:
         """The human saw it. Clears the active lockout (and stamps any expired one); returns what was cleared."""

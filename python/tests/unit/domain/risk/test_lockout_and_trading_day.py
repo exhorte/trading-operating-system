@@ -62,8 +62,10 @@ class TestDetectNewLockout:
 
 class TestApplyActiveLockout:
     def test_the_ledger_overrides_a_recovered_live_state(self) -> None:
-        merged = apply_active_lockout(state(RiskMode.NORMAL, None), lockout(), NOW)
+        held = lockout()
+        merged = apply_active_lockout(state(RiskMode.NORMAL, None), held, NOW)
         assert merged.mode is RiskMode.LOCKED and merged.lockout_reason == "Daily loss guard"
+        assert merged.lockout_id == held.lockout_id  # what an acknowledgement has to name travels with the lock
 
     def test_passes_through_without_an_active_lockout(self) -> None:
         normal = state(RiskMode.NORMAL, None)

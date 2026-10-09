@@ -41,7 +41,6 @@ class WorstTrade:
     side: str
     realized_pnl: float
     closed_at: datetime
-    has_capture: bool
 
 
 @dataclass(frozen=True)
@@ -81,7 +80,7 @@ def compute_weekly_stats(
         week_start=week_start, week_end=week_end, trade_count=len(trades), net_realized_pnl=net, by_symbol=by_symbol,
         compliance_rate=compliance.rate, top_violation_types=tallies,
         worst_trades=[
-            WorstTrade(t.broker_position_id, t.symbol, t.side.value, t.realized_pnl, t.closed_at, t.has_capture)
+            WorstTrade(t.broker_position_id, t.symbol, t.side.value, t.realized_pnl, t.closed_at)
             for t in worst
         ],
     )  # fmt: skip
@@ -119,7 +118,9 @@ def render_weekly_review(stats: WeeklyStats, cockpit_url: str = "http://localhos
         lines.append("No closed trades this week.")
     else:
         for t in stats.worst_trades:
-            capture = f" — [capture]({cockpit_url}/journal/{t.broker_position_id})" if t.has_capture else ""
-            lines.append(f"- {t.closed_at:%Y-%m-%d} · {t.symbol} {t.side.upper()} · {money(t.realized_pnl)}{capture}")
+            dossier = (
+                f" — [dossier]({cockpit_url}/journal/{t.broker_position_id})"  # the file of the trade: its numbers
+            )
+            lines.append(f"- {t.closed_at:%Y-%m-%d} · {t.symbol} {t.side.upper()} · {money(t.realized_pnl)}{dossier}")
     lines.append("")
     return "\n".join(lines)

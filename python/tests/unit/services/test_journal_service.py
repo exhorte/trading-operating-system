@@ -92,13 +92,13 @@ async def test_a_position_opened_and_closed_writes_its_two_captures_by_itself(h:
     await trade_it(env, 801)
     entry, exit_ = await env.journal.captures(env.account_id, "801")
     assert entry is not None and exit_ is not None
-    assert (entry.kind, entry.symbol, entry.timeframe) == ("entry", "EURUSDm", "M15")
+    assert (entry.kind, entry.symbol) == ("entry", "EURUSDm")
     assert (entry.entry_price, entry.stop_loss, entry.take_profit, entry.exit_price) == (1.1, 1.099, 1.103, None)
-    assert entry.window_end_utc == opened_at and entry.window_start_utc == opened_at - timedelta(hours=6)
-    assert exit_.kind == "exit" and exit_.exit_price == pytest.approx(1.102)
-    assert exit_.window_start_utc == entry.window_start_utc  # the exit shows the same pre-entry context …
-    assert exit_.window_end_utc > entry.window_end_utc  # … plus the trade's whole duration
-    assert (exit_.entry_price, exit_.stop_loss, exit_.take_profit) == (1.1, 1.099, 1.103)
+    assert entry.captured_at == opened_at
+    assert exit_.kind == "exit" and exit_.exit_price == pytest.approx(1.102) and exit_.captured_at > entry.captured_at
+    assert (exit_.entry_price, exit_.stop_loss, exit_.take_profit) == (1.1, 1.099, 1.103)  # one row tells the story
+    # Numbers only: nothing of a chart is recorded (ADR 0018).
+    assert not {"timeframe", "window_start_utc", "window_end_utc"} & set(type(entry).model_fields)
 
 
 async def test_captures_are_immutable_and_an_exit_is_never_invented(h: Harness) -> None:
@@ -114,7 +114,7 @@ async def test_captures_are_immutable_and_an_exit_is_never_invented(h: Harness) 
     stranger = ClosedTrade(account_id=env.account_id, broker_position_id="never-opened", symbol="EURUSDm", side=Side.BUY,
                            volume=0.01, realized_pnl=1.0, exit_price=1.1, closed_at=h.clock.now())  # fmt: skip
     await h.events.publish(PositionClosed(account_id=env.account_id, trade=stranger))
-    assert await env.journal.captures(env.account_id, "never-opened") == (None, None)  # no entry, no window: nothing
+    assert await env.journal.captures(env.account_id, "never-opened") == (None, None)  # no entry, no open seen: nothing
 
 
 async def test_a_trade_opened_and_closed_between_two_polls_is_captured_without_a_stop(h: Harness) -> None:
@@ -161,6 +161,9 @@ async def test_the_journal_lists_trades_with_their_r_multiple_newest_first(h: Ha
     assert all(
         t.has_capture and t.violations == [] and t.opened_at is not None for t in trades
     )  # 08:00 New York: in session
+    assert {t.session.value for t in trades if t.session} == {
+        "new_york_am"
+    }  # 12:00 UTC: tagged by the analysis's buckets
     assert trades[1].side is Side.BUY and trades[1].volume == 0.05 and trades[1].stop_loss == 1.099
 
 
@@ -172,7 +175,7 @@ async def test_the_rules_a_trade_broke_are_named(h: Harness) -> None:
     # A trade out of session: 13:00 New York.
     late = now.replace(hour=17, minute=0) + timedelta(days=1)
     await repo.positions.record_open(env.account_id, "822", late)
-    await repo.positions.record_capture_entry(env.account_id, "822", "EURUSDm", "M15", late, 1.1, 1.099, 1.103)
+    await repo.positions.record_capture_entry(env.account_id, "822", "EURUSDm", late, 1.1, 1.099, 1.103)
     closed = ClosedTrade(account_id=env.account_id, broker_position_id="822", symbol="EURUSDm", side=Side.BUY,
                          volume=0.05, realized_pnl=-5.0, exit_price=1.099, closed_at=late + timedelta(minutes=5))  # fmt: skip
     await repo.positions.record_closed(closed)
@@ -180,7 +183,7 @@ async def test_the_rules_a_trade_broke_are_named(h: Harness) -> None:
     inside = now + timedelta(days=2)
     await repo.risk.open_lockout("lock-1", env.account_id, "Kill switch manuel", inside - timedelta(minutes=5), None)
     await repo.positions.record_open(env.account_id, "823", inside)
-    await repo.positions.record_capture_entry(env.account_id, "823", "EURUSDm", "M15", inside, 1.1, 1.099, 1.103)
+    await repo.positions.record_capture_entry(env.account_id, "823", "EURUSDm", inside, 1.1, 1.099, 1.103)
     await repo.positions.record_closed(
         closed.model_copy(update={"broker_position_id": "823", "closed_at": inside + timedelta(minutes=3)})
     )

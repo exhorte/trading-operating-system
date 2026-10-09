@@ -8,10 +8,13 @@ from typing import Any
 
 import pytest
 
+from trading_os.api.routes.strategy import MAX_LOOKBACK
 from trading_os.app.config import REPO_ROOT
 from trading_os.cli.main import main
 from trading_os.devtools import gen
 from trading_os.devtools.typescript import Schemas, generate, quote_key, read_side, structure, type_name
+from trading_os.domain.risk.lockout import KILL_SWITCH_REASON
+from trading_os.shared.events.base import EVENT_REGISTRY, Event
 
 
 def render(schema: dict[str, Any], **components: Any) -> str:
@@ -164,6 +167,18 @@ def test_events_become_a_typed_union_without_the_envelope_fields() -> None:
     assert "export type CockpitEvent" in text and "export type EventType = keyof EventPayloads;" in text
 
 
+def test_the_strings_the_core_compares_by_are_emitted_as_constants() -> None:
+    text = generate(DOCUMENT, None, {"B_REASON": "é", "A_REASON": "Kill switch"})
+    assert text.index("A_REASON") < text.index("B_REASON")  # sorted: the output does not depend on the order given
+    assert 'export const A_REASON = "Kill switch" as const;' in text and 'export const B_REASON = "é" as const;' in text
+    assert "constants" not in generate(DOCUMENT)  # none given, no section
+
+
+def test_a_limit_the_core_refuses_beyond_is_emitted_as_a_number() -> None:
+    text = generate(DOCUMENT, None, {"SOME_LIMIT_DAYS": 31})
+    assert "export const SOME_LIMIT_DAYS = 31 as const;" in text  # a number literal, not the string "31"
+
+
 def test_a_name_given_two_different_schemas_stops_the_generation() -> None:
     event = {
         "type": "object",
@@ -206,10 +221,33 @@ def test_the_validation_error_is_the_cores_own_envelope_not_the_frameworks(gener
     assert body is not None and "code: string;" in body.group(1) and "message: string;" in body.group(1)
 
 
+def test_an_event_registered_by_something_else_in_the_process_is_not_part_of_the_contract() -> None:
+    """The event registry is process-wide: a test (or a plugin) that defines its own event must not change the file the cockpit is
+    compiled against — a full test run used to write a different contract than a lone one."""
+
+    class Foreign(Event):
+        wire_type = "test.foreign_to_the_contract"
+
+    try:
+        assert "test.foreign_to_the_contract" in EVENT_REGISTRY  # it is registered…
+        assert "test.foreign_to_the_contract" not in gen.event_schemas()  # …and still not generated
+        assert "test.foreign_to_the_contract" not in gen.build()
+    finally:
+        EVENT_REGISTRY.pop("test.foreign_to_the_contract", None)
+
+
 def test_every_event_and_the_snapshot_have_a_payload_type(generated: str) -> None:
     assert '"system.snapshot": {' in generated and '"risk.state_updated": {' in generated
     assert '"autonomy.halted": {' in generated and '"execution.command_created": {' in generated
     assert "accountStates: Record<string, AccountState>;" in generated
+
+
+def test_the_cockpit_reads_the_kill_switch_reason_from_the_core_not_from_a_copy(generated: str) -> None:
+    assert f'export const KILL_SWITCH_REASON = "{KILL_SWITCH_REASON}" as const;' in generated
+
+
+def test_the_cockpit_reads_how_far_back_a_strategy_read_may_reach_from_the_core_not_from_a_copy(generated: str) -> None:
+    assert f"export const STRATEGY_MAX_LOOKBACK_DAYS = {MAX_LOOKBACK.days} as const;" in generated
 
 
 def test_no_secret_shaped_field_reaches_a_type_the_browser_reads(generated: str) -> None:

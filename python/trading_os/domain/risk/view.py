@@ -25,6 +25,7 @@ class RiskStatus(DomainModel):
     consecutive_losses: int | None
     lockout_reason: str | None
     lockout_until: datetime | None
+    lockout_id: str | None  # what an acknowledgement names: the cockpit needs no second call to learn it
     gates: list[GateResult]
     evaluated_at: datetime
 
@@ -45,6 +46,7 @@ def to_risk_status(state: RiskState, profile: RiskProfile) -> RiskStatus:
         consecutive_losses=state.consecutive_losses,
         lockout_reason=state.lockout_reason,
         lockout_until=state.lockout_until,
+        lockout_id=state.lockout_id,
         gates=state.gates,
         evaluated_at=state.evaluated_at,
     )

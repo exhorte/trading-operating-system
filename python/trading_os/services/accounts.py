@@ -25,6 +25,7 @@ from typing import Protocol
 from pydantic import Field, SecretStr
 
 from trading_os.domain.accounts import anti_tilt
+from trading_os.domain.accounts.anti_tilt import GuardDecision
 from trading_os.domain.accounts.models import (
     Account,
     AccountRules,
@@ -39,8 +40,11 @@ from trading_os.domain.accounts.rules_ledger import (
     CancelOutcome,
     RuleResolution,
     RuleVersion,
+    VersionStatus,
+    cancel_outcome,
     new_version,
     resolve_rules,
+    version_status,
 )
 from trading_os.domain.events import (
     AccountArchived,
@@ -100,10 +104,22 @@ class AccountSession:
     connected_at: datetime
 
 
+class RuleVersionView(RuleVersion):
+    """A version as the cockpit reads it: what the ledger recorded, and what it is worth *now* — in effect, waiting,
+    replaced or withdrawn — and whether it may still be withdrawn. The core answers; the page does not re-derive."""
+
+    status: VersionStatus
+    cancellable: bool
+
+
 class RulesOverview(DomainModel):
     account_id: str
     resolution: RuleResolution
-    versions: list[RuleVersion]
+    versions: list[RuleVersionView]  # newest first
+    # What a change saved at this instant would do: applied at once, or kept for the next trading day, and why. The form
+    # shows it *before* the click; ``request_rules`` decides again at the click, with the same function.
+    guard: GuardDecision
+    evaluated_at: datetime
 
 
 def _slug(text: str) -> str:
@@ -410,21 +426,42 @@ class AccountService:
     async def rules_overview(self, account_id: str) -> RulesOverview:
         account = await self._repos.accounts.require(account_id)
         versions = await self._repos.rules.for_account(account_id)
-        today = await self._repos.risk.today(account_id, self._clock.now())
-        resolution = resolve_rules(versions, today.day_anchor_starts_at_utc, account.rules)
-        return RulesOverview(account_id=account_id, resolution=resolution, versions=versions)
-
-    async def request_rules(self, account_id: str, rules: AccountRules) -> RuleVersion:
-        """Append a version. Applied at once only when no session is in progress anywhere (anti-tilt, ADR 0007)."""
-        await self._repos.accounts.require(account_id)
         now = self._clock.now()
+        today = await self._repos.risk.today(account_id, now)
+        resolution = resolve_rules(versions, today.day_anchor_starts_at_utc, account.rules)
+        views = [
+            RuleVersionView.model_validate(
+                {
+                    **v.model_dump(),
+                    "status": version_status(v, resolution),
+                    "cancellable": cancel_outcome(v) is CancelOutcome.CANCELLED,
+                }
+            )
+            for v in sorted(versions, key=lambda v: v.requested_at, reverse=True)
+        ]
+        return RulesOverview(
+            account_id=account_id,
+            resolution=resolution,
+            versions=views,
+            guard=await self._guard(now),
+            evaluated_at=now,
+        )
+
+    async def _guard(self, now: datetime) -> GuardDecision:
+        """The anti-tilt answer, from what the core sees at this instant: every account's session, the live link."""
         sessions = await self._repos.rules.session_facts(now)
         link = anti_tilt.LiveLink(
             connected=bool(self._sessions),
             account_id=self.active_account_id if self._sessions else None,
             open_positions=self._open_positions(),
         )
-        decision = anti_tilt.decide(link, sessions)
+        return anti_tilt.decide(link, sessions)
+
+    async def request_rules(self, account_id: str, rules: AccountRules) -> RuleVersion:
+        """Append a version. Applied at once only when no session is in progress anywhere (anti-tilt, ADR 0007)."""
+        await self._repos.accounts.require(account_id)
+        now = self._clock.now()
+        decision = await self._guard(now)
         version = await self._repos.rules.append(new_version(account_id, rules, decision, now))
         await self._events.publish(
             AccountRulesChanged(

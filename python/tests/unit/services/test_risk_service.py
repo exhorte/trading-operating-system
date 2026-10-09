@@ -247,12 +247,29 @@ async def test_breaching_the_daily_loss_locks_once_and_the_ledger_holds_until_ac
         await rig.risk.acknowledge(rig.account_id)
 
 
+async def test_a_lockout_is_never_opened_from_figures_nobody_has_measured(h: Harness) -> None:
+    """Connected, but nothing read yet: there is no account snapshot, so there is no equity — only its absence. The gates close
+    (the answer is « no »), but a *persistent* lockout, which waits for a human to acknowledge it, must not open over a drawdown
+    that is nothing but a zero where a number will be."""
+    rig = await make_rig(h)  # attached, not yet read
+    status = await rig.risk.evaluate(rig.account_id)
+    assert status is not None and any(g.state == "blocked" for g in status.gates)  # fail closed
+    assert await h.repos.risk.active_lockout(rig.account_id, h.clock.now()) is None
+    assert not h.recorder.of(LockoutEnabled)
+    await rig.warm()  # the first reading arrives: the figures are real, and they are fine
+    healthy = await rig.risk.evaluate(rig.account_id)
+    assert healthy is not None and healthy.lockout_id is None
+    assert await h.repos.risk.active_lockout(rig.account_id, h.clock.now()) is None
+
+
 async def test_the_kill_switch_denies_until_acknowledged_and_flags_positions_opened_during_it(h: Harness) -> None:
     rig = await make_rig(h)
     await rig.warm()
     lockout = await rig.risk.engage_kill_switch(rig.account_id)
     assert lockout.reason == KILL_SWITCH_REASON
     assert (await rig.risk.engage_kill_switch(rig.account_id)).lockout_id == lockout.lockout_id  # idempotent
+    status = rig.risk.status(rig.account_id)  # not at the next cycle: the gesture is in the read model when it returns
+    assert status is not None and status.state is RiskMode.LOCKED and status.lockout_id == lockout.lockout_id
     answer = await rig.risk.can_i_trade(rig.account_id)
     assert answer.decision == "DENIED" and "kill_switch_active" in answer.reasons
 

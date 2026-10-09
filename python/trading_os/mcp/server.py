@@ -50,7 +50,7 @@ def build_server(tools: ReadOnlyTools) -> MCPServer:
 
     @server.tool(name="get_trades", title="Get closed trades", annotations=READ_ONLY)
     async def get_trades(start: str, end: str, symbol: str | None = None) -> str:
-        """Closed trades in a date range, with realised P&L, entry/exit, capture availability, the R multiple and the rules each broke.
+        """Closed trades in a date range, with realised P&L, entry/exit, whether the entry levels are on record, the R multiple and the rules each broke.
         Facts only — no expectancy or win rate is computed. start/end: YYYY-MM-DD or ISO 8601; symbol: a broker symbol, e.g. EURUSDm."""
         return await answer(tools.get_trades(start, end, symbol))
 

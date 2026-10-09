@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,12 +17,13 @@ from pydantic import SecretStr
 
 from trading_os.app.config import Settings
 from trading_os.cli.candles import parse_candle
-from trading_os.cli.main import build_parser, main
+from trading_os.cli.main import build_parser, main, server_config
 from trading_os.cli.terminal import ReadOnlyTerminal
 from trading_os.domain.primitives import Timeframe
 from trading_os.infrastructure.mt5.fake import FakeMt5
 from trading_os.infrastructure.mt5.transport import InProcessTransport
 from trading_os.shared.errors import ValidationFailed
+from trading_os.shared.logging.setup import setup_logging
 
 
 @pytest.fixture
@@ -111,6 +113,38 @@ def test_serve_refuses_to_start_without_a_database(
     configure(None)
     assert main(["serve"]) == 2
     assert "DATABASE_URL is not configured" in capsys.readouterr().err
+
+
+@pytest.fixture
+def pristine_logging() -> Iterator[None]:
+    """``setup_logging`` rewires the process: put every logger it (or uvicorn) touches back as it was."""
+    names = ["", "uvicorn", "uvicorn.error", "uvicorn.access"]
+    saved = [(logging.getLogger(n), list(logging.getLogger(n).handlers), logging.getLogger(n).level,
+              logging.getLogger(n).propagate, logging.getLogger(n).disabled) for n in names]  # fmt: skip
+    yield
+    for logger, handlers, level, propagate, disabled in saved:
+        logger.handlers[:] = handlers
+        logger.setLevel(level)
+        logger.propagate = propagate
+        logger.disabled = disabled
+
+
+def test_the_websocket_credential_never_reaches_the_log(
+    pristine_logging: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The WebSocket carries its token in the query string, and uvicorn writes the handshake line — ``"WebSocket /ws?access_token=…"
+    [accepted]`` — at INFO whatever ``access_log`` says. Its own logging set-up would replace our masked handler, so the core's
+    configuration forbids it; this is checked through the real ``uvicorn.Config``, not through a flag."""
+    secret = "tok-0123456789abcdef"
+    setup_logging("INFO")
+    config = server_config(object(), "127.0.0.1", 8000, "INFO")
+    assert config.log_config is None and config.access_log is False
+    logging.getLogger("uvicorn.error").info(
+        '%s - "WebSocket %s" [accepted]', "127.0.0.1:5000", f"/ws?access_token={secret}"
+    )
+    written = capsys.readouterr().err
+    assert "[accepted]" in written  # the line is still there: it is the credential that is not
+    assert secret not in written and "access_token=***" in written
 
 
 def test_a_destructive_script_needs_its_name_repeated(

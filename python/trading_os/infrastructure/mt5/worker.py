@@ -9,7 +9,7 @@
   execution-agent link) nor the API — the parent kills and restarts a worker that does not answer in time;
 * a native crash takes down the worker, not the core.
 
-Run as ``python -m trading_os.infrastructure.mt5.worker [--backend real|fake]``. ``fake`` serves the in-memory simulated
+Run as ``python -m trading_os.infrastructure.mt5.worker [--backend real|fake|demo]``. ``fake`` serves the in-memory simulated
 terminal (tests and ``MT5_ENABLED=false``) through the very same protocol.
 """
 
@@ -28,6 +28,10 @@ def _load_backend(name: str) -> Any:
         from trading_os.infrastructure.mt5.fake import FakeMt5
 
         return FakeMt5.default()
+    if name == "demo":
+        from trading_os.infrastructure.mt5.fake import FakeMt5
+
+        return FakeMt5.demo()
     import MetaTrader5 as mt5  # the one and only import of the package
 
     return mt5
@@ -59,7 +63,7 @@ def _bad(request_id: Any, message: str) -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="MT5 read-only worker")
-    parser.add_argument("--backend", choices=["real", "fake"], default="real")
+    parser.add_argument("--backend", choices=["real", "fake", "demo"], default="real")
     options = parser.parse_args()
     backend = _load_backend(options.backend)
     serve(backend)

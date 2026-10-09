@@ -1,17 +1,15 @@
-"""Position history: every position opened, every position closed, the agent's scan, and the immutable T05 captures."""
+"""Position history: every position opened, every position closed, the agent's scan, and the immutable T05 captures (the
+prices of the opening and of the closing — data only)."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from trading_os.domain.execution.records import PositionScanRecord
 from trading_os.domain.journal.models import JournalTrade, TradeCapture
 from trading_os.domain.positions.models import ClosedTrade
 from trading_os.infrastructure.database.pool import Database, Row
-
-# How far before the entry the capture window starts (what the cockpit may draw, never wider).
-CAPTURE_LOOKBACK = timedelta(hours=6)
 
 
 def _to_closed(row: Row, account_id: str) -> ClosedTrade:
@@ -128,12 +126,14 @@ class PositionRepository:
         return JournalTrade.model_validate(dict(row)) if row else None
 
     # ------------------------------------------------------------------------------------------ captures (T05)
+    # The columns `timeframe`, `window_start_utc` and `window_end_utc` belong to the graphic capture that was removed
+    # (ADR 0018): migration 0003 made them optional, nothing writes or reads them any more, and the manual script
+    # `drop_capture_window` removes them whenever the user decides to.
     async def record_capture_entry(
         self,
         account_id: str,
         broker_position_id: str,
         symbol: str,
-        timeframe: str,
         opened_at: datetime,
         entry_price: float,
         stop_loss: float,
@@ -141,37 +141,24 @@ class PositionRepository:
     ) -> None:
         """Immutable: written once per position and kind, at the moment of the real event, never updated."""
         await self._db.execute(
-            "INSERT INTO trade_captures (account_id, broker_position_id, kind, symbol, timeframe, window_start_utc, "
-            "window_end_utc, entry_price, stop_loss, take_profit, exit_price, captured_at) "
-            "VALUES (%s, %s, 'entry', %s, %s, %s, %s, %s, %s, %s, NULL, %s) "
+            "INSERT INTO trade_captures (account_id, broker_position_id, kind, symbol, entry_price, stop_loss, "
+            "take_profit, exit_price, captured_at) VALUES (%s, %s, 'entry', %s, %s, %s, %s, NULL, %s) "
             "ON CONFLICT (account_id, broker_position_id, kind) DO NOTHING",
-            (
-                account_id,
-                broker_position_id,
-                symbol,
-                timeframe,
-                opened_at - CAPTURE_LOOKBACK,
-                opened_at,
-                entry_price,
-                stop_loss,
-                take_profit,
-                opened_at,
-            ),
+            (account_id, broker_position_id, symbol, entry_price, stop_loss, take_profit, opened_at),
         )
 
     async def record_capture_exit(
         self, account_id: str, broker_position_id: str, exit_price: float, closed_at: datetime
     ) -> bool:
-        """The exit row copies symbol, timeframe, window start and the planned levels from the entry row, so a viewer
-        needs one row per kind and never a join. False when there is no entry to copy (nothing is invented)."""
+        """The exit row copies the symbol and the planned levels from the entry row, so one row per kind tells its whole
+        story and nothing needs a join. False when there is no entry to copy (nothing is invented)."""
         inserted = await self._db.execute(
-            "INSERT INTO trade_captures (account_id, broker_position_id, kind, symbol, timeframe, window_start_utc, "
-            "window_end_utc, entry_price, stop_loss, take_profit, exit_price, captured_at) "
-            "SELECT account_id, broker_position_id, 'exit', symbol, timeframe, window_start_utc, %s, entry_price, "
-            "stop_loss, take_profit, %s, %s FROM trade_captures "
-            "WHERE account_id = %s AND broker_position_id = %s AND kind = 'entry' "
+            "INSERT INTO trade_captures (account_id, broker_position_id, kind, symbol, entry_price, stop_loss, "
+            "take_profit, exit_price, captured_at) "
+            "SELECT account_id, broker_position_id, 'exit', symbol, entry_price, stop_loss, take_profit, %s, %s "
+            "FROM trade_captures WHERE account_id = %s AND broker_position_id = %s AND kind = 'entry' "
             "ON CONFLICT (account_id, broker_position_id, kind) DO NOTHING",
-            (closed_at, exit_price, closed_at, account_id, broker_position_id),
+            (exit_price, closed_at, account_id, broker_position_id),
         )
         return inserted == 1
 
@@ -179,9 +166,8 @@ class PositionRepository:
         self, account_id: str, broker_position_id: str
     ) -> tuple[TradeCapture | None, TradeCapture | None]:
         rows = await self._db.fetch_all(
-            "SELECT account_id, broker_position_id, kind, symbol, timeframe, window_start_utc, window_end_utc, "
-            "entry_price, stop_loss, take_profit, exit_price, captured_at FROM trade_captures "
-            "WHERE account_id = %s AND broker_position_id = %s",
+            "SELECT account_id, broker_position_id, kind, symbol, entry_price, stop_loss, take_profit, exit_price, "
+            "captured_at FROM trade_captures WHERE account_id = %s AND broker_position_id = %s",
             (account_id, broker_position_id),
         )
         captures = [_to_capture(r) for r in rows]

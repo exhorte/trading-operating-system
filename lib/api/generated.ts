@@ -402,6 +402,10 @@ export interface GateResult {
   state: "open" | "blocked";
   detail: string;
 }
+export interface GuardDecision {
+  deferred: boolean;
+  reasons: GuardReason[];
+}
 /** Structured on purpose: the cockpit words it, the ledger stores it. */
 export interface GuardReason {
   code: string;
@@ -475,6 +479,7 @@ export interface JournalTradeView {
   hasCapture: boolean;
   rMultiple: number | null;
   violations: Violation[];
+  session: TradingSession | null;
 }
 export type LiquidityKind = "buy_side" | "sell_side" | "equal_highs" | "equal_lows" | "session_high" | "session_low" | "previous_day_high" | "previous_day_low";
 /** A resting-liquidity level the market may draw toward or sweep. */
@@ -701,6 +706,7 @@ export interface RiskStatus {
   consecutiveLosses: number | null;
   lockoutReason: string | null;
   lockoutUntil: string | null;
+  lockoutId: string | null;
   gates: GateResult[];
   evaluatedAt: string;
 }
@@ -719,10 +725,32 @@ export interface RuleVersion {
   cancelledAt: string | null;
   dayStartedSince: boolean;
 }
+/** A version as the cockpit reads it: what the ledger recorded, and what it is worth *now* — in effect, waiting, replaced or withdrawn — and whether it may still be withdrawn. The core answers; the page does not re-derive. */
+export interface RuleVersionView {
+  versionId: string;
+  accountId: string;
+  rules: AccountRules;
+  requestedAt: string;
+  deferred: boolean;
+  deferralReasons: GuardReason[];
+  cancelledAt: string | null;
+  dayStartedSince: boolean;
+  status: VersionStatus;
+  cancellable: boolean;
+}
 export interface RulesOverview {
   accountId: string;
   resolution: RuleResolution;
-  versions: RuleVersion[];
+  versions: RuleVersionView[];
+  guard: GuardDecision;
+  evaluatedAt: string;
+}
+/** The facts the rules of an account derive from: which provider and phase, which capital or challenge. The answer is the complete rule set those facts give — computed here, once, so a page never carries a copy of the provider's percentages. */
+export interface RulesPreviewRequest {
+  provider: Provider;
+  accountType: AccountType;
+  referenceBalance?: number | null;
+  challenge?: FtmoChallenge | null;
 }
 /** New rules for an account. The top level is strict; the nested profiles stay lenient on purpose, because the same models read the stored versions back and an older row must still load. */
 export interface RulesRequest {
@@ -830,21 +858,19 @@ export interface TickQueueView {
   dropped: number;
 }
 export type Timeframe = "M1" | "M3" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1" | "W1";
+/** The numbers recorded at one moment of a position: its opening (``entry``) or its closing (``exit``, which carries the same planned levels so one row tells the whole story). The name is historical — what is kept is data, never an image. */
 export interface TradeCapture {
   accountId: string;
   brokerPositionId: string;
   kind: "entry" | "exit";
   symbol: string;
-  timeframe: string;
-  windowStartUtc: string;
-  windowEndUtc: string;
   entryPrice: number;
   stopLoss: number;
   takeProfit: number;
   exitPrice: number | null;
   capturedAt: string;
 }
-/** The two moments recorded around one position. */
+/** The two moments recorded around one position: the prices at its opening, and at its closing. */
 export interface TradeCaptures {
   entry: TradeCapture | null;
   exit: TradeCapture | null;
@@ -921,6 +947,7 @@ export interface UpdateAccountRequest {
   terminalPath?: string | null;
   symbolSuffix?: string | null;
 }
+export type VersionStatus = "in_effect" | "pending" | "superseded" | "cancelled";
 export interface Violation {
   type: ViolationType;
   detail: string;
@@ -958,6 +985,14 @@ export interface Operations {
     query: Record<string, never>;
     body: CreateAccountRequest;
     response: Account;
+  };
+  accounts_preview_rules: {
+    method: "POST";
+    path: "/api/accounts/rules-preview";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: RulesPreviewRequest;
+    response: AccountRules;
   };
   accounts_archive: {
     method: "DELETE";
@@ -1423,6 +1458,7 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   accounts_list: { method: "GET", path: "/api/accounts" },
   accounts_orders: { method: "GET", path: "/api/accounts/{account_id}/orders" },
   accounts_positions: { method: "GET", path: "/api/accounts/{account_id}/positions" },
+  accounts_preview_rules: { method: "POST", path: "/api/accounts/rules-preview" },
   accounts_put_credentials: { method: "PUT", path: "/api/accounts/{account_id}/credentials" },
   accounts_reconnect: { method: "POST", path: "/api/accounts/{account_id}/reconnect" },
   accounts_request_rules: { method: "POST", path: "/api/accounts/{account_id}/rules" },
@@ -1532,3 +1568,7 @@ export interface EventPayloads {
 }
 export type EventType = keyof EventPayloads;
 export type CockpitEvent = { [K in EventType]: { type: K; payload: EventPayloads[K] } & EventEnvelope }[EventType];
+
+// --------------------------------------------------------------------------------------------- constants
+export const KILL_SWITCH_REASON = "Kill switch manuel" as const;
+export const STRATEGY_MAX_LOOKBACK_DAYS = 31 as const;

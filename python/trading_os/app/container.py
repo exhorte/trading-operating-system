@@ -83,8 +83,9 @@ class Container:
 
 
 def default_mt5_factory(settings: Settings, clock: Clock) -> Mt5Factory:
-    """One read worker (a child process) per account. ``MT5_ENABLED=false`` serves the simulated terminal instead."""
-    backend = "real" if settings.mt5_enabled else "fake"
+    """One read worker (a child process) per account. ``MT5_ENABLED=false`` serves the simulated terminal instead — the demo one,
+    with two open positions and a short history, so a cockpit can be looked at with no broker."""
+    backend = "real" if settings.mt5_enabled else "demo"
 
     def factory(account: Account) -> Mt5Client:
         return Mt5Client(SubprocessTransport(backend=backend), account_id=account.id, clock=clock)

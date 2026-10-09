@@ -234,21 +234,20 @@ async def test_a_risk_decision_is_persisted_and_read_back_whole(repos: Repositor
 async def test_captures_are_immutable_and_the_exit_copies_the_entry(repos: Repositories) -> None:
     opened, closed = at(hours=-3), at(hours=-1)
     assert await repos.positions.record_capture_exit("AC1", "p1", 1.2, closed) is False  # no entry: nothing invented
-    await repos.positions.record_capture_entry("AC1", "p1", "EURUSDm", "M1", opened, 1.1, 1.09, 1.12)
-    await repos.positions.record_capture_entry("AC1", "p1", "EURUSDm", "M1", opened, 9.9, 9.9, 9.9)  # ignored
+    await repos.positions.record_capture_entry("AC1", "p1", "EURUSDm", opened, 1.1, 1.09, 1.12)
+    await repos.positions.record_capture_entry("AC1", "p1", "EURUSDm", opened, 9.9, 9.9, 9.9)  # ignored
     assert await repos.positions.record_capture_exit("AC1", "p1", 1.115, closed) is True
     assert await repos.positions.record_capture_exit("AC1", "p1", 7.7, closed) is False
     entry, exit_ = await repos.positions.captures("AC1", "p1")
     assert isinstance(entry, TradeCapture) and isinstance(exit_, TradeCapture)
     assert entry.entry_price == 1.1 and entry.exit_price is None
-    assert entry.window_start_utc == opened - timedelta(hours=6) and entry.window_end_utc == opened
+    assert entry.captured_at == opened and exit_.captured_at == closed
     assert exit_.exit_price == 1.115 and exit_.entry_price == 1.1 and exit_.stop_loss == 1.09
-    assert exit_.window_start_utc == entry.window_start_utc and exit_.window_end_utc == closed
 
 
 async def test_the_journal_joins_closed_trades_with_their_opening_and_capture(repos: Repositories) -> None:
     await repos.positions.record_open("AC1", "p1", at(hours=-3))
-    await repos.positions.record_capture_entry("AC1", "p1", "EURUSDm", "M1", at(hours=-3), 1.1, 1.09, 1.12)
+    await repos.positions.record_capture_entry("AC1", "p1", "EURUSDm", at(hours=-3), 1.1, 1.09, 1.12)
     await repos.positions.record_closed(
         ClosedTrade(
             account_id="AC1",

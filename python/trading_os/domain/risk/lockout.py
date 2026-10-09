@@ -59,7 +59,12 @@ def apply_active_lockout(state: RiskState, active: ActiveLockout | None, now: da
     if active is None or is_lockout_expired(active, now):
         return state
     return state.model_copy(
-        update={"mode": RiskMode.LOCKED, "lockout_reason": active.reason, "lockout_until": active.until}
+        update={
+            "mode": RiskMode.LOCKED,
+            "lockout_reason": active.reason,
+            "lockout_until": active.until,
+            "lockout_id": active.lockout_id,
+        }
     )
 
 

@@ -47,7 +47,9 @@ async def trade_file(broker_position_id: PositionId, c: Core, account_id: Accoun
 
 
 @router.get(
-    "/captures/{broker_position_id}", response_model=TradeCaptures, summary="The entry and exit captures of a position"
+    "/captures/{broker_position_id}",
+    response_model=TradeCaptures,
+    summary="The prices recorded at a position's opening and closing",
 )
 async def captures(broker_position_id: PositionId, c: Core, account_id: AccountQuery = None) -> TradeCaptures:
     entry, exit_ = await c.journal.captures(await resolve_account(c, account_id), broker_position_id)

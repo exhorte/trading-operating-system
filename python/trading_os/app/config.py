@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # Database. No default: the password is not in the code. scripts/start.ps1 writes it to .env.
     database_url: SecretStr | None = None
 
-    # MT5. False = simulated mode (FakeMt5): no terminal, no worker process.
+    # MT5. False = simulated mode (FakeMt5.demo): no terminal; the worker process still runs, against an in-memory one.
     mt5_enabled: bool = True
     trading_mode: TradingMode = TradingMode.OBSERVE
     active_account_id: str | None = None

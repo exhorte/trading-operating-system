@@ -1,5 +1,14 @@
 # T06 — Journal auto-alimenté, zéro saisie
 
+> **Amendement du 2026-10-09 (ADR 0018).** La capture graphique n'existe plus : la colonne
+> « lien Capture » de ce journal devient **« Dossier → »** (un lien par ligne, pour tout trade
+> clôturé), qui ouvre `/journal/{id}` — les chiffres enregistrés (entrée, stop, objectif, sortie)
+> et la chaîne Intention → Décision de risque → Commande → Résultat, sans graphique. Le compteur
+> « Avec capture » du panneau devient **« R calculable »** (entrée et stop connus) : une ligne
+> dans les captures ne dit pas que le stop est connu — le cœur reconstitue entrée et sortie depuis
+> l'historique d'un trade qu'il n'a pas vu s'ouvrir —, c'est donc le R du trade que l'on compte.
+> Le texte ci-dessous décrit la fonction telle qu'elle a été livrée.
+
 Statut : **livré** (4 incréments, 2026-09-16) · Vague 2 · Effort 3–5 j ·
 Valeur 5 · Dépend de : T05 (livré)
 

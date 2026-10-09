@@ -1,9 +1,9 @@
 """The journal: every trade, from the intention to the outcome — written by the events themselves, never by hand (T05–T07).
 
-* **Captures (T05).** On ``PositionOpened`` and ``PositionClosed`` the service writes the immutable capture rows: the exact
-  window of candles the cockpit may draw, the entry price, stop and target, the exit price. Numbers, never an image — the
-  cockpit renders them when someone looks, and the upper bound of the window, stored, can never be widened. A trade whose
-  entry row is missing gets no exit row: a window nobody saw open is not invented.
+* **Captures (T05).** On ``PositionOpened`` and ``PositionClosed`` the service writes the immutable capture rows: the entry
+  price, stop and target as they were when the position opened, and the exit price when it closed. Numbers, never an image
+  and no chart window — the graphic capture was removed (ADR 0018); the data stayed. A trade whose entry row is missing gets
+  no exit row: an open nobody saw is not invented.
 * **Trades (T06).** A read view over what the other services already persist (closed trades, opens, captures) — no table of
   its own, so there is nothing to drift from the facts. Each trade carries the R it returned and the rules it broke.
 * **Compliance (T07).** Judged here, once, by the pure detectors of ``domain/journal/compliance`` — against the account's
@@ -33,7 +33,7 @@ from trading_os.domain.journal.models import (
     TradeFile,
 )
 from trading_os.domain.market.models import SymbolSpec
-from trading_os.domain.primitives import Timeframe
+from trading_os.domain.market.sessions import session_for_timestamp
 from trading_os.domain.risk.lockout import LockoutWindow
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.services.accounts import AccountService
@@ -56,9 +56,6 @@ class _Context:
     specs: dict[str, SymbolSpec]
 
 
-CAPTURE_TIMEFRAME = Timeframe.M15  # the chart the cockpit draws; M1 candles are aggregated to it when it is rendered
-
-
 class JournalService:
     def __init__(
         self,
@@ -69,7 +66,6 @@ class JournalService:
         accounts: AccountService,
         positions: PositionService,
         market: MarketDataService,
-        capture_timeframe: Timeframe = CAPTURE_TIMEFRAME,
     ) -> None:
         self._repos = repos
         self._events = events
@@ -77,7 +73,6 @@ class JournalService:
         self._accounts = accounts
         self._positions = positions
         self._market = market
-        self._timeframe = capture_timeframe
 
     # ------------------------------------------------------------------------------------------ the events write the facts
     def subscribe(self) -> None:
@@ -89,7 +84,7 @@ class JournalService:
             return
         try:
             await self._repos.positions.record_capture_entry(
-                event.account_id, event.position_id, event.symbol, self._timeframe.value, event.opened_at,
+                event.account_id, event.position_id, event.symbol, event.opened_at,
                 event.entry_price, event.stop_loss, event.take_profit,
             )  # fmt: skip
         except Unavailable:
@@ -178,4 +173,7 @@ class JournalService:
             balance=context.balance, max_risk_percent=context.account.risk_profile.max_risk_per_trade_percent,
             spec=context.specs.get(trade.symbol),
         )  # fmt: skip
-        return JournalTradeView(**trade.model_dump(), r_multiple=r_multiple(trade), violations=violations)
+        session = session_for_timestamp(trade.opened_at) if trade.opened_at is not None else None
+        return JournalTradeView(
+            **trade.model_dump(), r_multiple=r_multiple(trade), violations=violations, session=session
+        )

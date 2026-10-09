@@ -58,7 +58,7 @@ def test_the_week_in_numbers() -> None:
     ]  # fmt: skip
     assert [(v.type, v.count) for v in stats.top_violation_types] == [("SESSION_WINDOW", 2), ("LOCKOUT_ACTIVE", 1)]
     assert [t.broker_position_id for t in stats.worst_trades] == ["p1", "p3", "p5"]  # the three lowest results
-    assert stats.worst_trades[0].has_capture and stats.compliance_rate == 0.6
+    assert stats.compliance_rate == 0.6
 
 
 def test_an_empty_week_is_all_zeros_and_nothing_is_invented() -> None:
@@ -106,9 +106,9 @@ def test_the_document_is_rendered_as_the_original_wrote_it() -> None:
             "",
             "## Worst trades",
             "",
-            "- 2026-01-06 · EURUSDm BUY · -$40.00 — [capture](http://localhost:3000/journal/p1)",
-            "- 2026-01-08 · XAUUSDm SELL · -$12.25",
-            "- 2026-01-09 · GBPUSDm BUY · -$7.00",
+            "- 2026-01-06 · EURUSDm BUY · -$40.00 — [dossier](http://localhost:3000/journal/p1)",
+            "- 2026-01-08 · XAUUSDm SELL · -$12.25 — [dossier](http://localhost:3000/journal/p3)",
+            "- 2026-01-09 · GBPUSDm BUY · -$7.00 — [dossier](http://localhost:3000/journal/p5)",
             "",
         ]
     )

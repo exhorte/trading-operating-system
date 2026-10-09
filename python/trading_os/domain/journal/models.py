@@ -1,6 +1,6 @@
-"""Journal facts. A trade is reconstructed from what was recorded at the real events, never recomputed later:
-the capture rows are immutable (T05) and carry the window of candles the cockpit may draw — a boundary that is stored
-and can never be widened, a stronger non-anticipation guarantee than a static image.
+"""Journal facts. A trade is reconstructed from what was recorded at the real events, never recomputed later: the
+capture rows are immutable (T05) and hold the numbers of the opening and of the closing — prices, stop, target — and nothing
+to draw: there is no image and no chart window (the graphic capture was removed, ADR 0018).
 
 The server serves **facts and verdicts it can defend** (the trade, its captures, the rules it broke); the browser
 aggregates and draws (``lib/account-analysis``): the figures a trader reads over a week are presentation, the question
@@ -15,21 +15,21 @@ from typing import Literal
 from pydantic import Field
 
 from trading_os.domain.execution.commands import ExecutionCommand
-from trading_os.domain.primitives import AccountId, DomainModel, Side, SymbolCode
+from trading_os.domain.primitives import AccountId, DomainModel, Side, SymbolCode, TradingSession
 from trading_os.domain.risk.decision import RiskDecision
 from trading_os.domain.strategy.intent import TradeIntent
 
 
 class TradeCapture(DomainModel):
+    """The numbers recorded at one moment of a position: its opening (``entry``) or its closing (``exit``, which carries the
+    same planned levels so one row tells the whole story). The name is historical — what is kept is data, never an image."""
+
     account_id: AccountId
     broker_position_id: str
     kind: Literal["entry", "exit"]
     symbol: SymbolCode
-    timeframe: str
-    window_start_utc: datetime
-    window_end_utc: datetime
     entry_price: float
-    stop_loss: float
+    stop_loss: float  # MT5's « none » is 0.0, kept as it came: an unset stop is not a stop at zero
     take_profit: float
     exit_price: float | None = None  # None on the entry row
     captured_at: datetime
@@ -72,6 +72,8 @@ class JournalTradeView(JournalTrade):
     # What came back, in units of the risk taken at the stop; None when the entry or the stop are not on record.
     r_multiple: float | None = None
     violations: list[Violation] = Field(default_factory=list)
+    # The session the trade was opened in (the analysis's UTC buckets, a tag and not a rule); None when the open is not on record.
+    session: TradingSession | None = None
 
 
 class ComplianceSummary(DomainModel):

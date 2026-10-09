@@ -201,6 +201,35 @@ class FakeMt5:
         account = FakeAccount(login=1000001, server="Sim-Server", password="sim-password", company="Simulated Broker")
         return cls.for_accounts([account], suffix="m", simulate_feed=True)
 
+    @classmethod
+    def demo(cls) -> FakeMt5:
+        """``default()`` with something in it — what a cockpit needs to be looked at with no broker (``MT5_ENABLED=false``): two
+        positions open now and three trades closed earlier today (the core rebuilds the day from the broker's history, so what is older
+        would never reach the journal). Static, like everything about the account: the quotes move, the positions do not trade."""
+        terminal = cls.default()
+        now = int(terminal.clock())
+        terminal.add_position(
+            identifier=900001, symbol="EURUSDm", side=POSITION_TYPE_BUY, volume=0.10, price_open=1.0840, sl=1.0820,
+            tp=1.0890, profit=21.0, price_current=1.0861, opened_server_time=now - 40 * 60,
+        )  # fmt: skip
+        terminal.add_position(
+            identifier=900002, symbol="XAUUSDm", side=POSITION_TYPE_SELL, volume=0.05, price_open=3310.0, sl=3318.0,
+            tp=3290.0, profit=-6.5, price_current=3311.3, opened_server_time=now - 15 * 60,
+        )  # fmt: skip
+        history = [  # (position, symbol, side opened, volume, price in, price out, profit, minutes ago it opened)
+            (900011, "EURUSDm", POSITION_TYPE_BUY, 0.10, 1.0815, 1.0838, 23.0, 220),
+            (900012, "XAUUSDm", POSITION_TYPE_SELL, 0.05, 3322.0, 3326.5, -22.5, 160),
+            (900013, "GBPUSDm", POSITION_TYPE_SELL, 0.10, 1.2672, 1.2651, 21.0, 100),
+        ]  # fmt: skip
+        for position, symbol, side, volume, price_in, price_out, profit, minutes_ago in history:
+            opened = now - minutes_ago * 60
+            closing = DEAL_TYPE_SELL if side == POSITION_TYPE_BUY else DEAL_TYPE_BUY
+            terminal.add_deal(position_id=position, symbol=symbol, side=side, entry=DEAL_ENTRY_IN, volume=volume,
+                              price=price_in, server_time=opened)  # fmt: skip
+            terminal.add_deal(position_id=position, symbol=symbol, side=closing, entry=DEAL_ENTRY_OUT, volume=volume,
+                              price=price_out, server_time=opened + 25 * 60, profit=profit)  # fmt: skip
+        return terminal
+
     # --- internals ----------------------------------------------------------------------------------------------------
 
     def _now(self) -> float:

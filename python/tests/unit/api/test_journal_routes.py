@@ -48,6 +48,7 @@ async def test_closed_trades_are_listed_newest_first_with_their_verdict(api: Api
         False,
     )
     assert first["rMultiple"] is None and first["violations"] == []  # no entry or stop on record: nothing is guessed
+    assert first["openedAt"] is None and first["session"] is None  # no open on record: no session to tag
 
     summary = (await api.get("/api/journal/compliance")).json()
     assert summary["tradeCount"] == 2 and 0.0 <= summary["rate"] <= 1.0
@@ -97,7 +98,9 @@ async def test_an_open_position_has_its_entry_captured_at_the_moment_it_was_seen
     entry = captures.json()["entry"]
     assert captures.status_code == 200 and captures.json()["exit"] is None
     assert (entry["kind"], entry["brokerPositionId"], entry["stopLoss"]) == ("entry", "777", 1.084)
-    assert entry["windowStartUtc"] < entry["windowEndUtc"]  # the stored, never widened, window of candles
+    assert (entry["entryPrice"], entry["takeProfit"]) == (1.085, 1.088)
+    assert not {"timeframe", "windowStartUtc", "windowEndUtc"} & set(entry)  # numbers only: nothing to draw (ADR 0018)
+    assert (await api.get("/api/journal/captures/777/charts")).status_code == 404  # no graphic capture exists any more
 
     body = (await api.get("/api/journal/trades/777")).json()
     assert body["status"] == "open" and body["manual"] is True and body["entryCapture"]["kind"] == "entry"

@@ -242,6 +242,8 @@ async def test_a_rule_change_with_no_live_account_waits_for_the_next_trading_day
     assert version.deferred and [r.code for r in version.deferral_reasons] == ["no_live_account"]
     overview = await accounts.rules_overview(a.id)
     assert overview.resolution.source is None and overview.resolution.pending is not None  # nothing in effect yet
+    assert [(v.status.value, v.cancellable) for v in overview.versions] == [("pending", True)]
+    assert overview.guard.deferred and [r.code for r in overview.guard.reasons] == ["no_live_account"]
     assert (await accounts.effective(a.id)).risk_profile.max_trades_per_day == a.risk_profile.max_trades_per_day
     assert h.recorder.of(AccountRulesChanged)[0].deferred is True
 

@@ -205,9 +205,15 @@ def record(members: list[str]) -> str:
     return "{ " + " ".join(members) + " }" if members else "Record<string, never>"
 
 
-def generate(document: Mapping[str, Any], event_schemas: Mapping[str, Mapping[str, Any]] | None = None) -> str:
+def generate(
+    document: Mapping[str, Any],
+    event_schemas: Mapping[str, Mapping[str, Any]] | None = None,
+    constants: Mapping[str, str | int] | None = None,
+) -> str:
     """The whole ``generated.ts``. ``event_schemas`` maps a wire type (``risk.state_updated``) to the JSON schema of its event model
-    (serialization mode, definitions under ``#/components/schemas`` like the OpenAPI document's)."""
+    (serialization mode, definitions under ``#/components/schemas`` like the OpenAPI document's). ``constants`` are the few
+    values the core *compares by* or *refuses beyond* and the cockpit must recognise (the reason a kill switch is recorded under,
+    how far back a strategy read may reach): emitted as constants so that no page keeps a copy that can drift."""
     components: dict[str, Any] = dict(document["components"]["schemas"])
     names = set(components)
     events = {wire: read_side(schema, names) for wire, schema in (event_schemas or {}).items()}
@@ -264,6 +270,14 @@ def generate(document: Mapping[str, Any], event_schemas: Mapping[str, Mapping[st
     lines.append("export interface EventPayloads {\n" + "\n".join(payloads) + "\n}")
     lines.append("export type EventType = keyof EventPayloads;")
     lines.append(
-        "export type CockpitEvent = { [K in EventType]: { type: K; payload: EventPayloads[K] } & EventEnvelope }[EventType];\n"
+        "export type CockpitEvent = { [K in EventType]: { type: K; payload: EventPayloads[K] } & EventEnvelope }[EventType];"
     )
-    return "\n".join(lines)
+    if constants:
+        lines.append(
+            "\n// --------------------------------------------------------------------------------------------- constants"
+        )
+        lines += [
+            f"export const {name} = {json.dumps(value, ensure_ascii=False)} as const;"
+            for name, value in sorted(constants.items())
+        ]
+    return "\n".join(lines) + "\n"

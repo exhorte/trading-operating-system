@@ -55,7 +55,7 @@ class ReadOnlyTools:
         return account_id
 
     async def get_trades(self, start: str, end: str, symbol: str | None = None) -> list[dict[str, Any]]:
-        """Closed trades in a range, newest first, with realised P&L, entry/exit, capture availability, the R multiple and the rules
+        """Closed trades in a range, newest first, with realised P&L, entry/exit, whether the entry levels are on record, the R multiple and the rules
         each broke. Facts only."""
         trades = await self._journal.trades(self._account(), parse_when(start), parse_when(end))
         return [dump(t) for t in trades if symbol is None or t.symbol == symbol]

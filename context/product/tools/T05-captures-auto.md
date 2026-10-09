@@ -1,6 +1,21 @@
 # T05 — Captures automatiques entrée / sortie
 
-Statut : **livré** (2026-09-05) · Vague 1 · Effort 1–2 j · Valeur 4 · Dépend de : rien
+> **Amendement du 2026-10-09 (ADR 0018) — la fonction graphique est supprimée.**
+> Il n'y a plus de capture d'écran, plus d'image du graphique, plus de rendu
+> rejoué de la transaction. T05 est désormais **un enregistrement de chiffres** :
+> à l'ouverture (symbole, prix d'entrée, stop, objectif) et à la clôture (prix de
+> sortie), des lignes immuables dans `trade_captures`, écrites par les
+> événements réels du cœur Python (`JournalService`). La fenêtre de bougies
+> (`timeframe`, `window_*`) n'est plus écrite ni lue ; sa suppression définitive
+> est le script manuel `drop_capture_window`. La page d'un trade devient le
+> **dossier du trade** (`/journal/{id}`) : les chiffres et la chaîne
+> Intention → Décision de risque → Commande → Résultat, sans graphique.
+> Tout ce qui suit est l'historique de la fonction telle qu'elle a été livrée le
+> 2026-09-05 ; les passages sur le rendu (`trade-chart.tsx`,
+> `analyzeMarketContext`, « le cockpit fabrique l'image ») ne décrivent plus le
+> système.
+
+Statut : **livré** (2026-09-05), partie graphique **supprimée** (2026-10-09, ADR 0018) · Vague 1 · Effort 1–2 j · Valeur 4 · Dépend de : rien
 
 ## Problème
 

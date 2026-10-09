@@ -40,6 +40,7 @@ class RiskState(DomainModel):
     consecutive_losses: int | None
     lockout_reason: str | None = None  # set unless mode == locked is false
     lockout_until: datetime | None = None
+    lockout_id: str | None = None  # the ledger row that holds the lock; None when the lock is only the live gates'
     gates: list[GateResult]
     evaluated_at: datetime
 

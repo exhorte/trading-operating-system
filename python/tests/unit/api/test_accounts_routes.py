@@ -282,6 +282,53 @@ async def test_a_change_made_mid_session_waits_for_the_next_trading_day_and_can_
     assert (await api.get(f"/api/accounts/{account.id}/rules")).json()["resolution"]["pending"] is None
 
 
+async def test_the_rules_overview_answers_what_a_change_would_do_before_it_is_made(api: Api) -> None:
+    account = api.core.account
+    assert account is not None
+    before = (await api.get(f"/api/accounts/{account.id}/rules")).json()
+    assert before["guard"] == {"deferred": False, "reasons": []} and before["evaluatedAt"]
+    api.core.terminal.add_position(
+        identifier=781, symbol="EURUSDm", side=0, volume=0.05, price_open=1.1, sl=1.099, magic=0
+    )
+    await api.core.c.positions.poll(account.id)  # a session is now in progress
+    during = (await api.get(f"/api/accounts/{account.id}/rules")).json()["guard"]
+    assert during["deferred"] is True and "open_positions" in [r["code"] for r in during["reasons"]]
+
+    rules = before["resolution"]["rules"]
+    rules["riskProfile"]["maxRiskPerTradePercent"] = 5.0
+    api.core.h.clock.advance(seconds=5)
+    created = (await api.post(f"/api/accounts/{account.id}/rules", rules)).json()
+    assert created["deferralReasons"] == during["reasons"]  # the preview and the save are one decision
+    versions = (await api.get(f"/api/accounts/{account.id}/rules")).json()["versions"]
+    assert versions[0]["versionId"] == created["versionId"]  # newest first
+    assert versions[0]["status"] == "pending" and versions[0]["cancellable"] is True
+
+
+async def test_the_rules_a_provider_profile_gives_for_some_facts_are_previewed_without_saving(api: Api) -> None:
+    ftmo = await api.post(
+        "/api/accounts/rules-preview",
+        {
+            "provider": "FTMO",
+            "accountType": "PROP_CHALLENGE",
+            "challenge": {"type": "2-step", "accountSize": 25000, "phase": "challenge"},
+        },
+    )
+    assert ftmo.status_code == 200
+    body = ftmo.json()
+    assert body["riskProfile"]["drawdown"]["referenceBalance"] == 25000
+    assert body["tradingRules"]["minTradingDays"] == 4 and body["tradingRules"]["profitTargetPercent"] == 10.0
+    exness = await api.post(
+        "/api/accounts/rules-preview", {"provider": "EXNESS", "accountType": "DIRECT", "referenceBalance": 500}
+    )
+    assert exness.json()["riskProfile"]["drawdown"]["referenceBalance"] == 500
+    assert exness.json()["tradingRules"]["challenge"] is None
+    mismatch = await api.post("/api/accounts/rules-preview", {"provider": "EXNESS", "accountType": "PROP_FUNDED"})
+    assert mismatch.status_code == 422 and mismatch.json()["code"] == "account_type_not_allowed"
+    assert (await api.get("/api/accounts")).json()[0]["riskProfile"]["drawdown"][
+        "referenceBalance"
+    ] != 500  # nothing saved
+
+
 async def test_withdrawing_a_version_that_is_not_the_accounts_is_not_found(api: Api) -> None:
     account = api.core.account
     assert account is not None

@@ -72,9 +72,18 @@ async def test_the_existing_database_is_recognised_and_its_legacy_rows_kept(pg_s
             conn.execute(
                 "INSERT INTO risk_lockouts (lockout_id, account_id, reason, since) VALUES ('l1','12345678','x',now())"
             )
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute(  # a capture the previous backend wrote, window and all
+                "INSERT INTO trade_captures VALUES ('12345678', 'p1', 'entry', 'EURUSDm', 'M15', now() - interval '6 hours',"
+                " now(), 1.1, 1.09, 1.12, NULL, now())"
+            )
         applied = await migrate(url)
         assert applied == [m.version for m in discover()]
         with psycopg.connect(url) as conn:
+            assert conn.execute(  # the old capture keeps everything it had, the window included
+                "SELECT symbol, entry_price, stop_loss, timeframe IS NOT NULL, window_start_utc IS NOT NULL "
+                "FROM trade_captures"
+            ).fetchone() == ("EURUSDm", 1.1, 1.09, True, True)
             legacy = conn.execute("SELECT command_id, agent_id FROM legacy_execution_commands").fetchall()
             assert legacy == [("cmd-legacy", "agent-1")]
             columns = {r[0] for r in conn.execute(
@@ -114,5 +123,33 @@ async def test_a_destructive_script_is_manual_only(pg_server: Server) -> None:
             assert conn.execute("SELECT to_regclass('public.envelopes') IS NULL").fetchone() == (True,)
         with pytest.raises(MigrationError):
             await run_manual(url, "does_not_exist")
+    finally:
+        pg_server.drop_database(name)
+
+
+async def test_a_capture_is_data_only_and_the_chart_window_goes_only_by_a_manual_script(pg_server: Server) -> None:
+    """ADR 0018: the graphic capture is gone. The window columns are optional (so a row is written without them), and removing
+    them for good is a decision the user takes — the numbers stay either way."""
+    assert "drop_capture_window" in discover_manual()
+    assert all(m.name != "drop_capture_window" for m in discover())
+    name = unique_name()
+    url = pg_server.create_database(name)
+    try:
+        await migrate(url)
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute(  # a row with no window at all: what the core writes now
+                "INSERT INTO trade_captures (account_id, broker_position_id, kind, symbol, entry_price, stop_loss,"
+                " take_profit, exit_price, captured_at) VALUES ('AC', 'p1', 'entry', 'EURUSDm', 1.1, 1.09, 1.12, NULL, now())"
+            )
+            assert conn.execute("SELECT count(*) FROM trade_captures").fetchone() == (1,)
+        await run_manual(url, "drop_capture_window")
+        with psycopg.connect(url) as conn:
+            columns = {r[0] for r in conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'trade_captures'"
+            ).fetchall()}  # fmt: skip
+            assert not {"timeframe", "window_start_utc", "window_end_utc"} & columns
+            assert {"symbol", "entry_price", "stop_loss", "take_profit", "exit_price", "captured_at"} <= columns
+            assert conn.execute("SELECT symbol, entry_price FROM trade_captures").fetchone() == ("EURUSDm", 1.1)
+        await run_manual(url, "drop_capture_window")  # idempotent
     finally:
         pg_server.drop_database(name)

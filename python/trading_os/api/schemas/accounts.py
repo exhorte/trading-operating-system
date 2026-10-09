@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from pydantic.alias_generators import to_camel
 
 from trading_os.api.schemas.common import StrictRequest
-from trading_os.domain.accounts.models import AccountRules
+from trading_os.domain.accounts.models import AccountRules, AccountType, FtmoChallenge, Provider
 from trading_os.domain.accounts.rules_ledger import CancelOutcome
 from trading_os.domain.primitives import DomainModel
 from trading_os.services.accounts import AccountCreate
@@ -49,6 +49,16 @@ class RulesRequest(AccountRules):
     read the stored versions back and an older row must still load."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+class RulesPreviewRequest(StrictRequest):
+    """The facts the rules of an account derive from: which provider and phase, which capital or challenge. The answer is the
+    complete rule set those facts give — computed here, once, so a page never carries a copy of the provider's percentages."""
+
+    provider: Provider
+    account_type: AccountType
+    reference_balance: float | None = Field(default=None, gt=0)  # direct accounts: the capital committed
+    challenge: FtmoChallenge | None = None  # prop accounts
 
 
 class UpdateAccountRequest(StrictRequest):

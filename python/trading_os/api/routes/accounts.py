@@ -19,12 +19,14 @@ from trading_os.api.schemas.accounts import (
     CreateAccountRequest,
     CredentialRequest,
     CredentialStatus,
+    RulesPreviewRequest,
     RulesRequest,
     TradingSwitchRequest,
     UpdateAccountRequest,
 )
 from trading_os.app.dependencies import Core
 from trading_os.domain.accounts.models import Account, AccountRules, AccountSnapshot
+from trading_os.domain.accounts.profiles import ProfileParams, default_rules
 from trading_os.domain.accounts.rules_ledger import RuleVersion
 from trading_os.domain.positions.models import PendingOrder, Position
 from trading_os.services.accounts import AccountCreate, RulesOverview
@@ -45,6 +47,19 @@ async def list_accounts(c: Core) -> list[Account]:
 @router.post("", response_model=Account, status_code=201, summary="Register an account (no secret is stored)")
 async def create_account(body: CreateAccountRequest, c: Core) -> Account:
     return await c.accounts.create(AccountCreate.model_validate(body.model_dump()))
+
+
+@router.post(
+    "/rules-preview", response_model=AccountRules,
+    summary="The complete rules a provider's profile gives for these facts (nothing is saved)",
+)  # fmt: skip
+async def preview_rules(body: RulesPreviewRequest) -> AccountRules:
+    return default_rules(
+        body.provider,
+        ProfileParams(
+            account_type=body.account_type, reference_balance=body.reference_balance, challenge=body.challenge
+        ),
+    )
 
 
 @router.get("/{account_id}", response_model=Account)

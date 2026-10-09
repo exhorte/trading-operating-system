@@ -97,3 +97,18 @@ async def test_no_password_reaches_any_log(caplog: pytest.LogCaptureFixture) -> 
     finally:
         await transport.close()
     assert "leaky-password-abc" not in caplog.text
+
+
+async def test_the_demo_backend_has_something_to_look_at_and_the_plain_one_stays_empty() -> None:
+    """``MT5_ENABLED=false`` serves the demo terminal (two positions open, three trades closed earlier today); ``fake`` stays empty so
+    every test that counts positions starts from none."""
+    demo = SubprocessTransport(backend="demo", default_timeout=15.0)
+    plain = SubprocessTransport(backend="fake", default_timeout=15.0)
+    try:
+        await demo.call("initialize")
+        await plain.call("initialize")
+        assert {p["symbol"] for p in await demo.call("positions_get")} == {"EURUSDm", "XAUUSDm"}
+        assert await plain.call("positions_get") in ([], None)
+    finally:
+        await demo.close()
+        await plain.close()
