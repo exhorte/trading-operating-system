@@ -19,7 +19,7 @@ Everything unknown fails closed: an unmeasured clock, a missing starting equity,
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
@@ -115,6 +115,7 @@ class RiskService:
         agents: AgentDirectory,
         autonomy_permits_entries: Callable[[], bool] = lambda: True,
         halted: Callable[[], bool] = lambda: False,
+        degraded: Callable[[str], Sequence[str]] = lambda account_id: (),
     ) -> None:
         self._accounts = accounts
         self._positions = positions
@@ -126,13 +127,24 @@ class RiskService:
         self._agents = agents
         self._autonomy_permits = autonomy_permits_entries
         self._halted = halted
+        self._degraded = degraded
         self._cache: dict[str, _Cache] = {}
         self.last_error: str | None = None
         self.last_cycle_at: datetime | None = None
 
-    def wire(self, *, autonomy_permits_entries: Callable[[], bool], halted: Callable[[], bool]) -> None:
+    def wire(
+        self,
+        *,
+        autonomy_permits_entries: Callable[[], bool],
+        halted: Callable[[], bool],
+        degraded: Callable[[str], Sequence[str]] | None = None,
+    ) -> None:
+        """Connect what the autonomy service and the supervisor decide. ``degraded(account_id)`` lists why the system is in
+        SAFE mode for that account (the supervisor's findings): any reason makes every decision answer ``system_degraded``."""
         self._autonomy_permits = autonomy_permits_entries
         self._halted = halted
+        if degraded is not None:
+            self._degraded = degraded
 
     def subscribe(self) -> None:
         """Positions opened during a lockout are flagged the instant they are seen (T02c)."""
@@ -198,6 +210,7 @@ class RiskService:
         feed_ok, feed_detail = self._market.feed_status(account_id, now)
         if not feed_ok:
             problems.append(f"market data: {feed_detail}")
+        problems.extend(self._degraded(account_id))  # the supervisor's SAFE: a fault somewhere blocks entries here
         status = self._agents.agent_status(str(account.login))
         if status is None:
             agent_problem = "no execution agent connected for this account"
@@ -428,15 +441,13 @@ class RiskService:
             max_volume_per_order=account.risk_profile.positions.max_volume_per_order,
         )
         decision = decide(built.context, intent, review)
-        if built.problems and decision.approved:
-            decision = decision.model_copy(
-                update={
-                    "approved": False,
-                    "approved_volume": None,
-                    "sizing": None,
-                    "reasons": _with_problems(decision.reasons, built.problems),
-                }
-            )
+        if built.problems:
+            # A plumbing problem always says so — approved or not: ``system_degraded`` is how the strategy and the cockpit
+            # tell « the system is not in a state to trade » from « a risk rule said no » (same as ``can_i_trade``).
+            update: dict[str, object] = {"reasons": _with_problems(decision.reasons, built.problems)}
+            if decision.approved:
+                update |= {"approved": False, "approved_volume": None, "sizing": None}
+            decision = decision.model_copy(update=update)
         await self._repos.risk.record_decision(decision)
         event: RiskApproved | RiskRejected = (
             RiskApproved(account_id=intent.account_id, correlation_id=intent.intent_id, decision=decision)

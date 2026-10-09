@@ -213,7 +213,9 @@ class ExecutionService:
     async def _persist(self, command: ExecutionCommand, now: datetime) -> bool:
         """Persist *before* acting. If the store is down nothing is sent: the caller gets ``Unavailable``."""
         try:
-            return await self._repos.execution.insert(command, now)
+            inserted = await self._repos.execution.insert(command, now)
+            self.last_error = None  # the store took a write: whatever failed before is over
+            return inserted
         except Unavailable as error:
             self.last_error = error.safe_message
             raise Unavailable(
@@ -671,6 +673,10 @@ class ExecutionService:
             ):
                 changed += 1
         return changed
+
+    def registered_logins(self) -> list[str]:
+        """The logins of the execution agents connected right now."""
+        return self._link.registered_logins()
 
     async def halt_agents(self, reason: str) -> int:
         """Set the local kill switch of every connected agent. Lifting it takes a human on the MT5 chart."""

@@ -169,6 +169,11 @@ class EaLinkServer:
         self.frames_received = 0
         self.frames_dropped = 0
 
+    def set_handler(self, handler: EaLinkHandler) -> None:
+        """The handler (the execution service) needs this server to send, and this server needs the handler to report:
+        the container builds the server first, then hands it the handler."""
+        self._handler = handler
+
     # --- lifecycle ----------------------------------------------------------------------------------------------
 
     async def start(self) -> int:

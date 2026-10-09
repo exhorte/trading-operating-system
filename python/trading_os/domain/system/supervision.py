@@ -41,6 +41,7 @@ class Finding(DomainModel):
     detail: str
     observed_at: datetime
     persisting: bool = False  # the fault has outlived the grace period of its first remedy
+    account_id: str | None = None  # None = about the core as a whole, not one account
 
 
 # code → actions that always apply. ``automatic_extra`` adds actions when the system is ARMED/AUTONOMOUS.

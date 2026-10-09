@@ -92,6 +92,12 @@ class NewsService:
         )
 
     # ------------------------------------------------------------------------------------------ lifecycle
+    async def close(self) -> None:
+        """Release the HTTP client, if the one in use holds a connection pool."""
+        closer = getattr(self._client, "aclose", None)
+        if closer is not None:
+            await closer()
+
     async def start(self) -> None:
         """Load the cache and tell everyone what it holds, before any network attempt."""
         await self._load()

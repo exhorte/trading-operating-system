@@ -95,6 +95,7 @@ class MarketDataService:
         clock: Clock,
         tick_writer: TickWriter | None = None,
         timeframes: tuple[Timeframe, ...] = (Timeframe.M1,),
+        backfill_bars: int = BACKFILL_M1,
     ) -> None:
         self._accounts = accounts
         self._repos = repos
@@ -102,6 +103,7 @@ class MarketDataService:
         self._clock = clock
         self._writer = tick_writer
         self._timeframes = timeframes
+        self._backfill_bars = backfill_bars
         self._ticks: dict[tuple[str, str], Tick] = {}
         self._specs: dict[tuple[str, str], SymbolSpec] = {}
         self._feeds: dict[str, _AccountFeed] = {}
@@ -171,7 +173,7 @@ class MarketDataService:
         if session is None:
             return
         try:
-            candles = await session.client.candles(symbol, timeframe, BACKFILL_M1)
+            candles = await session.client.candles(symbol, timeframe, self._backfill_bars)
         except (WorkerError, Unavailable):
             return
         closed = [c for c in candles if c.closed]

@@ -74,6 +74,8 @@ class Settings(BaseSettings):
     supervisor_interval_s: float = 2.0
     positions_poll_interval_s: float = 2.0
     tick_poll_interval_s: float = 1.0
+    # How many M1 bars are read from the terminal when an account connects (about a day: the strategy needs context at once).
+    market_backfill_bars: int = Field(default=1500, ge=10, le=20_000)
 
     @field_validator("allowed_origins")
     @classmethod

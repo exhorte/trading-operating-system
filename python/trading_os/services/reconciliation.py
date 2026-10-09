@@ -167,6 +167,7 @@ class ReconciliationService:
         self._clock = clock
         self._lookback = lookback
         self._reports: dict[str, ReconciliationReport] = {}
+        self._readable: dict[str, ReconciliationReport] = {}  # the last run that actually read its inputs
         self._standing: dict[str, dict[str, Mismatch]] = {}  # account → finding key → finding still present
         self._failures: dict[str, int] = {}
         self._last_success: dict[str, datetime] = {}
@@ -178,6 +179,11 @@ class ReconciliationService:
     def report(self, account_id: str) -> ReconciliationReport | None:
         return self._reports.get(account_id)
 
+    def last_readable_report(self, account_id: str) -> ReconciliationReport | None:
+        """The last run that read its inputs. A run that could not read concludes nothing — in particular it does not
+        clear what an earlier run found: a divergence nobody can re-check is not a divergence that went away."""
+        return self._readable.get(account_id)
+
     def consecutive_failures(self, account_id: str) -> int:
         """Runs in a row that could not read MT5 or the database (0 after any readable run)."""
         return self._failures.get(account_id, 0)
@@ -187,7 +193,7 @@ class ReconciliationService:
 
     def forget(self, account_id: str) -> None:
         """The account was disconnected: what was found about it is no longer current."""
-        for table in (self._reports, self._standing, self._failures, self._last_success):
+        for table in (self._reports, self._readable, self._standing, self._failures, self._last_success):
             table.pop(account_id, None)
 
     # ------------------------------------------------------------------------------------------ running
@@ -214,6 +220,8 @@ class ReconciliationService:
                 self._failures[account_id] = 0
                 self._last_success[account_id] = report.finished_at
             self._reports[account_id] = report
+            if report.readable:
+                self._readable[account_id] = report
             await self._events.publish(
                 ReconciliationCompleted(
                     account_id=account_id, mismatches=len(report.mismatches), critical=len(report.critical),
