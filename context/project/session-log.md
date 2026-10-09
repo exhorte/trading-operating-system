@@ -6,6 +6,49 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-10-09 (**reprise de la migration Python** : réconciliation, autonomie, FRED, journal, runtime)
+
+Demande, mot pour mot : « reprends la migration python » (2026-10-08, 17:50), puis
+« continu ». Le sujet était sans ambiguïté ; l'état réel a pourtant été relu avant
+d'agir (arbre propre sur la branche de refonte, aucun travail en cours, branche de
+migration ancêtre directe). `refactor/python-native-architecture` a été avancée en
+*fast-forward* sur le sommet de la refonte (`f364122`, ascendance vérifiée, aucun
+fichier modifié) et l'arbre principal y a été basculé : le cockpit redessiné y est
+intact.
+
+**Fait** — cinq commits **locaux** (rien de poussé, rien de déployé) :
+- `efde785` **réconciliation** : la trace de commande (`TOS ` + 16 hex de SHA-256, le
+  calcul de l'EA) rattache une position, un ordre ou un deal à sa commande ; une
+  commande UNKNOWN se règle depuis les données du courtier, par la même porte que
+  l'agent ; un fill dont le rapport n'est pas arrivé n'est plus « inattendu » ;
+  une position qui contredit une commande FAILED est la pire trouvaille.
+- `bc96a20` **autonomie** : démarre toujours OFF (seul un HALT survit), monter est écrit
+  avant d'être vrai, descendre n'attend jamais la base, fenêtre ARMED renouvelée par
+  l'humain, readiness exigée en continu, arrêt idempotent.
+- `c97ad69` **actualités FRED** : inconnu ≠ vide, un échec ne vide jamais le cache.
+- `03a7f41` **journal** : captures T05 écrites par les événements, conformité T07 jugée
+  côté serveur, dossier d'un trade de l'intention à la sortie.
+- `9da8445` **runtime** : ordonnanceur, superviseur, moteur, readiness des 16 contrôles,
+  conteneur.
+
+**Défauts trouvés par des tests, corrigés** : la clé API FRED restait attachée à
+l'exception (`__context__`) bien que le message soit assaini — l'erreur est maintenant
+levée hors du `except` ; `RiskService.review` n'ajoutait `system_degraded` que si la
+décision était approuvée ; une réconciliation illisible effaçait un constat critique (et
+résolvait son incident) ; `ExecutionService.last_error` ne s'effaçait jamais ; le
+rétro-remplissage de 1500 bougies coûtait 2,6 s à chaque banc de test (désormais réglable).
+
+**Jugements à confirmer** (consignés dans `migration-map.md` §10) : UNKNOWN → SAFE +
+RECONCILE et non HALT ; position inattendue → HALT ; terminal perdu → DISARM après 60 s ;
+fenêtre ARMED renouvelée par l'humain ; « hors session » jugé avec les killzones du compte.
+
+**Vérifié** : 653 tests (652 en suite complète + 1), `ruff`, `mypy --strict` sur 109 fichiers ;
+banc du cœur complet avec une vraie prise TCP d'agent. **Non vérifié** : tout contre un vrai
+terminal MT5, un vrai EA, la vraie base `tradingos` ou TimescaleDB (le cluster de test est
+un PostgreSQL 18 nu) ; il n'existe pas encore d'API : le cockpit ne peut pas s'y brancher.
+
+---
+
 ## 2026-10-08 (**refonte visuelle « ExponentValue Monochrome » : les 12 écrans, ADR 0017**)
 
 Demande, mot pour mot : « nous somme entrain de redesigner la plateform en
