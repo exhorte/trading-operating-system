@@ -911,7 +911,7 @@ simulé du cœur** (`MT5_ENABLED=false`) — un seul chemin de données, pas un 
 
 ## 10. Suivi d'avancement
 
-État au **2026-10-09 : la migration est terminée** (phases 0 à 7), sur la branche `refactor/python-native-architecture`, **en local** (rien n'est poussé). Ce document est l'audit de départ (2026-10-07) : ses §§ 1 à 9 décrivent l'ancien système tel qu'il était, et ne sont pas réécrits. Ce qui a été livré, supprimé, créé et les écarts assumés sont dans `docs/architecture/python-native-migration-report.md`.
+État au **2026-10-09 : la migration est terminée** (phases 0 à 7), menée sur la branche `refactor/python-native-architecture`, **poussée sur `origin` le 2026-10-31, non fusionnée dans `main`**. Ce document est l'audit de départ (2026-10-07) : ses §§ 1 à 9 décrivent l'ancien système tel qu'il était, et ne sont pas réécrits. Ce qui a été livré, supprimé, créé et les écarts assumés sont dans `docs/architecture/python-native-migration-report.md`.
 
 | Phase | État | Preuve |
 |---|---|---|

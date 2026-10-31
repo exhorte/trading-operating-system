@@ -1,6 +1,6 @@
 # État du projet
 
-Dernière mise à jour : 2026-10-09. Instantané seulement — l'historique vit dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil. Réécrit le 2026-10-09 : l'ancien instantané décrivait la pile .NET/SignalR/observateur, qui n'existe plus.
+Dernière mise à jour : 2026-10-31. Instantané seulement — l'historique vit dans `session-log.md` (ADR 0008) et dans le journal de chaque fiche d'outil. Réécrit le 2026-10-09 : l'ancien instantané décrivait la pile .NET/SignalR/observateur, qui n'existe plus. Le 2026-10-31 : correction — la branche `refactor/python-native-architecture` est poussée sur `origin` (dépôt privé) mais n'est **pas** fusionnée dans `main` (la version du 2026-10-10 de ce paragraphe disait l'inverse, à tort).
 
 ## En une phrase
 
@@ -34,14 +34,14 @@ Le 2026-09-04 : la recherche d'edge et la mémoire de la série 1 (`pivot-2026-0
 - **EA-07 (CONFIRM) reste fermé** : conditions de sa fiche non remplies (T02b jamais déclenché en réel ; taux d'accord d'EA-02 inconnu, zéro proposition ; Vague 1 non close). Aucune consigne générale d'« avancer » ne vaut accord ; ADR 0013, 0014, 0015, EA-07, EA-08 sont accordés *incrément par incrément*, chacun dans son ADR ou sa fiche (`.claude/CLAUDE.md`).
 - **Autonomie (ADR 0015)** : limites du compte réel écrites par l'utilisateur — 0,1 % par trade, 5 % par jour, 10 % au total, 4 trades par jour, 2 positions, killzones de S01, arrêts à 20 R et à 50 trades — mais il manque le **capital de référence** et la mesure du spread du compte réel ; restent ouverts le plafond de stop à 7 pips et la demi-heure de Francfort (`02_Plan_Projet/regles-deduites-scalp-marco-2026-09-26.md`). `position_management_valid` échoue tant que S01 n'a pas de sortie (TD-09). L'entrée `LIMIT` de S01 n'est pas portée par le protocole de l'agent (marché seulement).
 - **Formulaire de connexion avec mot de passe (ADR 0013, T13) non construit** : le cœur sait se rattacher à un terminal déjà connecté ; un identifiant ne transite que par un modèle de requête en `SecretStr`, stockage opt-in.
-- **La fusion dans `main`** de la branche `refactor/python-native-architecture` (cockpit redessiné compris) et le sort des tables héritées (`drop_legacy_tables`) sont des décisions de l'utilisateur.
+- **Le sort des tables héritées** (`db manual drop_legacy_tables`, et `drop_capture_window`) est une décision de l'utilisateur : rien ne les supprime tant qu'il ne l'a pas demandé. La fusion de la branche `refactor/python-native-architecture` dans `main` (cockpit redessiné compris) n'est **pas faite** : la branche est poussée depuis le 2026-10-31, la fusion reste une décision de l'utilisateur.
 
 ## Prochaine action
 
-À faire **par l'utilisateur**, dans l'ordre, rien n'étant destructeur avant la deuxième étape :
+La migration est poussée sur `origin/refactor/python-native-architecture` (2026-10-31), pas encore fusionnée dans `main`. À faire **par l'utilisateur**, dans l'ordre :
 
-1. Relire et fusionner la branche (`refactor/python-native-architecture`) ; en cas de doute `git log --oneline` raconte phase par phase.
-2. **Premier essai réel, en `OBSERVE`** : sauvegarde `pg_dump -Fc` de la vraie base ; `pwsh -File scripts\start.ps1 -Plan`, puis sans `-Plan` (le schéma 0001–0003 s'applique, additif) ; ouvrir MT5 connecté ; recompiler l'agent 1.11 et le rattacher (`tools/mt5-execution-agent/README.md`) ; enregistrer le compte dans Settings, écrire ses limites, cocher « Ces limites sont les miennes » ; `MT5_LIVE_TESTS=1 python -m pytest tests/integration/test_terminal_contract.py -m live_mt5` (lecture seule).
+1. Relire et fusionner la branche `refactor/python-native-architecture` dans `main` (en cas de doute, `git log --oneline` raconte phase par phase).
+2. **Premier essai réel, en `OBSERVE`** : sauvegarde `pg_dump -Fc` de la vraie base (la dernière connue est `backups/tradingos-2026-09-25-pre-rebind.dump`, hors dépôt, du 2026-09-25) ; `pwsh -File scripts\start.ps1 -Plan`, puis sans `-Plan` (le schéma 0001–0003 s'applique, additif) ; ouvrir MT5 connecté ; recompiler l'agent 1.11 et le rattacher (`tools/mt5-execution-agent/README.md`) ; enregistrer le compte dans Settings, écrire ses limites, cocher « Ces limites sont les miennes » ; `MT5_LIVE_TESTS=1 python -m pytest tests/integration/test_terminal_contract.py -m live_mt5` (lecture seule).
 3. Laisser tourner S01 pendant les killzones (06:00–09:00 et 11:00–14:00 UTC en heure d'été) : c'est la seule façon de mesurer l'accord machine / trader (EA-02).
 4. Seulement ensuite, les incréments I3 à I8 de l'étude (`02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`), un à la fois, chacun après son ADR ou sa fiche, sur le cœur Python.
 
