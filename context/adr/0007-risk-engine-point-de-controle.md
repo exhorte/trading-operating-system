@@ -1,5 +1,7 @@
 # ADR 0007 — Le Risk Engine est le point de contrôle unique
 
+> **Chemins déplacés (2026-10-09, ADR 0016).** `lib/analysis/` est devenu `python/trading_os/domain/market/analysis/`, `lib/risk/` `python/trading_os/domain/risk/` : le principe de cet ADR est inchangé.
+
 Date : 2026-09-04. Statut : accepté. Étend l'ancien ADR 0008 aux gates comportementales.
 
 ## Contexte

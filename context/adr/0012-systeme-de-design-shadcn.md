@@ -1,5 +1,7 @@
 # ADR 0012 — Système de design : shadcn/ui
 
+> **Amendement du 2026-10-09 (ADR 0016).** Là où cet ADR cite « le backend .NET » et « SignalR » (dernière section), lire « le cœur Python » : la pile serveur a changé, la bibliothèque de composants (shadcn/ui sur Radix, Tailwind) tient.
+
 Date : 2026-09-24. Statut : accepté. Amende l'ADR 0003 sur deux points : la
 clause « toute nouvelle dépendance runtime frontend doit se justifier ; à ce
 jour la seule est `@microsoft/signalr` », et le cockpit « sombre, dense,

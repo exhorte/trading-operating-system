@@ -1,5 +1,7 @@
 # T09 — Checklist de pré-vol exécutable
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/services/readiness.py` et `domain/autonomy/readiness.py`, `domain/risk/gates.py` ; cockpit `app/(cockpit)/preflight/page.tsx`, `components/cockpit/session-verdict-banner.tsx`, `lib/cockpit/verdict.ts`.
+
 Statut : **livré** (3 incréments, 2026-09-17) · Vague 3 · Effort 1–2 j ·
 Valeur 4 · Dépend de : T03 (livré)
 

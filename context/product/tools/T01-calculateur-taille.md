@@ -1,5 +1,7 @@
 # T01 — Calculateur de taille one-click
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : le calcul : `python/trading_os/domain/risk/sizing.py` (avec les spécifications réelles du symbole — plus de facteur « or » en dur). L'écran du calculateur a été retiré avant la migration.
+
 Statut : **retiré** (2026-09-14) · Vague 1 · Effort 0,5–1 j · Valeur 5 · Dépend de : rien
 
 ## Problème

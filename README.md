@@ -21,31 +21,52 @@ Le KPI du produit est le **taux de conformité au plan**, pas le P&L.
 
 ## Stack
 
-Next.js / React / TypeScript / Tailwind pour le cockpit · .NET sous `backend/` (gateway, hub SignalR, persistance) · TimescaleDB · observer Python en lecture seule attaché au terminal MT5 de l'utilisateur.
+Cockpit **Next.js** / React / TypeScript / Tailwind · **cœur Python** (FastAPI, REST + WebSocket, un seul processus : comptes, marché, stratégie, risque, exécution, réconciliation, journal, autonomie, superviseur) · API **MetaTrader5** lue dans un processus enfant en lecture seule · agent **MQL5** `TradingOsAgent` (exécution locale et garde-fous) · PostgreSQL/TimescaleDB (Docker).
 
-Chaîne complète validée en live : `MT5 → observer Python → gateway .NET → SignalR → cockpit`.
+```
+cockpit Next.js ⇄ cœur Python (127.0.0.1:8000) ⇄ MT5 ⇄ Exness | FTMO
+                        │                         ▲
+                        └── lien local 127.0.0.1:9765 ── agent MQL5 (le seul `OrderSend`)
+```
+
+Plus de .NET, de SignalR ni d'observateur Python (ADR 0016) : `docs/architecture/python-native-architecture.md` décrit le système, `docs/architecture/python-native-migration-report.md` ce qui a été supprimé et pourquoi.
 
 ## Démarrer
 
-Le runbook complet — base de données, backend, observer, cockpit, variables d'environnement, ordre de démarrage — est dans **`context/infrastructure/runbook.md`**.
+Le runbook complet est dans **`context/infrastructure/runbook.md`**. En résumé, une fois (Windows, Docker Desktop, Python ≥ 3.12 (développé en 3.14), Node) :
 
-```bash
+```powershell
+cd python; py -3.14 -m venv .venv; .venv\Scripts\python.exe -m pip install -e ".[dev]"; cd ..
 npm install
-docker compose up -d
-cd backend && dotnet run --project src/TradingOs.Host
-npm run dev
+```
+
+puis, à chaque session :
+
+```powershell
+pwsh -File scripts\start.ps1              # base, schéma, cœur, cockpit
+pwsh -File scripts\start.ps1 -Simulated   # même chose sans MT5 : un terminal de démonstration en mémoire
+pwsh -File scripts\start.ps1 -Plan        # dit ce qu'il ferait, ne change rien
+```
+
+Le script n'ouvre jamais MT5, ne demande aucun mot de passe et ne relève jamais le plafond de mode (`TRADING_MODE`, `OBSERVE` par défaut). Le compte se rattache dans le cockpit (Settings).
+
+## Vérifier
+
+```powershell
+cd python; .venv\Scripts\python.exe -m pytest -q; .venv\Scripts\python.exe -m ruff check .; .venv\Scripts\python.exe -m mypy trading_os; cd ..
+npm test; npm run typecheck; npm run lint; npm run build
 ```
 
 ## Structure
 
 ```
-app/          cockpit Next.js
-components/   composants du cockpit
-lib/          domaine pur et testé — analysis, risk, execution, domain, contracts, realtime
-backend/      solution .NET — Contracts, Gateway, Host, Persistence
-tools/        observer MT5 (Python, lecture seule)
-scripts/      utilitaires (import de bougies)
-context/      mémoire du projet — charte, ADR, roadmap, fiches d'outil, runbook
+app/ components/ lib/        cockpit Next.js — client typé lib/api, WebSocket lib/websocket, store lib/realtime
+python/trading_os/           le cœur — domain/ (pur) · services/ · infrastructure/ (mt5, database, news) · api/ · runtime/ · cli/ · mcp/
+python/tests/                pytest : unitaires, intégration, base jetable, architecture
+tools/mt5-execution-agent/   l'agent MQL5 TradingOsAgent
+scripts/start.ps1            démarrage
+docs/architecture/           architecture cible, carte de migration, rapport de migration
+context/                     mémoire du projet — charte, ADR, roadmap, fiches d'outil, runbook
 ```
 
 ## Comprendre le projet
@@ -54,7 +75,7 @@ Commencer par `context/README.md`, qui donne l'ordre de lecture. Les quatre docu
 
 - `context/project/charter.md` — ce que le projet est et ce qu'il n'est plus ;
 - `context/project/state.md` — état courant et prochaine action ;
-- `context/adr/` — les sept décisions qui gouvernent ;
+- `context/adr/` — les décisions qui gouvernent ;
 - `context/project/roadmap.md` — les vagues et les outils.
 
 ## Historique

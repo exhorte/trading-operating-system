@@ -1,5 +1,7 @@
 # ADR 0003 — Stack et topologie
 
+> **Amendement du 2026-10-09 (ADR 0016).** La pile décrite ci-dessous est remplacée : le backend .NET (`Contracts`, `Gateway`, `Host`, `Persistence`), SignalR, le WSS « lean » traduit par le Gateway et l'observateur Python n'existent plus. Un monolithe Python (FastAPI, REST + WebSocket) porte le métier ; le cockpit n'a plus de dépendance `@microsoft/signalr`. Tiennent toujours : le dépôt unique et le monolithe modulaire, le frontend Next.js / React / TypeScript / Tailwind, PostgreSQL/TimescaleDB sur le port hôte 5433 (le schéma s'applique désormais par migrations numérotées), et l'absence de tout identifiant de compte partagé. Voir `docs/architecture/python-native-architecture.md`.
+
 Date : 2026-09-04. Statut : accepté. Consolide les anciens ADR 0002, 0003, 0009 et 0011, sans changement technique.
 
 ## Contexte

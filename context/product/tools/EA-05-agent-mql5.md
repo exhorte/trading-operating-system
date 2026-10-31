@@ -1,5 +1,7 @@
 # EA-05 — Agent MQL5
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `tools/mt5-execution-agent/` (build 1.11), `python/trading_os/infrastructure/mt5/{ea_link,wire}.py` (le serveur du lien et ses messages), `services/execution.py` et `services/senders.py` (moteur et routes d'envoi), `context/realtime/mt5_wire_protocol.md`.
+
 Statut : **livré** (2026-09-15, incrément 6 compris) · Vague EA · Effort 3–5 j ·
 Dépend de : EA-03 (protocole, machine à états), EA-04 (profils de compte)
 
@@ -517,3 +519,108 @@ explicite.
   à l'utilisateur). **Resté ouvert** : comment le cockpit affiche un rapport
   REJECTED reçu sous `execution.command.rejected` (le store attend un
   accusé) — lecture de `lib/realtime/store.ts` pas faite dans cette session.
+
+- 2026-09-26 — **I0 terminé côté hub, cockpit et observateur** : ce qui
+  peut piloter le Trading OS est désormais gardé (étude, I0 ; tableau
+  complet dans `context/security/security_principles.md`, « Surface
+  locale »). `.mq5` inchangé, barrière inchangée.
+
+  - **Hub et écritures `/api`** (`LocalAccessGuard.cs`) : jeton du cockpit
+    **et** Origin autorisée sur chaque requête, poignée de main WebSocket
+    comprise ; WebSockets seuls côté serveur, `skipNegotiation` côté
+    client. Avant, n'importe quelle page web ouverte dans le navigateur
+    pouvait rejoindre le hub et appeler `SubmitCommand` ou publier
+    `risk.lockout.cleared` : CORS ne couvre pas les WebSockets.
+  - `AllowedHosts` limité à `localhost;127.0.0.1` ; jeton masqué dans la
+    console (`RedactingConsoleFormatter.cs`) ; `/health.access` dit si
+    chaque jeton est configuré, jamais sa valeur.
+  - **Cockpit** : `next dev -H 127.0.0.1` (il écoutait sur toutes les
+    interfaces), `proxy.ts` (nom Next 16 du middleware) refuse tout Host
+    hors loopback, `/api/cockpit-token` remet le jeton aux seuls scripts de
+    la page (`Sec-Fetch-Site: same-origin`). Jeton absent : message clair
+    dans le menu du compte.
+  - **Observateur** : jeton exigé sur la poignée de main, navigateurs
+    refusés, refus de démarrer sans jeton. Côté Gateway, une connexion qui
+    n'a jamais abouti n'est plus une déconnexion : l'observateur arrêté
+    faisait écrire un `agent.disconnected` toutes les 3 s en base (point
+    ouvert du 2026-09-25, fermé).
+  - `start-live.ps1` crée les jetons dans `.env` s'ils manquent (jamais
+    affichés), gagne `-Build`, et s'arrête si le backend tourne sur une
+    image d'avant les jetons. Il se lit désormais aussi sous Windows
+    PowerShell 5.1 (BOM ajouté : sans lui, les tirets longs cassaient
+    l'analyse — défaut antérieur).
+
+  Tests : `dotnet test` 94/94 (19 nouveaux), vitest 312/312 (9 nouveaux),
+  unittest de l'observateur 31/31 (dont une vraie poignée de main
+  `websockets`), `tsc`, lint, `next build`. **Vérifié en réel sur une
+  instance isolée** (ports 15080/19765/18765/3002, base volontairement
+  coupée) : 101 avec jeton et Origin ; 403 sans jeton, mauvais jeton,
+  Origin étrangère ou absente ; 400 sur Host forgé ; jeton absent du
+  journal ; observateur réel attaché au terminal, backend accepté avec le
+  jeton et refusé sans ; cockpit dans le navigateur connecté au hub gardé
+  (compte reçu par le hub), puis message « jeton absent » quand il manque.
+  Trouvé et corrigé en testant `start-live` sur des `.env` jetables : une
+  ligne `NOM=` vide suivie d'une autre ligne passait pour un jeton présent.
+
+  **Pas encore déployé** : le conteneur backend tourne sur l'ancienne image
+  (geste de l'utilisateur : `pwsh -File scripts\start-live.ps1 -Build`).
+  **Reste pour I1** : le jeton de l'agent sur le port 9765 (il faut une
+  entrée côté MQL5).
+
+- 2026-09-26 (suite) — **I1 : l'agent durci, `OrderSend` toujours
+  inatteignable** (étude, I1 ; détail dans le README de l'agent et
+  `context/execution/safety.md`, « État de l'implémentation »).
+
+  Agent (`TradingOsAgent.mq5` 1.10, `CommandStore.mqh`) :
+  - **identité tirée du terminal** (`ACCOUNT_LOGIN`, relue chaque seconde) ;
+    `InpAccountId` devient une attente facultative : s'il diffère, l'agent
+    reste chargé et refuse tout (`IDENTITY_REFUSED`), jamais `INIT_FAILED` ;
+    allowlists `InpTradableLogins` / `InpClosableLogins` (vides = aucun) ;
+  - **halt local** persistant (fichier dans `MQL5\Files`) : bouton du
+    graphique, `control.halt` (pose seulement), ou fichier déposé à la main ;
+    levé seulement par un humain sur le graphique ; tient backend éteint ;
+  - **instance unique** par terminal ;
+  - **spread maximal par symbole, en unités de prix** (`InpMaxSpreadCsv`,
+    remplace `InpMaxSpreadPoints`) ; un symbole sans entrée refuse tout ;
+  - **jeton de la passerelle** lu dans `MQL5\Files\tradingos_agent.token`
+    (écrit par `start-live`) ;
+  - hello et heartbeat publient plafond et mode effectif, build, hedging ou
+    netting, FIFO, les quatre permissions, le halt et les EA étrangers
+    attachés ; `control.ping` reçu toutes les 5 s (`gatewaySilentMs`) ;
+  - store par login, écriture en booléen (un `UNKNOWN` non écrit bloque
+    l'ordre), trace d'ordre courte (20 caractères), remplissage lu dans
+    `SYMBOL_FILLING_MODE`, rapports finaux renvoyés à chaque reconnexion,
+    codes de refus en tête de chaque motif.
+
+  Passerelle : jeton de l'agent vérifié sur la ligne brute du hello, jamais
+  gardé (refus fermé sans jeton configuré) ; ping et halt seulement vers les
+  agents qui les déclarent ; état de l'agent (`GetStatus`) ; `SubmitCommand`
+  refuse un agent en halt ou à l'identité refusée ; identifiant de rapport
+  déterministe. Harnais `scripts/dev-submit-command.ts` pour les étapes 2 et
+  3 du README (lancé par l'utilisateur, jamais par Claude sur un agent réel).
+
+  **Trouvé en écrivant I1, corrigé** : l'agent envoyait `brokerOrderId`,
+  `brokerPositionId` et `brokerRetcode` en nombres, alors que le contrat dit
+  chaînes — la passerelle les refusait : **le rapport du premier vrai
+  remplissage aurait été jeté comme trame illisible** (défaut présent depuis
+  l'incrément 6, invisible tant qu'aucun ordre n'a tourné). L'agent envoie
+  des chaînes et la passerelle accepte les deux. Aussi : la trace
+  `"TradingOS " + commandId` dépassait les ~31 caractères qu'un courtier
+  garde, ce qui aurait rendu la réconciliation EA-06 aveugle ; et le fil du
+  cockpit ignorait tout refus (`execution.command.rejected`, point ouvert de
+  l'étude) — il les affiche désormais, sans doublon.
+
+  **Vérifié** : compilation MetaEditor 0 erreur 0 avertissement ; un seul
+  `OrderSend(` (dans `ExecuteOrder`, première instruction = garde de mode),
+  aucun `OrderSendAsync`/`CTrade`/`Trade.mqh`, `g_mode` `const
+  MODE_OBSERVE` jamais affecté, un seul appelant de `ExecuteOrder`, sous
+  `g_mode == MODE_CONFIRM`. `dotnet test` 109/109 (15 nouveaux), vitest
+  (4 nouveaux sur le store), unittest observateur/sonde 31/31. Harnais testé
+  contre une passerelle isolée sans agent : commande partie, refusée par la
+  passerelle ; mauvais jeton ou Origin étrangère : connexion refusée.
+
+  **Non vérifié en réel** (gestes de l'utilisateur) : l'agent attaché tourne
+  encore l'ancien code ; il faut `start-live -Build` (jeton de l'agent,
+  image), réattacher l'EA avec `InpMaxSpreadCsv` renseigné, puis les étapes
+  2 à 6 du README. MT5 lancé à neuf chargerait le nouvel `.ex5` avec l'ancien
+  preset : sans danger (spread non configuré = tout refusé ; mode OBSERVE).

@@ -1,132 +1,81 @@
-# MT5 Wire Protocol (Lean Edge)
+# Protocole du lien agent MT5 ↔ cœur
 
-The MT5 agent and the WebSocket Gateway exchange **secure WebSocket (WSS) messages** in a lean, versioned JSON format. This protocol is intentionally simpler than the internal `Envelope<T>` — the gateway is the adapter between the two. Canonical types: `lib/contracts/mt5-wire.ts`. Session lifecycle: `context/realtime/mt5_agent_realtime_lifecycle.md`.
+Réécrit le 2026-10-09 (ADR 0016). Le cœur Python et l'agent MQL5 `TradingOsAgent` échangent des lignes JSON sur un **socket TCP local** (`127.0.0.1:9765`). Types canoniques : `python/trading_os/infrastructure/mt5/wire.py` ; serveur : `ea_link.py` ; l'autre bout : `tools/mt5-execution-agent/TradingOsAgent.mq5`. Le contrat d'exécution (champs obligatoires, idempotence, refus) est dans `context/execution/protocol.md`.
 
-## Why Two Protocols
+## Pourquoi du TCP simple, et un seul protocole
 
-| Concern | MT5 edge (this doc) | Internal (Envelope<T>) |
+L'agent n'a que des sockets MQL5 : pas de client WebSocket maintenu, pas de SignalR. Le lien est **loopback**, entre deux processus d'une machine personnelle : pas de WSS, une ligne JSON par message, UTF-8 **sans BOM** (un BOM avant la première commande a déjà été un vrai bug). Il n'y a plus qu'**une** forme de message : celle du bord MT5 est convertie vers le domaine à un seul endroit (`wire.py` : `BUY`/`SELL` → `Side`, millisecondes époque → dates) ; rien en aval ne la voit. Plus de seconde enveloppe, plus de traducteur.
+
+## Enveloppe commune
+
+| Champ | Type | Note |
 | --- | --- | --- |
-| Client | MQL5 EA via sidecar | .NET services, dashboard |
-| Transport | raw WSS | SignalR / in-process |
-| Envelope | flat, `version`, `time` epoch, `id` | `messageId`/`correlationId`/`causationId`, `schemaVersion`, ISO `sentAt`, nested `payload` |
-| Side | `"BUY"` / `"SELL"` | `"buy"` / `"sell"` |
-| Reason | MQL5 has no SignalR client; keep the EA trivial (`Connect/Send/Receive/Reconnect`) | full audit/correlation for decision replay |
+| `version` | nombre | version de la forme du message (aujourd'hui `1`) |
+| `type` | chaîne | famille ci-dessous |
+| `accountId` | chaîne | le **login** MT5 du terminal (`ACCOUNT_LOGIN`), plus jamais une entrée de l'EA |
+| `time` | nombre | millisecondes depuis l'époque, UTC (deux ticks dans la même seconde restent ordonnés) |
 
-MQL5 has no maintained SignalR client, so forcing SignalR onto the EA would mean hand-rolling negotiation, framing, and reconnection. Raw WSS + lean JSON keeps the agent simple; the gateway adds the correlation and audit metadata the platform needs.
+## Messages
 
-## Common Envelope
+Agent → cœur :
 
-Every message carries:
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `version` | number | lean protocol version (currently `1`) |
-| `type` | string | message type (see families below) |
-| `accountId` | string | platform account this agent serves |
-| `time` | number | Unix epoch **milliseconds**, UTC |
-
-> The user's original sketch used `time` in epoch seconds (`1780000000`). This spec uses milliseconds so two ticks in the same second stay ordered; the gateway converts to ISO `UtcTimestamp`.
-
-## Message Families
-
-Agent → Gateway (telemetry & lifecycle):
-
-- `agent.hello` — capabilities on connect/reconnect (symbol, broker, order types, volume min/max/step, filling mode, stops level, boot mode)
-- `agent.heartbeat`
+- `agent.hello` — à chaque (re)connexion : le jeton de l'agent, ce qu'il sait faire et ce qu'il est.
+- `agent.heartbeat` — toutes les 5 s, et aussitôt qu'un état change.
 - `agent.error`
-- `market.tick`
-- `market.candle`
-- `account.snapshot`
-- `positions.snapshot`
-- `execution.ack` — immediate receipt, echoes command `id`
-- `execution.report` — terminal outcome, echoes command `id`
+- `execution.ack` — accusé immédiat, reprend l'`id` de la commande : `ACCEPTED`, `REJECTED`, `DUPLICATE`, `EXPIRED`.
+- `execution.report` — issue : `SIMULATED`, `SUBMITTED`, `FILLED`, `PARTIALLY_FILLED`, `MODIFIED`, `CLOSED`, `FAILED`, `REJECTED`.
+- `execution.reconciled` — ce que l'agent a conclu, à la connexion, d'une commande restée `UNKNOWN` : `executed`, `rejected`, `not_found`.
+- `execution.position.scan` — une position du terminal (`magicNumber`, `isExternal`, `knownCommandId`), à chaque battement.
 
-Gateway → Agent (control & commands):
+Cœur → agent :
 
 - `execution.order`
-- `execution.modify`
-- `execution.close`
-- `execution.close_all`
-- `execution.cancel`
-- `control.set_mode`
-- `control.resync`
+- `control.ping` — toutes les 5 s, aux agents qui annoncent la capacité `ping`.
+- `control.halt` — avec une `reason`, aux agents qui annoncent `halt` : il **pose** l'arrêt local, il ne le lève jamais (seul un humain, sur le graphique MT5).
 
-## Examples
+Le cœur ne reçoit plus ni ticks, ni bougies, ni instantanés de compte de l'agent : il les lit lui-même dans MT5, dans un processus enfant en lecture seule. L'agent n'est plus la source de rien d'autre que de son exécution et de sa télémétrie.
 
-Tick (agent → gateway):
+## Exemples
+
+Commande (cœur → agent) :
 
 ```json
-{ "version": 1, "type": "market.tick", "accountId": "ftmo-001", "symbol": "XAUUSD", "bid": 3352.45, "ask": 3352.62, "time": 1780000000000 }
+{"version":1,"type":"execution.order","accountId":"477029930","time":1780000000000,"id":"cmd-1245","expiresAt":1780000005000,"symbol":"EURUSDm","side":"BUY","orderType":"MARKET","volume":0.2,"limitPrice":null,"sl":1.0820,"tp":1.0890}
 ```
 
-Order command (gateway → agent):
+Accusé puis rapport en mode `observe` (agent → cœur) :
 
 ```json
-{ "version": 1, "type": "execution.order", "accountId": "ftmo-001", "id": "cmd-1245", "symbol": "XAUUSD", "side": "BUY", "orderType": "MARKET", "volume": 0.20, "limitPrice": null, "sl": 3348.50, "tp": 3364.00, "expiresAt": 1780000005000, "time": 1780000000000 }
+{"version":1,"type":"execution.ack","accountId":"477029930","time":1780000000100,"commandId":"cmd-1245","status":"ACCEPTED","reason":null}
+{"version":1,"type":"execution.report","accountId":"477029930","time":1780000000150,"commandId":"cmd-1245","status":"SIMULATED","symbol":"EURUSDm","side":"BUY","brokerOrderId":null,"brokerPositionId":null,"filledVolume":null,"averagePrice":null,"brokerRetcode":null,"detail":"observe mode: order not sent to broker"}
 ```
 
-Ack then report in `observe` mode (agent → gateway):
+## `agent.hello` et `agent.heartbeat`
 
-```json
-{ "version": 1, "type": "execution.ack", "accountId": "ftmo-001", "commandId": "cmd-1245", "status": "ACCEPTED", "reason": null, "time": 1780000000100 }
-```
-```json
-{ "version": 1, "type": "execution.report", "accountId": "ftmo-001", "commandId": "cmd-1245", "status": "SIMULATED", "symbol": "XAUUSD", "side": "BUY", "brokerOrderId": null, "brokerPositionId": null, "filledVolume": null, "averagePrice": null, "brokerRetcode": null, "detail": "observe mode: order not sent to broker", "time": 1780000000150 }
-```
+**`agent.hello`** : `token` (vérifié par le cœur sur la ligne brute, **jamais gardé** : aucun modèle n'a de champ pour lui), `agentId`, `agentVersion` (build, `1.11`), `buildId`, `capabilities` (`ping`, `halt`, `dead_man`), `mode` (effectif) et `modeCeiling` (le plus haut mode que ce build peut jamais atteindre), `identity` (`ok` | `mismatch` | `no_account`) et `expectedAccountId`, `broker`, `server`, `symbol` (le premier symbole seulement : héritage du prototype à un symbole), `orderTypes`, `minVolume`, `maxVolume`, `volumeStep`, `fillingMode`, `stopsLevelPoints`, `tradeMode`, `marginMode` (`hedging` | `netting` | `exchange`), `fifoClose`, `leverage`, `currency`, les quatre permissions de trading (`terminalTradeAllowed`, `expertTradeAllowed`, `accountTradeExpert`, `accountTradeAllowed`), `tradable`, `closable`, `halted`, `attachedExperts` (tous les autres EA du terminal — le bouton Algo Trading les arme tous).
 
-## Execution Modes
+**`agent.heartbeat`** : ce qui peut changer en cours de connexion — `mode`, `identity`, les quatre permissions, `halted`, `attachedExperts`, `latencyMs`, et **`coreSilentMs`** : depuis combien de temps l'agent n'a rien entendu du cœur. Le cœur ne considère un battement comme un *changement d'état* que si autre chose que ses deux horloges a bougé. Un agent construit avant 1.11 envoie ce champ sous le nom `gatewaySilentMs` : le cœur lit les deux.
 
-The agent applies a mode to every command; the command payload is identical across modes.
+## Modes d'exécution
 
-| Mode | Terminal action | Report status |
+L'agent applique un mode à chaque commande ; la charge utile est identique d'un mode à l'autre.
+
+| Mode | Action du terminal | Statut du rapport |
 | --- | --- | --- |
-| `observe` (default) | never sends to broker | `SIMULATED` |
-| `paper` | routes to a demo account | real broker statuses |
-| `confirm` | routes to the real broker, one order at a time, only after explicit human validation (EA-07) | real broker statuses |
+| `observe` (le seul de ce build) | n'envoie jamais rien au courtier | `SIMULATED` |
+| `paper` | route vers un compte de démonstration | statuts réels du courtier |
+| `confirm` | route vers le vrai courtier, un ordre à la fois, après validation humaine explicite (EA-07) | statuts réels du courtier |
 
-> Renamed from `live` (EA-05) to match ADR 0010's ladder — `confirm` names
-> the actual safety property of this rung (per-order human approval), not
-> just "is this a real-money account".
+Le mode effectif ne dépasse jamais le plafond **compilé** de l'agent (`OBSERVE` dans ce build) ni celui que le cœur impose (`TRADING_MODE`, plafond du compte, état d'autonomie).
 
-Agent config:
+## Idempotence, reprise, réconciliation
 
-```yaml
-execution:
-  enabled: false   # false ⇒ observe regardless of mode
-  mode: observe    # observe → paper → confirm
-```
+- L'agent déduplique par `id` : un `id` revu reçoit `execution.ack` `DUPLICATE`, sans réexécution, même après un redémarrage du terminal (journal disque).
+- L'agent refuse toute commande reçue après son `expiresAt` : `EXPIRED`.
+- Chaque `ack` et chaque `report` reprennent l'`id` de la commande ; le cœur les réconcilie avec ce qu'il a voulu.
+- À chaque reconnexion l'agent renvoie `agent.hello`, rejoue les rapports finaux de la dernière heure (`replayed: true`, avec leur `time` d'origine ; l'identifiant d'un rapport est `commandId:statut:heure`, donc une copie d'un rapport déjà stocké est sans effet), réconcilie ses `UNKNOWN` (`execution.reconciled`) et rescanne les positions. Aucune nouvelle commande n'est de confiance avant cela.
+- Les identifiants du courtier et `brokerRetcode` sont des **chaînes** JSON ; le cœur accepte aussi des nombres nus (un agent ancien en envoyait). Le commentaire d'un ordre est une courte trace (`"TOS " + 16 hex du SHA-256(commandId)`, 20 caractères) : un commentaire plus long dépasse ce qu'un courtier conserve et ruinerait la réconciliation.
 
-Backend counterpart: the Trading Engine talks to an `ExecutionAdapter` (`NullExecution` / `PaperExecution` / `MT5Execution` / future `FIXExecution`) and never knows which is active. `LocalRiskGuard` treats an unknown or absent mode as `observe` — the safe default.
+## Codes de refus qui mènent la raison d'un `REJECTED`
 
-## Gateway Translation
-
-Inbound (MT5 lean → internal `Envelope<T>` + domain, see `lib/contracts` / `lib/domain`):
-
-| MT5 field | Internal | Transform |
-| --- | --- | --- |
-| — | `messageId` | gateway generates a UUID |
-| — | `correlationId` / `causationId` | assigned per workflow (signal→command→report) |
-| `version` | `schemaVersion` | copied |
-| `type` | `type` (EventType) | mapped (`market.tick` → `market.tick`, `execution.report` → `execution.*` family) |
-| `time` | `sentAt` | epoch ms → ISO `UtcTimestamp` |
-| `accountId` | `source` | `"mt5-agent:{accountId}"` |
-| `side` `"BUY"` | domain `Side` `"buy"` | lowercased |
-| flat fields | `payload` (domain model) | reshaped into `MarketTickPayload`, `ExecutionReport`, … |
-
-Outbound (internal `ExecutionCommand` → MT5 lean):
-
-| Internal | MT5 field | Transform |
-| --- | --- | --- |
-| `commandId` | `id` | copied |
-| `kind` `"place_order"` | `type` `"execution.order"` | mapped |
-| `side` `"buy"` | `side` `"BUY"` | uppercased |
-| `stopLoss` / `takeProfit` | `sl` / `tp` | renamed |
-| `expiresAt` (ISO) | `expiresAt` (number) | ISO → epoch ms |
-| correlation/envelope metadata | — | dropped at the edge |
-
-## Idempotency, Retry, Reconciliation
-
-- The agent dedupes commands by `id`; a repeat `id` gets `execution.ack` with status `DUPLICATE` and no re-execution.
-- The agent refuses any command past its `expiresAt` with status `EXPIRED`.
-- Every `execution.ack` and `execution.report` echoes the originating command `id`; the gateway/engine reconcile reports against intended commands.
-- On reconnect the agent re-sends `agent.hello`, then `account.snapshot` and `positions.snapshot`; the engine reconciles open positions and pending commands before execution is re-enabled. No new command is trusted until reconciliation completes.
+`HALTED`, `DEAD_MAN`, `IDENTITY_REFUSED`, `ACCOUNT_MISMATCH`, `SYMBOL_MISMATCH`, `ORDER_TYPE_UNSUPPORTED`, `VOLUME_LIMIT`, `STOP_MISSING`, `POSITIONS_LIMIT`, `SYMBOL_UNAVAILABLE`, `SPREAD_LIMIT_MISSING`, `SPREAD_TOO_WIDE` ; et, sur le chemin d'exécution (inatteignable dans ce build) : `LOGIN_NOT_TRADABLE`, `STORE_UNWRITABLE`. Voir `context/execution/protocol.md` et `safety.md`.

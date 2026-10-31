@@ -1,5 +1,7 @@
 # T07 — Tracker d'erreurs et taux de conformité
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/journal/compliance.py`, `services/journal.py`, `GET /api/journal/compliance` ; cockpit `lib/compliance/`.
+
 Statut : **livré** (4 incréments, 2026-09-16) · Vague 2 · Effort 1–2 j ·
 Valeur 5 · Dépend de : T06 (livré)
 
@@ -170,3 +172,14 @@ une violation.
   jauge et l'historique des verrous disent « illisible — le backend
   répond-il ? ». Et sans aucun trade sur la période, la carte affiche « — »,
   pas 100 %. Vérifié à l'écran avec la base réellement arrêtée.
+
+- 2026-10-08 — refonte visuelle (ADR 0017) : la carte `ComplianceCard` du
+  Command Center n'existe plus. Le taux est une métrique du panneau sombre du
+  Command Center (« Conformité au plan », la pastille menthe de ce panneau),
+  le chiffre de tête de `/analyse` et, par trade, la métrique « dans le cadre »
+  de `/journal`. Même hook (`useComplianceRate`, partagé avec la jauge de
+  `/risk` et l'historique des verrous), mêmes seuils — ≥ 90 % « Conforme »,
+  ≥ 70 % « À surveiller », sinon « Hors cadre » — et `/analyse` calcule avec le
+  même résumeur sur la période choisie. Rien mesuré ou base illisible : des
+  tirets, jamais 100 % (règle du 2026-09-24, conservée). Le critère de sortie
+  de la Vague 2 — taux affiché en tête du cockpit — reste rempli.

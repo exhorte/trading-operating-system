@@ -1,5 +1,7 @@
 # Références visuelles — journal TradeZella & FTMO (2026-09-20)
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive d'analyse visuelle. Les mentions de la préversion « mock » (`lib/mock/…`, `NEXT_PUBLIC_MOCK_ACCOUNT_ID`) décrivent l'état du cockpit à leur date : cette source n'existe plus, le cœur Python a un mode simulé (`MT5_ENABLED=false`).
+
 Complète `visual_reference_analysis.md` (templates TradeZella de septembre).
 Sources : `05_screenchot/` — `journal interace.png`, l'export PDF
 « Analyse de compte 511333949 » et l'export PDF « Account MetriX 511333949 ».

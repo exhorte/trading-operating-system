@@ -1,5 +1,7 @@
 # T04 — Ticket pré-trade
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : aucun : cet outil a été retiré (voir la fiche).
+
 Statut : **retiré** (2026-09-14) · Vague 1 · Effort 1 j · Valeur 5 · Dépend de : rien
 
 ## Problème

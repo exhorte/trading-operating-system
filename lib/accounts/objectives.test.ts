@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
-import type { JournalTrade } from "@/lib/journal/types";
-import { ftmoObjectives, ftmoRiskPolicy, type FtmoChallenge } from "./ftmo";
+import type { AccountRules, FtmoChallenge, JournalTrade } from "@/lib/api/generated";
+import { account } from "@/lib/realtime/test-fixtures";
 import { evaluateFtmoObjectives, type ObjectivesInput } from "./objectives";
 
 const challenge: FtmoChallenge = { type: "2-step", accountSize: 10_000, phase: "challenge" };
+
+/** The 2-Step Challenge phase as the core's profile writes it: −5 % a day, −10 % overall, 4 days, a 10 % target. */
+function rulesOf(overrides: Partial<AccountRules["tradingRules"]> = {}): AccountRules {
+  const base = account();
+  return {
+    riskProfile: {
+      ...base.riskProfile,
+      drawdown: { dailyLossLimitPercent: 5, maxDrawdownLimitPercent: 10, referenceBalance: 10_000 },
+    },
+    tradingRules: { ...base.tradingRules, challenge, minTradingDays: 4, profitTargetPercent: 10, ...overrides },
+    executionProfile: base.executionProfile,
+  };
+}
 
 function trade(overrides: Partial<JournalTrade> = {}): JournalTrade {
   return {
@@ -25,7 +38,7 @@ function trade(overrides: Partial<JournalTrade> = {}): JournalTrade {
 function input(overrides: Partial<ObjectivesInput> = {}): ObjectivesInput {
   return {
     challenge,
-    policy: ftmoRiskPolicy("acc", "challenge"),
+    rules: rulesOf(),
     trades: [],
     balance: 10_000,
     equity: 10_000,
@@ -36,19 +49,6 @@ function input(overrides: Partial<ObjectivesInput> = {}): ObjectivesInput {
 function row(rows: ReturnType<typeof evaluateFtmoObjectives>, key: string) {
   return rows.find((r) => r.key === key)!;
 }
-
-describe("ftmoObjectives", () => {
-  it("is sourced for the 2-Step challenge phase (MetriX exports)", () => {
-    expect(ftmoObjectives(challenge)).toEqual({ minTradingDays: 4, profitTargetPercent: 10 });
-  });
-
-  it("guesses nothing for phases the exports never showed", () => {
-    expect(ftmoObjectives({ ...challenge, phase: "verification" })).toEqual({
-      minTradingDays: null,
-      profitTargetPercent: null,
-    });
-  });
-});
 
 describe("evaluateFtmoObjectives", () => {
   it("lists the four objectives in MetriX's order", () => {
@@ -136,7 +136,12 @@ describe("evaluateFtmoObjectives", () => {
   });
 
   it("marks unsourced rules as such instead of inventing them", () => {
-    const rows = evaluateFtmoObjectives(input({ challenge: { ...challenge, phase: "funded" } }));
+    const rows = evaluateFtmoObjectives(
+      input({
+        challenge: { ...challenge, phase: "funded" },
+        rules: rulesOf({ minTradingDays: null, profitTargetPercent: null }), // what the core writes for a phase it has no source for
+      }),
+    );
     expect(row(rows, "min_days").state).toBe("non_source");
     expect(row(rows, "profit_target").state).toBe("non_source");
   });

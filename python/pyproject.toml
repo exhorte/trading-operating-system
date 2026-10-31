@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trading-os"
+version = "0.2.0"
+description = "Trading Operating System — Python-native core (ADR 0016)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "psycopg[binary,pool]>=3.2",
+    "httpx>=0.27",
+    "keyring>=25",
+    "tzdata>=2024.1; sys_platform == 'win32'",  # zoneinfo needs it on Windows (New York killzones)
+    # Windows-only, one terminal per process (hence the read-only worker process).
+    "MetaTrader5>=5.0.45; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+# Read-only MCP server (trading_os.mcp) — optional, only for the AI assistant interface. The SDK's 2.x renamed FastMCP to MCPServer:
+# the server is written against it, so the major version is pinned.
+mcp = ["mcp>=2.3,<3"]
+
+[project.scripts]
+tradingos = "trading_os.cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["trading_os*"]
+
+[tool.setuptools.package-data]
+"trading_os.infrastructure.database" = ["migrations/*.sql", "migrations/manual/*.sql"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "db: needs a throwaway PostgreSQL (TRADINGOS_TEST_DATABASE_URL); fails, never skips silently, when run with -m db and absent",
+    "live_mt5: read-only checks against a real, already logged-in terminal (MT5_LIVE_TESTS=1); never places an order",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "RUF"]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # French accents / typographic characters in strings and comments
+    "SIM108",                      # ternary is not always clearer
+    "B008",                        # FastAPI Depends() in defaults is the framework idiom
+    "E501",                        # prose lines (docstrings, comments) may run long; the formatter owns the code
+    "ASYNC109",                    # an explicit `timeout` argument is the point of the MT5 transport API
+]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+strict = true
+warn_unused_ignores = true
+exclude = ["^\\.venv/"]
+
+[[tool.mypy.overrides]]
+module = ["MetaTrader5", "MetaTrader5.*", "keyring", "keyring.*"]
+ignore_missing_imports = true

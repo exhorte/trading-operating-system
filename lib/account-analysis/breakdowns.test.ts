@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { JournalTrade } from "@/lib/journal/types";
+import type { JournalTrade } from "@/lib/api/generated";
 import {
   accountBreakdowns,
   bucketBy,

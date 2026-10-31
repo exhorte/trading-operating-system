@@ -1,5 +1,7 @@
 # EA-06 — Réconciliation
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/positions/reconciliation.py` et `services/reconciliation.py` (côté cœur) ; `ReconcileUnknownCommands` dans l'agent (à chaque connexion).
+
 Statut : **livré** (4 incréments, 2026-09-16) · Vague EA · Effort 1–2 j ·
 Dépend de : EA-03 (protocole, machine à états), EA-05 (agent MQL5,
 incrément 6 — le premier `OrderSend` du dépôt)

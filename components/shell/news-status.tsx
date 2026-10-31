@@ -5,8 +5,7 @@ import Link from "next/link";
 import { CalendarClock } from "lucide-react";
 import { cn } from "cn";
 import { useCockpit } from "@/lib/realtime/provider";
-import { defaultRiskPolicy, isNewsBlackout, nextRelease } from "@/lib/risk";
-import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { inBlackout, nextRelease } from "@/lib/cockpit/calendar";
 
 function formatCountdown(untilIso: string, nowMs: number): string {
   const remainingMs = Math.max(0, Date.parse(untilIso) - nowMs);
@@ -28,14 +27,15 @@ interface NewsLine {
 
 /**
  * T03 — the next FRED release and its blackout, permanent and visible from
- * every screen (the fiche's own requirement). Lived in the top bar until the
- * 2026-09-24 redesign; now pinned at the bottom of the sidebar, where it
- * stays on every page. Reads `upcomingReleases` directly so it works before
- * an account is connected (the calendar is global). Absent data is shown as
- * the news gate treats it: closed, never as a reassuring blank.
+ * every screen (the fiche's own requirement): pinned at the bottom of the
+ * sidebar. Reads `upcomingReleases` directly so it works before an account
+ * is connected (the calendar is global). Absent data is shown as the news
+ * gate treats it: closed, never as a reassuring blank. Whether an entry is
+ * allowed is the core's gate; the blackout window shown here is the active
+ * account's own rule, and none is claimed before there is an account.
  */
-export function NewsStatus() {
-  const { upcomingReleases, account } = useCockpit();
+export function NewsStatus({ onNavigate }: { onNavigate?: () => void }) {
+  const { upcomingReleases, registered } = useCockpit();
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -43,60 +43,59 @@ export function NewsStatus() {
     return () => clearInterval(interval);
   }, []);
 
+  const blackoutMinutes = registered?.riskProfile.news.blackoutMinutes ?? null;
+
   let line: NewsLine;
   let blackout = false;
   if (upcomingReleases === null) {
     line = { title: "Calendrier indisponible", detail: "gate publications fermée", tone: "loss" };
   } else {
-    const policy = defaultRiskPolicy(account?.accountId ?? "unknown");
-    const nowIso = new Date(nowMs).toISOString();
-    const upcoming = nextRelease(nowIso, upcomingReleases);
+    const upcoming = nextRelease(nowMs, upcomingReleases);
     if (!upcoming) {
       line = { title: "Aucune publication", detail: "rien de prévu au calendrier", tone: "muted" };
     } else {
-      blackout = isNewsBlackout(nowIso, upcomingReleases, policy.newsBlackoutMinutes);
+      blackout = blackoutMinutes !== null && inBlackout(nowMs, upcoming, blackoutMinutes);
       line = {
         title: `${upcoming.label} dans ${formatCountdown(upcoming.scheduledAt, nowMs)}`,
         detail: blackout
-          ? `blackout en cours (±${policy.newsBlackoutMinutes} min)`
-          : `blackout à ${formatClock(upcoming.scheduledAt)}`,
+          ? `blackout en cours (±${blackoutMinutes} min)`
+          : blackoutMinutes === null
+            ? `publication à ${formatClock(upcoming.scheduledAt)}`
+            : `blackout à ${formatClock(upcoming.scheduledAt)}`,
         tone: blackout ? "warning" : "muted",
       };
     }
   }
 
-  const toneText = line.tone === "loss" ? "text-loss" : line.tone === "warning" ? "text-warning" : "text-sidebar-foreground";
+  const toneText = line.tone === "loss" ? "text-destructive" : line.tone === "warning" ? "text-warning" : "text-foreground";
 
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        asChild
-        size="lg"
-        tooltip={`${line.title} — ${line.detail}`}
-        // The lg size drops its padding in the icon rail; put it back so the
-        // icon sits centred like every other item.
-        className="gap-3 group-data-[collapsible=icon]:p-2.5!"
-      >
-        <Link href="/market-context">
-          <span className="relative flex shrink-0">
-            <CalendarClock className={cn("size-5", toneText)} strokeWidth={1.75} />
-            {line.tone !== "muted" && (
-              <span
-                className={cn(
-                  "absolute -top-0.5 -right-0.5 size-2 rounded-full",
-                  line.tone === "loss" ? "bg-loss" : "bg-warning",
-                  blackout && "animate-pulse",
-                )}
-                aria-hidden
-              />
+    <Link
+      href="/market-context"
+      onClick={onNavigate}
+      title={`${line.title} — ${line.detail}`}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors outline-none",
+        "text-sidebar-foreground hover:bg-sidebar-accent/70 focus-visible:ring-[3px] focus-visible:ring-ring/40",
+      )}
+    >
+      <span className="relative flex shrink-0">
+        <CalendarClock className="size-4" aria-hidden="true" />
+        {line.tone !== "muted" && (
+          <span
+            className={cn(
+              "absolute -top-1 -right-1 size-2 rounded-full",
+              line.tone === "loss" ? "bg-destructive" : "bg-warning",
+              blackout && "animate-pulse",
             )}
-          </span>
-          <span className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className={cn("truncate text-[13px] font-medium", toneText)}>{line.title}</span>
-            <span className="truncate text-[11px] text-muted-foreground">{line.detail}</span>
-          </span>
-        </Link>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
+            aria-hidden="true"
+          />
+        )}
+      </span>
+      <span className="flex min-w-0 flex-col leading-tight">
+        <span className={cn("truncate text-[13px] font-medium", toneText)}>{line.title}</span>
+        <span className="truncate text-[11px] text-sidebar-foreground">{line.detail}</span>
+      </span>
+    </Link>
   );
 }

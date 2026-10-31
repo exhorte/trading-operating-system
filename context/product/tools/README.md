@@ -1,5 +1,7 @@
 # Fiches d'outil
 
+> **Amendement du 2026-10-09 (ADR 0016).** Les chemins `lib/…`, `backend/` et `tools/mt5-observer` cités ici sont ceux de l'époque : ils sont devenus `python/trading_os/…` (voir « Ancrage actuel » en tête de chaque fiche d'outil, et la correspondance du rapport `docs/architecture/python-native-migration-report.md`). Le « hub SignalR », l'« observer » et le « Gateway » n'existent plus ; leur rôle est tenu par le cœur Python.
+
 Une fiche par outil. C'est l'unité de travail du projet (ADR 0006) : elle remplace le couple « document de design + fiche de phase » de la série 1.
 
 La fiche est écrite **avant** de coder, complétée **pendant**, close **après**. Elle porte tout : le problème, le comportement attendu, les points d'ancrage dans le code existant, le critère de réussite, et le journal des décisions prises en route.

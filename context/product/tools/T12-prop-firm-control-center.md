@@ -1,5 +1,7 @@
 # T12 — Prop Firm Control Center
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/accounts/` et `services/accounts.py` ; cockpit `app/(cockpit)/{account,settings}/` et `components/accounts/`.
+
 Statut : **en cours** — incrément 1 « un compte à la fois » **livré** (2026-09-21) ;
 incrément 2 « Account & Settings » **livré** (2026-09-23) · Vague 3 ·
 Effort backlog 1–2 sem (incrément 1 : 1–2 j) · Valeur 5 · Dépend de : T11
@@ -320,3 +322,24 @@ EA-04 (`lib/accounts/`, `lib/market/symbols/`) étendu, pas dupliqué :
   `dotnet build` 0/0 ; **`dotnet test` 58/58 en natif** (+24) — Smart App
   Control est désactivé sur la machine (`VerifiedAndReputablePolicyState = 0`),
   le blocage du 2026-09-17 n'existe plus ; tests Python 23/23 (+6).
+
+- 2026-09-26 — **incrément 3 = I2 de l'étude (identification complète du
+  compte)**. L'observateur publie la fenêtre compte de MT5 : type (démo,
+  concours, réel), serveur, société, levier, hedging ou netting, FIFO,
+  niveau de marge (nul, pas 0, sans marge utilisée), trading autorisé
+  (faux avec un mot de passe investisseur), experts autorisés. **Jamais
+  `name`** : donnée personnelle, et les enveloppes sont immuables (ADR 0009)
+  — un test le garantit, côté Python et côté C#. L'observateur s'arrête
+  (code 3) s'il voit le login du terminal changer : sans ça, il diffuserait
+  un compte sous le nom de l'autre. La passerelle transmet ces champs
+  (`AccountSummary`), ajoute l'état de l'agent d'exécution d'I1 à
+  l'instantané du hub et le diffuse sur changement
+  (`execution.agent.status`, jamais à chaque battement). Le cockpit remet à
+  zéro la session du compte (base, trades, série, verrou, agent) quand
+  l'`accountId` change, puis se resynchronise. **Account → Liaison MT5**
+  gagne : type de compte, login vu par l'agent face au terminal, les quatre
+  permissions, les autres EA attachés, le halt local, mode et plafond
+  (`lib/accounts/agent-view.ts`, testé). Vérifié en préversion mock
+  (rendu seulement, pas le câblage : celui-ci se vérifie en réel après le
+  déploiement). **Reporté** : le registre `account_settings` clé par compte
+  (D13) passe à I7, avec la configuration de l'autonomie par compte.

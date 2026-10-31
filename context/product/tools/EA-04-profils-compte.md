@@ -1,5 +1,7 @@
 # EA-04 — Profils de compte, modèle de coût, registre de symboles
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/accounts/profiles.py` (un profil par fournisseur : Exness, FTMO) et `models.py`.
+
 Statut : **livré** · Vague EA · Effort 1–2 j · Dépend de : EA-01 (porte de
 coût déjà écrite, en attente d'un seuil par compte)
 

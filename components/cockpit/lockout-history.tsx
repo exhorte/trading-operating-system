@@ -1,8 +1,10 @@
 "use client";
 
+import { History } from "lucide-react";
 import { useComplianceRate } from "@/lib/compliance/use-compliance-rate";
-import type { LockoutWindow } from "@/lib/compliance/violations";
-import { Panel } from "@/components/ui/panel";
+import type { LockoutWindow } from "@/lib/api/generated";
+import { SectionHeading } from "@/components/shell/page-header";
+import { DataList, MobileCardHeader, MobileFields, type Column } from "@/components/ui/data-list";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 
 function formatStamp(iso: string): string {
@@ -34,20 +36,40 @@ function stateOf(lockout: LockoutWindow): { label: string; tone: PillTone } {
     : { label: "expiré", tone: "muted" };
 }
 
+const StateBadge = ({ lockout }: { lockout: LockoutWindow }) => {
+  const state = stateOf(lockout);
+  return <StatusPill tone={state.tone}>{state.label}</StatusPill>;
+};
+
+const COLUMNS: Column<LockoutWindow>[] = [
+  { key: "reason", header: "Motif", cell: (l) => <span className="font-medium">{l.reason}</span> },
+  { key: "since", header: "Déclenché", cell: (l) => <span className="text-muted-foreground">{formatStamp(l.since)}</span> },
+  {
+    key: "cleared",
+    header: "Levé",
+    cell: (l) => <span className="text-muted-foreground">{l.clearedAt === null ? "—" : formatStamp(l.clearedAt)}</span>,
+  },
+  {
+    key: "span",
+    header: "Durée",
+    align: "right",
+    cell: (l) => <span className="text-muted-foreground">{formatSpan(l.since, l.clearedAt)}</span>,
+  },
+  { key: "state", header: "État", align: "right", cell: (l) => <StateBadge lockout={l} /> },
+];
+
 /**
  * Every lockout this account has ever carried, newest first.
  *
- * The data has been served by GET /api/risk/lockouts since T07 and had no
- * screen: it was read only by the compliance detectors, never shown as a
- * history. It is the trace of the two Vague 1 incidents (six trades opened
- * while a lock was held, 2026-09-14 and 2026-09-15) and of the acknowledgment
- * cycle T02c made mandatory — the kind of thing a personal risk system exists
- * to keep in front of the trader.
+ * The data is the core's lockout ledger (GET /api/risk/lockouts). It is the
+ * trace of the two Vague 1 incidents (six trades opened while a lock was held,
+ * 2026-09-14 and 2026-09-15) and of the acknowledgment cycle T02c made
+ * mandatory — the kind of thing a personal risk system exists to keep in front
+ * of the trader.
  *
- * Reuses the fetch already made by the discipline gauge: the endpoint returns
- * the full history regardless of window ("a personal system has a handful of
- * lockouts, ever" — RiskLockoutHistoryRepository), so there is nothing extra
- * to ask for.
+ * Reads through the same hook as the discipline gauge: the ledger is the full
+ * history regardless of window ("a personal system has a handful of lockouts,
+ * ever"), so there is nothing extra to ask for.
  */
 export function LockoutHistory() {
   const { lockouts, rate, failed } = useComplianceRate();
@@ -55,67 +77,60 @@ export function LockoutHistory() {
   const ordered = [...lockouts].sort((a, b) => Date.parse(b.since) - Date.parse(a.since));
   const openCount = ordered.filter((l) => l.clearedAt === null).length;
 
+  const heading = (actions?: React.ReactNode) => (
+    <SectionHeading
+      title="Historique des verrous"
+      subtitle="chaque limite atteinte, et ce qui l'a levée"
+      icon={History}
+      actions={actions}
+    />
+  );
+
   if (rate === null) {
     return (
-      <Panel title="Historique des verrous">
-        <p className="text-sm text-muted-foreground">
-          {failed ? "Historique illisible — le backend répond-il ?" : "Chargement…"}
+      <section className="flex flex-col gap-4">
+        {heading()}
+        <p className="rounded-xl border border-dashed py-8 text-center text-sm text-muted-foreground">
+          {failed ? "Historique illisible — le cœur répond-il ?" : "Chargement…"}
         </p>
-      </Panel>
+      </section>
     );
   }
 
   return (
-    <Panel
-      title="Historique des verrous"
-      actions={
+    <section className="flex flex-col gap-4">
+      {heading(
         openCount > 0 ? (
           <StatusPill tone="loss" pulse>
             {openCount} non levé(s)
           </StatusPill>
         ) : (
-          <span className="text-xs text-muted-foreground">{ordered.length} au total</span>
-        )
-      }
-    >
+          <span className="text-sm text-muted-foreground">{ordered.length} au total</span>
+        ),
+      )}
       {ordered.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Aucun verrou enregistré pour ce compte. Un historique vide veut dire qu&apos;aucune
-          limite n&apos;a jamais été atteinte — pas que les limites sont inactives.
+        <p className="rounded-xl border border-dashed px-6 py-8 text-center text-sm text-muted-foreground">
+          Aucun verrou enregistré pour ce compte. Un historique vide veut dire qu&apos;aucune limite n&apos;a jamais été
+          atteinte — pas que les limites sont inactives.
         </p>
       ) : (
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-xs text-muted-foreground">
-              <th className="pb-1 font-medium">Motif</th>
-              <th className="pb-1 font-medium">Déclenché</th>
-              <th className="pb-1 font-medium">Levé</th>
-              <th className="pb-1 text-right font-medium">Durée</th>
-              <th className="pb-1 text-right font-medium">État</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ordered.map((lockout) => {
-              const state = stateOf(lockout);
-              return (
-                <tr key={lockout.lockoutId} className="border-t border-border">
-                  <td className="py-1.5 text-foreground">{lockout.reason}</td>
-                  <td className="tnum py-1.5 text-muted-foreground">{formatStamp(lockout.since)}</td>
-                  <td className="tnum py-1.5 text-muted-foreground">
-                    {lockout.clearedAt === null ? "—" : formatStamp(lockout.clearedAt)}
-                  </td>
-                  <td className="tnum py-1.5 text-right text-muted-foreground">
-                    {formatSpan(lockout.since, lockout.clearedAt)}
-                  </td>
-                  <td className="py-1.5 text-right">
-                    <StatusPill tone={state.tone}>{state.label}</StatusPill>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <DataList
+          rows={ordered}
+          columns={COLUMNS}
+          rowKey={(l) => l.lockoutId}
+          mobileCard={(l) => (
+            <>
+              <MobileCardHeader name={l.reason} subtitle={formatStamp(l.since)} badge={<StateBadge lockout={l} />} />
+              <MobileFields
+                fields={[
+                  { label: "Levé", value: l.clearedAt === null ? "—" : formatStamp(l.clearedAt) },
+                  { label: "Durée", value: formatSpan(l.since, l.clearedAt) },
+                ]}
+              />
+            </>
+          )}
+        />
       )}
-    </Panel>
+    </section>
   );
 }

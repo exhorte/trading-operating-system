@@ -1,233 +1,148 @@
 # Runbook — reconstruire et démarrer l'environnement
 
-Écrit le 2026-09-04, après le pivot. À exécuter **sur la machine Windows de l'utilisateur** : MT5 et le paquet Python `MetaTrader5` n'existent que là.
+Réécrit le 2026-10-09 pour l'architecture Python-native (ADR 0016). À exécuter **sur la machine Windows de l'utilisateur** : MT5 et le paquet Python `MetaTrader5` n'existent que là, donc le cœur Python ne tourne pas dans un conteneur. Docker ne porte plus que la base.
 
-## 0. Vérification post-pivot — à faire en premier
-
-La restructuration du 2026-09-04 a supprimé du code sans que les gates puissent être exécutées (ni `dotnet`, ni `docker`, ni `node_modules` sur le poste où elle a été faite). **Cette séquence est la première chose à lancer.**
-
-```bash
-cd 04_code
-npm install
-npm run lint
-npx tsc --noEmit
-npm test
-npm run build
-cd backend && dotnet build && dotnet test
+```
+cockpit Next.js (3000) ⇄ cœur Python (127.0.0.1:8000, un processus) ⇄ MT5 ⇄ courtier
+                                   │  └── lien agent 127.0.0.1:9765 ── EA TradingOsAgent
+                                   └── PostgreSQL/TimescaleDB (conteneur, 127.0.0.1:5433)
 ```
 
-Attendu : tout vert. Les tests supprimés avec `lib/backtest/` et `lib/strategy/` font mécaniquement baisser le compte de tests Vitest — c'est normal, ce n'est pas une régression.
+## 0. Une fois : installer
 
-En cas d'échec, l'état d'avant-pivot reste consultable dans le reflog git du clone local (aucune référence n'existe côté distant).
+```powershell
+cd 04_code\python
+py -3.14 -m venv .venv                                   # Python ≥ 3.12 (développé en 3.14)
+.venv\Scripts\python.exe -m pip install -e ".[dev]"      # ajouter ,mcp pour le serveur MCP
+cd ..
+npm install
+```
+
+Vérifier (tout doit être vert) :
+
+```powershell
+cd python
+.venv\Scripts\python.exe -m pytest -q                    # unitaires, intégration, base jetable, architecture (~8 min)
+.venv\Scripts\python.exe -m ruff check . ; .venv\Scripts\python.exe -m ruff format --check .
+.venv\Scripts\python.exe -m mypy trading_os
+cd ..
+npm test ; npm run typecheck ; npm run lint ; npm run build
+```
+
+Les tests de base de données lancent leur **propre** cluster PostgreSQL jetable à partir des binaires installés (ou `TRADINGOS_TEST_DATABASE_URL`) : ils **échouent** s'il n'y en a pas et ne touchent jamais la base `tradingos`.
 
 ## 1. Base de données
 
-```bash
-docker compose up -d          # démarre tradingos-timescaledb
-docker compose ps             # healthcheck doit être healthy
-docker compose down           # arrêt (les données survivent dans le volume)
+```powershell
+docker compose up -d timescaledb     # crée le conteneur tradingos-timescaledb s'il n'existe pas
+docker start tradingos-timescaledb   # le relance (après un arrêt de Docker Desktop : sortie en code 255)
+docker compose ps                    # healthcheck : healthy
 ```
 
-TimescaleDB écoute sur le port hôte **5433** (choisi pour ne pas entrer en conflit avec un PostgreSQL local). Le schéma est appliqué de façon idempotente au démarrage du backend.
+TimescaleDB écoute sur le port hôte **5433**, sur `127.0.0.1` seulement. `docker-compose.yml` ne déclare que ce service.
 
-**Nettoyage optionnel** — les tables de l'ancienne recherche existent encore dans la base locale. Elles ne sont plus dans `schema.sql` et ne seront plus recréées. Pour les supprimer :
+**Le schéma s'applique par migrations numérotées**, jamais rejouées d'un bloc :
 
-```sql
-DROP TABLE IF EXISTS holdout_attempts, holdout_verdicts,
-                     backtest_rejections, backtest_trades, backtest_runs;
+```powershell
+python -m trading_os db status                      # appliquées / en attente / dérivées
+python -m trading_os db migrate                     # applique les migrations en attente (additives)
+python -m trading_os db manual <nom> --confirm <nom>   # UN script destructeur de migrations/manual/, geste humain
 ```
 
-Sans risque : plus aucun code ne les lit. À faire une fois la vérification de l'étape 0 passée, pas avant.
+Une migration modifiée après son application est une erreur (somme de contrôle), pas une dérive silencieuse. Le cœur applique les migrations en attente au démarrage (`scripts\start.ps1` le fait aussi explicitement). Aucun script destructeur ne se lance seul : par exemple `drop_capture_window` (ADR 0018) et la suppression de la table `envelopes`.
 
-## 2. Backend
+**Le volume des données porte le nom d'un ancien projet compose** : `trading_operating_system_algorithmique_tradingos-pgdata`. `docker-compose.yml` le déclare `external` par son nom exact — sans ça, recréer le conteneur depuis `04_code` démarrerait sur le volume vide `04_code_tradingos-pgdata`, sans aucune erreur. **Sur une machine neuve** il n'existe pas : `docker volume create trading_operating_system_algorithmique_tradingos-pgdata` avant le premier `docker compose up`. **Avant toute recréation** : `pg_dump -Fc` copié hors du conteneur, nombre de lignes par table relevé avant/après.
 
-**Option recommandée depuis le 2026-09-17 — Docker**, dans le même
-`docker compose` que TimescaleDB :
+## 2. Le cœur Python
 
-```bash
-docker compose up -d --no-deps --build backend    # première fois / après un changement de code
-docker compose up -d --no-deps backend            # relance simple
-docker logs -f tradingos-backend                  # logs
+```powershell
+cd 04_code\python
+.venv\Scripts\python.exe -m trading_os serve         # http://127.0.0.1:8000 — REST + WebSocket /ws + lien agent :9765
 ```
 
-Pourquoi `--no-deps` : `timescaledb` tourne déjà sous un nom de projet
-compose distinct (`trading_operating_system_algorithmique_default`, vérifié
-via `docker inspect`, pas deviné) — `docker-compose.yml` pointe `default`
-dessus en réseau externe pour que `backend` puisse résoudre `timescaledb`
-par son nom, mais laisser compose gérer aussi `timescaledb` provoquerait un
-conflit de nom de conteneur à chaque fois. `--no-deps` évite d'y toucher.
+Configuration : variables d'environnement et `04_code/.env` (gitignoré) — `.env.example` les liste toutes, `python/trading_os/app/config.py` fait foi. Il faut au minimum `DATABASE_URL`, `TRADINGOS_COCKPIT_TOKEN` et `TRADINGOS_AGENT_TOKEN` ; `scripts\start.ps1` écrit ce qui manque.
 
-**Pourquoi Docker plutôt que `dotnet run` sur cette machine** : Smart App
-Control (Windows) bloque le chargement de tout binaire .NET fraîchement
-recompilé — `dotnet build` reste propre, mais `dotnet test`/`dotnet run`/le
-`.exe` refusent de démarrer (`Microsoft-Windows-CodeIntegrity/Operational`,
-« did not meet the Enterprise signing level requirements », refus
-déterministe, pas une vérification en cours). Un conteneur Linux n'est pas
-soumis à cette politique Windows.
+- **Santé** : `GET http://127.0.0.1:8000/api/system/health` (le seul endpoint sans jeton) — base, journal d'audit, ticks, clients WebSocket, agents connectés, tâches de fond. Le reste de l'API exige le jeton **et** une Origin du cockpit (lectures comprises). Le schéma OpenAPI est à `/api/openapi.json` (avec jeton).
+- **Plafond de mode** : `TRADING_MODE=OBSERVE` par défaut — rien n'est envoyé nulle part. Le relever est une décision de l'utilisateur, jamais d'un script.
+- **Mode simulé** : `MT5_ENABLED=false` (ou `start.ps1 -Simulated`) — aucun terminal : un compte de démonstration en mémoire (deux positions ouvertes, un petit historique, des cotes qui bougent). C'est ce qui sert à regarder le cockpit sans courtier.
+- **Journaux** : sur la console du cœur, masqués (jetons, mots de passe, clé FRED) ; jamais d'identifiant de compte de trading dans un message.
+- **Clé FRED (T03)** — sans elle la porte calendrier échoue fermée en permanence et bloque toute entrée S01. `FRED_API_KEY` dans `04_code/.env`, jamais dans `docker-compose.yml` ni `.env.example`. Prise en compte au redémarrage du cœur. Vérification : `GET /api/market/calendar` renvoie des publications.
 
-**Mise à jour du 2026-09-23** : Smart App Control est désormais **désactivé**
-sur cette machine (`VerifiedAndReputablePolicyState = 0` sous
-`HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy`, lu ce jour) — `dotnet
-test` passe en natif (58/58). Docker reste le chemin par défaut du backend ;
-rien n'oblige plus à s'en passer pour les tests.
+### Outils en ligne de commande (lecture seule, aucun appel d'ordre)
 
-**Option native** (fonctionne tant que Smart App Control ne bloque pas) :
-
-```bash
-cd backend
-dotnet run --project src/TradingOs.Host
+```powershell
+python -m trading_os list-symbols --help             # les symboles du courtier derrière un nom canonique
+python -m trading_os export-history --symbol XAUUSDm --timeframe M1 --bars 1500 --out exports\xauusd_m1.jsonl
+python -m trading_os import-candles exports\xauusd_m1.jsonl     # idempotent
+python -m trading_os spread-history --help           # le spread par fenêtre New York, depuis les ticks du courtier
+python -m trading_os weekly-review                   # revue hebdomadaire (Markdown) depuis le journal
+python -m trading_os mcp                             # serveur MCP en lecture seule, sur stdio
+python -m trading_os gen-types                       # régénère lib/api/generated.ts (un test échoue s'il est périmé)
 ```
 
-Les deux écoutent sur `http://localhost:5080`. Surface HTTP : `/health` et
-`/api/audit/recent`. Hub SignalR : `/hub/cockpit`. (L'endpoint
-`/api/backtests` a été retiré le 2026-09-04.)
+Les exports (`exports/`) sont gitignorés : ce sont des données personnelles, jamais du code.
 
-**Différences de configuration entre les deux chemins** (voir
-`docker-compose.yml` pour le détail complet) : le conteneur écoute en
-interne sur `0.0.0.0` (`Cockpit__ListenUrl`) et l'agent EA-05 aussi
-(`Cockpit__AgentBindAny=true`) — un conteneur ne peut pas router ses ports
-publiés vers son propre loopback interne, contrairement à un process
-natif. Le port publié côté hôte reste restreint à `127.0.0.1` dans les deux
-cas (même posture « personnel, une seule machine » que le process natif).
-`Cockpit__ObserverUrl` pointe `host.docker.internal` plutôt que `localhost`
-— l'observer Python et MT5 restent natifs sur Windows, jamais
-conteneurisés. `ConnectionStrings__TradingOs` utilise le port interne 5432
-du réseau compose, pas le 5433 publié côté hôte.
+## 3. Le terminal MT5 et l'agent EA — Windows uniquement
 
-## 3. Observer MT5 — Windows uniquement
+Prérequis : terminal MT5 **ouvert et connecté** au compte voulu. Le cœur s'attache au terminal ; le mot de passe reste dans MT5 — **aucun identifiant de compte n'est demandé ni écrit nulle part** par `start.ps1`. Un compte se déclare dans le cockpit (Settings → « Enregistrer le compte », sans mot de passe), puis se rattache dans Account.
 
-Prérequis : terminal MT5 **ouvert et connecté** au compte voulu — FTMO ou Exness, un à la fois (T12). L'observer s'attache au terminal déjà authentifié — **aucun identifiant n'est demandé ni accepté nulle part.**
+L'agent d'exécution (`tools/mt5-execution-agent`, EA-05) se compile avec MetaEditor et s'attache à **un** graphique ; son README donne les entrées, le jeton (`MQL5\Files\tradingos_agent.token`, copié par `start.ps1` dans chaque terminal ouvert), le prérequis `127.0.0.1` dans la liste WebRequest des options de l'EA, et la procédure de vérification. **Compilation sans effet de bord** :
 
-```bash
-cd tools/mt5-observer
-pip install -r requirements.txt
-python mt5_observer.py --symbol XAUUSDm   # terminal Exness
-python mt5_observer.py --symbol XAUUSD    # terminal FTMO
+```powershell
+# sur une COPIE du dossier : MetaEditor écrit le .ex5 à côté de la source
+MetaEditor64.exe /compile:"<copie>\TradingOsAgent.mq5" /log:"<copie>\compile.log"   # attendu : 0 errors, 0 warnings (code de sortie 1 = succès)
 ```
 
-**Le symbole dépend du terminal** (T12 incrément 2) : Exness suffixe `m`, FTMO
-utilise le nom canonique. Le défaut du script est `XAUUSDm` : lancé tel quel
-sur un terminal FTMO, il s'arrête sur « symbol not found ». Pour changer de
-compte, changer de compte dans MT5 **puis relancer l'observer** — son premier
-message (`hello`) porte le nom du broker, qui décide du profil appliqué.
-`python probe_terminal.py` dit, en lecture seule, à quel compte le terminal
-est connecté et quel symbole observer.
+Une compilation ne recharge pas un EA déjà attaché : le retirer du graphique et le rattacher. Depuis le build 1.11 l'agent refuse tout nouvel ordre (`DEAD_MAN`) quand le cœur cesse de le pinguer ; un build plus ancien ne l'annonce pas (`capabilities`) — le recompiler.
 
-Lecture seule, mode `observe`. Le script ne contient aucun appel de trade. Il diffuse sur `ws://localhost:8765`, que le gateway .NET consomme.
-
-Détails et dépannage : `tools/mt5-observer/README.md`.
+**Installation par jonction** (2026-09-23) : `MQL5\Experts\TradingOsAgent` dans le dossier de données du terminal pointe vers `tools/mt5-execution-agent` — MT5 voit toujours la version compilée du dépôt. Retirer la jonction suffit à désinstaller.
 
 ## 4. Cockpit
 
-```bash
-cp .env.example .env.local     # puis éditer
-npm run dev                    # http://localhost:3000
-```
-
-Variables :
-
-| Variable | Valeurs | Effet |
-|---|---|---|
-| `NEXT_PUBLIC_REALTIME_SOURCE` | `mock` (défaut) / `backend` | Source des données du cockpit |
-| `NEXT_PUBLIC_BACKEND_HUB_URL` | `http://localhost:5080/hub/cockpit` | Hub SignalR, utilisé si `backend` |
-
-`mock` suffit pour développer l'interface et pour la CI. `backend` exige que les étapes 1 à 3 tournent.
-
-**Clé FRED (T03)** — sans elle la gate calendrier échoue fermé en permanence et bloque tout (`news_releases` vide ; 370 évaluations S01 sur 370 mortes le 2026-09-15). Elle se met dans **`04_code/.env`** (variable `FRED_API_KEY`, ignoré par git via `.env*`), que `docker compose` lit pour alimenter `Fred__ApiKey` du conteneur backend — **pas** dans `.env.local`, qui ne sert qu'au cockpit Next.js et que le conteneur ne voit jamais. Prise en compte : `docker compose up -d --no-deps --force-recreate backend`. Vérification : `SELECT count(*) FROM news_releases` > 0 et `GET /api/calendar/upcoming` renvoie des releases. Jamais dans `docker-compose.yml` ni dans `.env.example`, qui sont versionnés.
-
-## 5. Pipeline de détection S01 (EA-02)
-
-Indépendant de l'observer de la section 3 : **deux processus**, à lancer depuis
-`04_code`, MT5 ouvert et connecté.
-
-```bash
-python tools/mt5-observer/export_m1_candles.py --symbols EURUSD GBPUSD --out-dir tools/mt5-observer
-TRADINGOS_ACCOUNT_ID=477029930 npx tsx scripts/run-setup-detection.ts
-```
-
-L'exportateur réécrit toutes les 30 s, par symbole, `m1_*.jsonl` (1 500
-bougies : le sweep et le déplacement), `h1_*`, `h4_*` et `d1_*.jsonl`
-(500 / 300 / 300 bougies, **natives MT5**, pas agrégées — voir la fiche EA-02,
-entrée du 2026-09-18) et `spread_*.json`. Le worker les lit toutes les 60 s,
-évalue S01 et écrit un verdict par minute et par symbole dans
-`setup_proposals` : l'étape où la séquence s'arrête, et pourquoi.
-
-Fenêtres utiles, en heure de New York DST-aware (`lib/setup/preconditions.ts`) :
-killzone Londres 02:00–05:00 NY, killzone NY AM 07:00–10:00 NY — soit
-06:00–09:00 et 11:00–14:00 UTC en heure d'été. Hors de ces fenêtres tout est
-`precondition_session_window` : c'est normal, pas une panne.
-
-**Deux pièges qui ont coûté une session (2026-09-18)** :
-
-- **`--out-dir` doit être `tools/mt5-observer`**, le dossier que lit le worker
-  (`TRADINGOS_CANDLES_DIR`, défaut `tools/mt5-observer`). `--out-dir .`
-  depuis `04_code` écrit une deuxième copie que personne ne lit, pendant que
-  le worker continue d'évaluer un instantané figé. Symptôme :
-  `setup_proposals.event_at` bloqué sur un vieil horodatage alors que
-  `recorded_at` avance — la clé primaire `(symbol, event_at)` avale les
-  écritures en silence.
-- **Une seule instance de chaque, et vérifier les deux.** Un composant est une
-  **chaîne** de processus (bash → npx → cmd → node pour le worker, ~8 lignes ;
-  ~4 pour l'exportateur) : la lire par PID parent et heure de création, pas en
-  comptant les lignes. `TaskStop` ne tue que le shell — arrêter par ligne de
-  commande (`Stop-Process` sur ce même filtre). Et après un redémarrage de
-  session, l'un peut survivre pendant que l'autre est mort.
-
 ```powershell
-Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*run-setup-detection*' -or $_.CommandLine -like '*export_m1_candles*' } |
-  Select-Object ProcessId, ParentProcessId, Name, CreationDate
+npm run dev            # http://127.0.0.1:3000 (lié à 127.0.0.1 seulement)
+npm run build ; npm run start
 ```
 
-Lire l'entonnoir d'une killzone :
+Le cockpit lit `TRADINGOS_COCKPIT_TOKEN` dans `04_code/.env` **côté serveur** (jamais dans le bundle) et le remet à ses propres scripts par `/api/cockpit-token` ; `proxy.ts` refuse tout Host qui n'est pas `localhost`, `127.0.0.1` ou `[::1]`. `NEXT_PUBLIC_CORE_URL` ne sert que pour un cœur sur un autre port de la boucle locale (défaut `http://127.0.0.1:8000`).
+
+Le menu du compte (en haut à droite) dit l'état du lien : connecté, reconnexion, périmé (plus de battement du cœur depuis 8 s), dégradé (le cœur signale un défaut), déconnecté — et le point rouge de la base ou d'un événement d'audit perdu. Jeton absent : le message dit de lancer `scripts\start.ps1`.
+
+## 5. La stratégie S01
+
+S01 n'est plus un pipeline de processus séparés : le `StrategyService` du cœur lit les bougies de MT5, évalue S01 à chaque clôture de bougie et écrit un verdict par symbole dans `setup_proposals` (l'étape où la séquence s'arrête, et pourquoi). Rien à lancer à côté. Les fenêtres utiles sont en heure de New York, DST-aware : killzone Londres 02:00–05:00 NY, killzone NY AM 07:00–10:00 NY — 06:00–09:00 et 11:00–14:00 UTC en heure d'été. Hors de ces fenêtres tout est `precondition_session_window` : c'est normal, pas une panne. Le cockpit les lit à `/setups`. L'entonnoir d'une killzone :
 
 ```sql
 SELECT stage, count(*) FROM setup_proposals
 WHERE event_at >= '<début de la killzone, UTC>' GROUP BY stage ORDER BY count(*) DESC;
 ```
 
-Un « le détecteur ne propose rien » ne veut rien dire tant qu'on n'a pas
-vérifié que les deux processus tournent et que `event_at` avance.
-
 ## Ordre de démarrage complet
 
-**En une commande depuis le 2026-09-23**, MT5 ouvert et connecté au compte
-voulu, depuis `04_code` :
+Depuis `04_code`, MT5 ouvert et connecté au compte voulu :
 
 ```powershell
-pwsh -File scripts\start-live.ps1                     # base, backend, observer, cockpit
-pwsh -File scripts\start-live.ps1 -WithSetupPipeline  # + exportateur et worker S01
+pwsh -File scripts\start.ps1               # jetons, base, schéma, jeton de l'agent, cœur, cockpit
+pwsh -File scripts\start.ps1 -Simulated    # sans MT5 : terminal de démonstration en mémoire
+pwsh -File scripts\start.ps1 -Plan         # dit ce que chaque étape ferait, n'écrit rien, ne lance rien
 ```
 
-Le script fait les étapes ci-dessous dans l'ordre et s'arrête avec un message
-clair à la première qui manque : Docker, port 5433 pris par un autre
-conteneur (il ne l'arrête jamais lui-même), base `healthy`, backend et base
-joignables, MT5 ouvert, compte détecté (`probe_terminal.py`), observer
-(re)lancé sur le symbole de CE terminal, backend qui reçoit bien le compte.
-Il ne fait jamais : se connecter à un broker, demander un identifiant,
-ouvrir MT5, attacher l'agent EA-05 (il imprime les paramètres à saisir).
+Le script s'arrête avec un message clair à la première étape qui manque : Docker, port 5433 pris par un autre conteneur (il ne l'arrête jamais lui-même), base `healthy`, environnement Python absent, migration en échec, cœur muet, base du cœur injoignable. Il ne fait **jamais** : se connecter à un courtier, demander ou stocker un identifiant, ouvrir MT5, attacher l'agent, relever le plafond de mode, armer quoi que ce soit.
 
 À la main :
 
 ```
-docker compose up -d --no-deps timescaledb backend   (ou dotnet run pour le backend, si Smart App Control le permet)
-  → python tools/mt5-observer/mt5_observer.py         (Windows, MT5 ouvert)
-    → npm run dev  avec NEXT_PUBLIC_REALTIME_SOURCE=backend
-      → exportateur + worker S01 (section 5), pour mesurer la stratégie
+docker start tradingos-timescaledb → python -m trading_os db migrate → python -m trading_os serve → npm run dev
 ```
 
-**Après un arrêt non propre** (redémarrage de la machine ou de Docker Desktop
-— les conteneurs sortent en code 255, constaté le 2026-09-20) :
-`docker start tradingos-timescaledb`, attendre `healthy`, puis
-`docker compose up -d --no-deps backend`. MT5 est à rouvrir à la main ;
-observer, exportateur et worker sont à relancer — **rien ne les supervise**.
+**Après un arrêt non propre** (redémarrage de la machine ou de Docker Desktop — les conteneurs sortent en code 255) : `docker start tradingos-timescaledb`, attendre `healthy`, relancer le cœur. Le cœur survit à une panne de base (il refuse alors toute commande : échec fermé) et le superviseur ouvre un incident ; MT5 est à rouvrir à la main, l'agent se reconnecte seul. **Rien ne redémarre le cœur** : sa fenêtre reste ouverte, c'est tout.
 
 ## Points de fragilité connus
 
-- ~~**Smart App Control (Windows) bloque `dotnet run`/`dotnet test`**~~ — levé : désactivé sur la machine au 2026-09-23, `dotnet test` passe en natif (section 2).
-- **Port 5433 partagé avec un autre projet** (constaté le 2026-09-23) : le conteneur `e-commerce-db-1` publie aussi `5433` et démarre tout seul (`restart: unless-stopped`). Quand il tourne, `tradingos-timescaledb` ne peut pas démarrer. `start-live.ps1` le détecte et s'arrête sans y toucher ; c'est au trader de choisir lequel tourne. Bascule vers TradingOS, sur sa demande : `docker stop -t 30 e-commerce-db-1`, puis `docker start tradingos-timescaledb` et attendre `healthy` ; un arrêt manuel garde un conteneur `unless-stopped` arrêté même après un redémarrage de Docker Desktop. Le backend n'a pas besoin d'être relancé, mais il perd un bloc d'événements au début de la coupure (le 2026-09-24 : 1362 événements, 9 min, uniquement données de marché et snapshots) — voir `PersistenceWriter`.
-- **Le volume de la base porte le nom d'un ancien projet compose** (constaté le 2026-09-25) : `tradingos-timescaledb` a été créé depuis un ancien dossier (`C:\SECOND_BRAIN\…\trading_operating_system_algorithmique`), et ses données vivent dans le volume `trading_operating_system_algorithmique_tradingos-pgdata`. Un volume `04_code_tradingos-pgdata`, vide ou périmé, existe aussi. `docker-compose.yml` déclare désormais le vrai volume en `external`, par son nom exact : sans ça, recréer le conteneur depuis `04_code` démarrerait TradingOS sur la mauvaise base, sans aucune erreur. **Avant toute recréation**, faire une sauvegarde (`pg_dump -Fc`, copiée hors du conteneur) et relever le nombre de lignes par table, puis comparer après. Une sauvegarde du 2026-09-25 est dans `C:\Dev\trading-operating-system\backups\`. La base n'est publiée que sur `127.0.0.1` depuis sa recréation le 2026-09-25 (vérifié : même volume, 26 tables identiques au relevé d'avant) ; avant, elle l'était sur `0.0.0.0`, donc joignable depuis le réseau local. **Sur une machine neuve**, le volume externe n'existe pas encore : `docker volume create trading_operating_system_algorithmique_tradingos-pgdata` avant le premier `docker compose up`.
-- **Un seul `next dev` par dossier** (Next 16) : la préversion mock (3001) et le cockpit backend (3000) ne peuvent pas tourner en même temps — le second s'arrête sur « Another next dev server is already running ».
-- **Agent EA-05 installé par jonction** (2026-09-23) : `MQL5\Experts\TradingOsAgent` dans le dossier de données du terminal pointe vers `tools/mt5-execution-agent` — MT5 voit toujours la version compilée du dépôt. Recompiler (gate MetaEditor, `quality_gates.md`) après chaque modification du `.mq5`, puis réattacher l'EA — indispensable : une compilation headless ne recharge pas l'EA déjà attaché, qui garde l'ancien code (vérifié le 2026-09-24). Prérequis terminal : `127.0.0.1` dans Outils → Options → Expert Advisors, liste WebRequest, sinon `SocketConnect` échoue en 4014 (README de l'agent, prérequis 4). Une seule instance par terminal. Retirer la jonction suffit à le désinstaller.
-- **Rien ne supervise le pipeline S01** (exportateur + worker, section 5) : deux processus lancés à la main, qui ne survivent pas de façon prévisible à une fin de session ni à un redémarrage de la machine. Le critère de réussite de S01 mesure un échantillon de séances ; chaque arrêt silencieux en perd. Question ouverte dans `state.md`.
-- **Stall de l'observer** — observé une fois le 2026-07-28 à 14:03 sur une collecte longue. Si le problème revient, la piste retenue est la conteneurisation via `gmag11/MetaTrader5-Docker` (MIT), éventuellement avec `lucas-campagna/mt5linux`.
-- **Fins de ligne** — le dépôt a été cloné avec des fins de ligne CRLF alors que l'index git est en LF, ce qui faisait apparaître 267 fichiers comme modifiés. Corrigé par `git config core.autocrlf true` dans ce clone. Si un `git status` affiche à nouveau tout le dépôt comme modifié, c'est ce réglage qu'il faut vérifier en premier — **surtout ne pas commiter la différence**.
+- **Port 5433 partagé avec un autre projet** (constaté le 2026-09-23) : le conteneur `e-commerce-db-1` publiait aussi `5433`. Il a été déplacé sur `127.0.0.1:55432` ; si l'autre projet revient sur 5433, `start.ps1` le détecte et s'arrête sans y toucher — c'est au trader de choisir lequel tourne.
+- **Un seul `next dev` par dossier** (Next 16) : le second s'arrête sur « Another next dev server is already running ».
+- **404 partout sauf `/` après l'ajout de `proxy.ts`** (vu une fois, cache `.next/dev` d'avant) : arrêter `next dev`, supprimer `.next/dev`, relancer. Idem si `tsc`/`next build` échouent sur `.next/dev/types/validator.ts` (fichier généré corrompu par deux régénérations concurrentes) : `rm -rf .next/dev/types`.
+- **Un cockpit ouvert dans un onglet caché ne se peint pas** : React n'y révèle pas le contenu diffusé en flux, la page reste sur « Chargement de l'écran… » alors que le serveur répond. Ce n'est pas une panne — la vérifier dans un onglet visible (ou un Chrome headless).
+- **Fins de ligne** — le dépôt a été cloné avec des fins de ligne CRLF alors que l'index git est en LF. `git config core.autocrlf true` dans ce clone ; si un `git status` affiche à nouveau tout le dépôt comme modifié, c'est ce réglage qu'il faut vérifier en premier — **surtout ne pas commiter la différence**.
+- **Les jetons ne se relisent qu'au démarrage** : un jeton ajouté à `.env` n'est pas vu par un cœur déjà lancé (le relancer) ; un cockpit déjà ouvert relit `.env` seul.
+- **Rien n'a encore tourné contre un vrai MT5 depuis la migration** : le cœur, le lien agent et le cockpit ont été vérifiés avec un terminal simulé et des sockets réels, pas avec un compte. Le premier rattachement d'un vrai compte est un essai à faire par l'utilisateur, en `OBSERVE`.

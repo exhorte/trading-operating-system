@@ -1,3 +1,4 @@
+import { cn } from "cn";
 import type { Bucket } from "@/lib/account-analysis/breakdowns";
 import { formatSignedMoney } from "@/lib/format";
 import { Panel } from "@/components/ui/panel";
@@ -23,42 +24,47 @@ interface BreakdownSectionProps {
  * compare within a dimension and never across dimensions — there is no
  * shared scale between "par durée" and "par instrument" and pretending
  * otherwise would invite a false reading.
+ *
+ * The bars are monochrome (ADR 0017: near-black for a gain, grey for a loss —
+ * the chart tokens); the sign is carried by the figure beside them, in the
+ * semantic colours, and by its « + » / « - ».
  */
 export function BreakdownSection({ title, narrative, buckets, footnote }: BreakdownSectionProps) {
   const maxAbs = Math.max(1, ...buckets.map((b) => Math.abs(b.pnl)));
 
   return (
     <Panel title={title}>
-      <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{narrative}</p>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{narrative}</p>
 
       {buckets.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Aucune donnée sur cette dimension.</p>
+        <p className="text-sm text-muted-foreground">Aucune donnée sur cette dimension.</p>
       ) : (
-        <table className="w-full text-xs">
+        <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-muted-foreground">
-              <th className="pb-1 font-medium">Tranche</th>
-              <th className="pb-1 text-right font-medium">Trades</th>
-              <th className="pb-1 pl-3 font-medium">Résultat</th>
+              <th className="pb-2 font-medium">Tranche</th>
+              <th className="pb-2 text-right font-medium">Trades</th>
+              <th className="pb-2 pl-4 font-medium">Résultat</th>
             </tr>
           </thead>
           <tbody>
             {buckets.map((bucket) => (
-              <tr key={bucket.label} className="border-t border-border">
-                <td className="py-1.5 pr-2 text-foreground">{bucket.label}</td>
-                <td className="tnum py-1.5 text-right text-muted-foreground">{bucket.trades}</td>
-                <td className="py-1.5 pl-3">
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 min-w-[3rem] flex-1 overflow-hidden rounded bg-muted">
+              <tr key={bucket.label} className="border-t">
+                <td className="py-2.5 pr-2 text-foreground">{bucket.label}</td>
+                <td className="py-2.5 text-right text-muted-foreground tabular-nums">{bucket.trades}</td>
+                <td className="py-2.5 pl-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-1.5 min-w-12 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden="true">
                       <div
-                        className={`h-full rounded ${bucket.pnl >= 0 ? "bg-profit" : "bg-loss"}`}
+                        className={cn("h-full rounded-full", bucket.pnl >= 0 ? "bg-chart-1" : "bg-chart-2")}
                         style={{ width: `${(Math.abs(bucket.pnl) / maxAbs) * 100}%` }}
                       />
                     </div>
                     <span
-                      className={`tnum w-20 shrink-0 text-right font-medium ${
-                        bucket.pnl >= 0 ? "text-profit" : "text-loss"
-                      }`}
+                      className={cn(
+                        "w-20 shrink-0 text-right font-medium tabular-nums",
+                        bucket.pnl >= 0 ? "text-success" : "text-destructive",
+                      )}
                     >
                       {formatSignedMoney(bucket.pnl)}
                     </span>
@@ -70,7 +76,7 @@ export function BreakdownSection({ title, narrative, buckets, footnote }: Breakd
         </table>
       )}
 
-      {footnote && <p className="mt-2 text-xs text-muted-foreground">{footnote}</p>}
+      {footnote && <p className="mt-3 text-xs text-muted-foreground">{footnote}</p>}
     </Panel>
   );
 }

@@ -22,6 +22,15 @@ export function formatPrice(value: number): string {
   return value.toFixed(2);
 }
 
+/**
+ * A quote at the precision its instrument is traded at. `formatPrice` keeps two
+ * decimals, which is right for gold and flattens a forex pair (entry 1.08421 and
+ * exit 1.08297 would both read 1.08). Quotes below 10 are forex: five decimals.
+ */
+export function formatQuote(value: number): string {
+  return value < 10 ? value.toFixed(5) : formatPrice(value);
+}
+
 export function formatClockTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-GB", {
     hour: "2-digit",
@@ -40,4 +49,15 @@ export function formatAge(iso: string, nowMs: number): string {
     return `${minutes}m`;
   }
   return `${Math.floor(minutes / 60)}h${minutes % 60 > 0 ? ` ${minutes % 60}m` : ""}`;
+}
+
+/** « 23/09/2026 14:05 », local time — the trader reads their own clock. */
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

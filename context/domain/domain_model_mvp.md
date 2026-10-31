@@ -1,61 +1,54 @@
-# Domain Model MVP (Phase 02)
+# Modèle de domaine
 
-The canonical domain schemas live in `lib/domain/` as portable TypeScript. This document explains the layering, the portability rules, and the mapping conventions toward .NET SignalR contracts and MQL5 WebSocket messages.
+Réécrit le 2026-10-09 (ADR 0016). Le domaine canonique vit dans `python/trading_os/domain/` sous forme de **modèles pydantic purs** : aucun import d'infrastructure, aucune E/S (un test d'architecture le garde). Ce document explique le découpage, les règles de portabilité et la chaîne de traçabilité.
 
-## Layering
+## Découpage
 
 ```
-lib/domain/      canonical domain schemas (accounts, market, analysis, risk, strategy, execution)
+domain/      modèles et règles pures (comptes, marché, stratégie, risque, exécution, positions, autonomie, journal)
    ▲
-lib/contracts/   wire layer: Envelope, EventType registry, event/command payloads, dashboard read models
+services/    un service par capacité : orchestre le domaine et l'infrastructure, publie des événements
    ▲
-lib/realtime/    client seam: RealtimeClient, CockpitStore, MockRealtimeClient, React provider
+api/         schémas d'API (modèles de requête/réponse), routes, flux WebSocket  ──▶  OpenAPI
    ▲
-components/      UI — never owns domain rules, never imports the mock client
+lib/api/generated.ts   les mêmes modèles, générés pour le cockpit (`python -m trading_os gen-types`)
+   ▲
+lib/ et components/    le cockpit : affiche, n'a aucune règle de domaine
 ```
 
-Dependency direction is strictly downward-to-upward as drawn: `contracts` may import `domain`; `domain` imports nothing outside itself.
+La dépendance va dans un seul sens. Il n'y a **pas de second modèle** : le modèle de domaine est le schéma d'API et la charge utile d'événement ; le cockpit reçoit la version générée. Les projections « de lecture » (`RiskStatus`, `AccountState`, `MarketContextState`…) sont des modèles du cœur aussi, optimisés pour l'affichage et non pour la décision.
 
-## Module Map
+## Carte des modules (`python/trading_os/domain/`)
 
-| Module | Models |
-| --- | --- |
-| `domain/primitives.ts` | id aliases, `UtcTimestamp`, `Timeframe`, `Side`, `Bias`, `TradingSession` |
-| `domain/market.ts` | `SymbolMetadata`, `Tick`, `Candle`, `SpreadSample`, `SessionWindow` |
-| `domain/account.ts` | `BrokerAccount`, `TradingAccount`, `AccountKind` |
-| `domain/analysis.ts` | `LiquidityLevel`, `FairValueGap`, `OrderBlock`, `StructureShift`, `ScoreComponent`, `MarketContextState` |
-| `domain/risk.ts` | `RiskPolicy`, `RiskMode`, `RiskGateResult`, `RiskState`, `RiskDecision` |
-| `domain/strategy.ts` | `SignalStatus`, `StrategySignal` |
-| `domain/execution.ts` | `Order`, `Position`, `Trade`, `ExecutionCommand` (union of `PlaceOrderCommand`, `ModifyPositionCommand`, `ClosePositionCommand`, `CloseAllCommand`, `CancelOrderCommand`), `CommandAck`, `ExecutionReport`, `ExecutionAgent` |
-| `contracts/envelope.ts` | `Envelope`, `EventType` registry |
-| `contracts/commands.ts` | command payloads, `CommandAckPayload`, `RealtimeSubscription`, `SubscriptionTopic` |
-| `contracts/events.ts` | event payloads, `EventPayloadMap` (exhaustive `EventType` → payload), `KnownEnvelope<T>` |
-| `contracts/snapshots.ts` | dashboard read models (view layer, not domain) |
+| Module | Modèles principaux |
+|---|---|
+| `primitives.py` | alias d'identifiants (`AccountId`, `SymbolCode`), `Side`, `Timeframe`, `DomainModel` (modèle immuable de base) |
+| `accounts/` | `Account` (fournisseur EXNESS/FTMO, plateforme MT5, type, login, serveur, devise, environnement DEMO/SIMULATED/LIVE, profils de risque, de règles et d'exécution), profils par fournisseur, garde anti-tilt, registre des limites versionnées |
+| `market/` | `SymbolSpec`, `Tick`, `Candle`, sessions et fenêtres, calendrier économique ; `analysis/` : swings, structure, liquidité, PD arrays, contexte de marché |
+| `strategy/` | `TradeIntent`, `StrategyEvaluation` ; `s01/` : la stratégie S01 en fonctions pures |
+| `risk/` | `RiskProfile`, `DrawdownPolicy`, `NewsPolicy`, `PositionLimits`, `RiskState`, `GateResult`, `RiskDecision`, dimensionnement, exposition, verrous |
+| `execution/` | `ExecutionRequest`, `ExecutionCommand` (états, machine de transitions), `RejectCode`, statut de l'agent |
+| `positions/` | `Position`, ordres, trades clôturés, réconciliation |
+| `autonomy/` | `AutonomyMode`, `ExecutionRoute`, états, readiness |
+| `journal/` | trade du journal, conformité T07, faits de capture (chiffres) |
 
-## Portability Rules
+## Règles de portabilité
 
-These rules make the TypeScript schemas mechanically translatable to C# records and MQL5 structs:
+Ces règles rendent un modèle traduisible mécaniquement en TypeScript (généré) et en champs d'un message de l'agent MQL5 :
 
-1. Plain `interface` and string-literal unions only — no classes, methods, generics in data shapes, or `Date` objects.
-2. Absent values are explicit `null`, never omitted properties or `undefined`.
-3. Timestamps are ISO 8601 UTC strings (`UtcTimestamp`). .NET: `DateTimeOffset`. MQL5: parse/format explicitly at the agent boundary.
-4. Numbers are IEEE doubles. Volumes are lots. Percentages use the 0-100 scale. Money is in account currency.
-5. JSON on the wire is camelCase. .NET uses PascalCase properties with a camelCase serializer policy. MQL5 field names map manually in the agent's serializer.
-6. Discriminated unions use a string discriminator (`kind` on `ExecutionCommand`); .NET maps to polymorphic serialization or a switch on `kind`.
-7. Schema evolution rides `Envelope.schemaVersion`; breaking payload changes bump it.
+1. Des modèles à champs typés ; pas de méthode qui change l'état d'un modèle, pas d'objet `datetime` naïf (tous les instants sont UTC avec fuseau).
+2. Une valeur absente est un `null` explicite (`X | None`), jamais une propriété omise : inconnu ≠ zéro.
+3. Volumes en lots, pourcentages sur l'échelle 0–100, monnaie dans la devise du compte.
+4. JSON en camelCase sur le fil (alias générés) ; l'agent MQL5 mappe ses noms de champs à la main dans son sérialiseur.
+5. Une union discriminée porte une chaîne discriminante (`type` d'un événement, `kind` d'une commande).
+6. Un secret n'a sa place que dans un modèle de **requête**, en `SecretStr`, jamais dans un modèle de lecture, un événement ou un journal.
 
-## Traceability Chain
+## Chaîne de traçabilité
 
-The audit requirement "every trade decision traceable to market, risk, strategy, and execution context" is encoded in the ids:
+« Chaque décision de trade est traçable jusqu'au contexte de marché, au risque, à la stratégie et à l'exécution » est encodé dans les identifiants :
 
-`MarketContextState` (embedded) → `StrategySignal.signalId` → `RiskDecision.approvalId` → `ExecutionCommand.commandId` (carries `riskApprovalId`, mandatory) → `CommandAck.commandId` → `ExecutionReport.commandId` → `Position.signalId` → `Trade.positionId`.
+`StrategyEvaluation` → `TradeIntent.intent_id` → `RiskDecision.decision_id` → `ExecutionCommand.command_id` (qui porte `risk_decision_id`, obligatoire sauf pour une commande qui ne fait que réduire le risque) → accusé → rapport → `Position` → trade clôturé → journal (`correlationId` relie tout le fil dans les événements).
 
-## Dashboard Read Models vs Domain Models
+## Modèles de lecture et modèles de décision
 
-`contracts/snapshots.ts` (e.g. `AccountSummary`, `RiskStatus`, `MarketContext`) are flattened projections the server pushes to the cockpit; they are optimized for rendering, not for decisions. The domain models are the decision-grade shapes. Both are legitimate wire payloads on different channels (dashboard vs agent/backend), per `context/realtime/dashboard_realtime_model.md`.
-
-## Known Phase 01 Shortcuts (to reconcile when the store adopts EventPayloadMap)
-
-- The mock feed publishes `execution.command.acknowledged` with an `ExecutionReportPayload`; the canonical agent-channel payload is `CommandAckPayload`.
-- `risk.command.approved`/`rejected` reach the dashboard as `SignalUpdatedPayload`; the decision-grade record is `RiskDecision` and will need its own audit channel event.
-- `contracts/enums.ts` re-exports domain `RiskMode` under the legacy name `RiskState` for Phase 01 compatibility.
+Les modèles de lecture (instantané du cockpit, état de risque affiché) sont des projections ; ils ne servent jamais à décider. La décision se prend sur les modèles de domaine (`RiskInputs`, `SymbolSpec`, `ExecutionRequest`…), dans le cœur.

@@ -6,6 +6,333 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-10-09 (**fin de la migration Python : API, cockpit, capture graphique supprimée, agent 1.11, suppression du Gateway .NET**)
+
+Demandes, mot pour mot : « reprends la migration python », « continu », puis en cours de route
+« nous allons ajouter une modification on suprimant totalement la fonction de capture graphique, image du
+graphique , capture de l'image de la transaction et juste garder les donner » (ADR 0018), puis, avec le texte
+de la mission (`restructuration.md`) : « assure toi que cette restructuration soit completement mis en place
+ainsi que la supressio total de l'ensemble du .NET Gateway ainsi que tout les elements lier a lui ».
+
+**Fait** — branche `refactor/python-native-architecture`, commits **locaux** (rien de poussé, rien de déployé) :
+- **API et flux** : FastAPI (garde jeton + Origin sur chaque requête, lectures comprises), WebSocket `/ws`
+  (instantané, abonnement, contre-pression), 59 opérations, types TypeScript **générés** depuis les schémas du
+  cœur ; S01 et l'analyse portés avec vecteurs d'or ; CLI et serveur MCP en lecture seule.
+- **Cockpit** réécrit sur `lib/api` + `lib/websocket` + un store pur : plus de SignalR, plus de Risk Engine dans
+  l'onglet, plus de source « mock » (le cœur a un mode simulé, `MT5_ENABLED=false`). Settings édite les limites de
+  chaque compte, avec aperçu et report au prochain jour de trading ; le dossier d'un trade est une page de chiffres.
+- **ADR 0018** : plus aucune capture graphique, on garde les chiffres (migration 0003 additive, script manuel pour
+  la colonne de fenêtre).
+- **Agent 1.11** : interrupteur d'homme mort (`DEAD_MAN`), capacité `dead_man`, `InpGatewayHost/Port` →
+  `InpCoreHost/Port`, `gatewaySilentMs` → `coreSilentMs` ; compile à 0 erreur / 0 avertissement ; ses garanties
+  structurelles sont des tests qui lisent sa source (éprouvés par mutation).
+- **Suppression radicale** : `backend/` (.NET), `tools/mt5-observer/`, `scripts/start-live.ps1`, le service
+  `backend` de Docker (et le conteneur et l'image `tradingos-backend` de la machine), les documents qui ne
+  décrivaient que cela ; `docker-compose.yml` ne porte plus que la base ; `scripts/start.ps1` remplace le lanceur
+  (`-Simulated`, `-Plan`). Les exports de bougies de l'observateur, que Git ne peut pas rendre, ont été **déplacés**
+  dans `exports/observer-2026-09/` (gitignoré). Documentation vivante réécrite ; ADR, fiches et archives amendés
+  par une note datée.
+
+**Défauts trouvés en vérifiant pour de vrai, corrigés** : un verrou « Max drawdown guard » ouvert avant la première
+lecture d'un compte ; le jeton du WebSocket écrit en clair dans le journal d'uvicorn ; un fichier de types généré
+différemment selon les tests déjà exécutés ; un journal qui demandait 90 jours à une lecture limitée à 31 et affichait
+« 0 / 3 » au lieu de tirets ; la confirmation d'un enregistrement de limites perdue avec le formulaire ; une
+métrique « niveaux enregistrés » qui comptait des lignes et pas des stops ; deux contrastes sous 4,5 : 1.
+
+**Vérifié** : 2094 tests Python, `ruff`, `mypy --strict` ; 171 tests Vitest, `tsc`, `eslint`, `next build` ;
+12 écrans × clair/sombre × bureau/mobile dans un vrai Chrome contre le vrai cœur (terminal simulé) ; le parcours des
+limites de bout en bout ; l'agent compilé par MetaEditor. **Non vérifié** : tout contre un vrai terminal MT5, un vrai
+agent attaché, la vraie base `tradingos` (migrations 0001–0003 jamais appliquées dessus), `scripts/start.ps1` hors
+`-Plan`. Rapport : `docs/architecture/python-native-migration-report.md`.
+
+**À l'utilisateur** : relire et fusionner ; sauvegarder la base ; premier essai réel en `OBSERVE` (état,
+« Prochaine action ») ; décider du sort des tables héritées (`db manual drop_legacy_tables`). Rien dans cette
+session n'a relevé le plafond de mode, armé quoi que ce soit ni envoyé une commande.
+
+---
+
+## 2026-10-09 (**reprise de la migration Python** : réconciliation, autonomie, FRED, journal, runtime)
+
+Demande, mot pour mot : « reprends la migration python » (2026-10-08, 17:50), puis
+« continu ». Le sujet était sans ambiguïté ; l'état réel a pourtant été relu avant
+d'agir (arbre propre sur la branche de refonte, aucun travail en cours, branche de
+migration ancêtre directe). `refactor/python-native-architecture` a été avancée en
+*fast-forward* sur le sommet de la refonte (`f364122`, ascendance vérifiée, aucun
+fichier modifié) et l'arbre principal y a été basculé : le cockpit redessiné y est
+intact.
+
+**Fait** — cinq commits **locaux** (rien de poussé, rien de déployé) :
+- `efde785` **réconciliation** : la trace de commande (`TOS ` + 16 hex de SHA-256, le
+  calcul de l'EA) rattache une position, un ordre ou un deal à sa commande ; une
+  commande UNKNOWN se règle depuis les données du courtier, par la même porte que
+  l'agent ; un fill dont le rapport n'est pas arrivé n'est plus « inattendu » ;
+  une position qui contredit une commande FAILED est la pire trouvaille.
+- `bc96a20` **autonomie** : démarre toujours OFF (seul un HALT survit), monter est écrit
+  avant d'être vrai, descendre n'attend jamais la base, fenêtre ARMED renouvelée par
+  l'humain, readiness exigée en continu, arrêt idempotent.
+- `c97ad69` **actualités FRED** : inconnu ≠ vide, un échec ne vide jamais le cache.
+- `03a7f41` **journal** : captures T05 écrites par les événements, conformité T07 jugée
+  côté serveur, dossier d'un trade de l'intention à la sortie.
+- `9da8445` **runtime** : ordonnanceur, superviseur, moteur, readiness des 16 contrôles,
+  conteneur.
+
+**Défauts trouvés par des tests, corrigés** : la clé API FRED restait attachée à
+l'exception (`__context__`) bien que le message soit assaini — l'erreur est maintenant
+levée hors du `except` ; `RiskService.review` n'ajoutait `system_degraded` que si la
+décision était approuvée ; une réconciliation illisible effaçait un constat critique (et
+résolvait son incident) ; `ExecutionService.last_error` ne s'effaçait jamais ; le
+rétro-remplissage de 1500 bougies coûtait 2,6 s à chaque banc de test (désormais réglable).
+
+**Jugements à confirmer** (consignés dans `migration-map.md` §10) : UNKNOWN → SAFE +
+RECONCILE et non HALT ; position inattendue → HALT ; terminal perdu → DISARM après 60 s ;
+fenêtre ARMED renouvelée par l'humain ; « hors session » jugé avec les killzones du compte.
+
+**Vérifié** : 653 tests (652 en suite complète + 1), `ruff`, `mypy --strict` sur 109 fichiers ;
+banc du cœur complet avec une vraie prise TCP d'agent. **Non vérifié** : tout contre un vrai
+terminal MT5, un vrai EA, la vraie base `tradingos` ou TimescaleDB (le cluster de test est
+un PostgreSQL 18 nu) ; il n'existe pas encore d'API : le cockpit ne peut pas s'y brancher.
+
+---
+
+## 2026-10-08 (**refonte visuelle « ExponentValue Monochrome » : les 12 écrans, ADR 0017**)
+
+Demande, mot pour mot : « nous somme entrain de redesigner la plateform en
+appliquant le skills ui-redesign-from-reference en mode par defaut j'ai
+recement clear la session pour nettoyer le context qui a atteint sa limite
+peut tu analyse ou nous en somme et continu le redesigne ». Aucun modèle
+visuel n'est fourni : le skill s'applique en mode par défaut. Un « continu »
+nu avait d'abord été lu comme la reprise de la migration Python (dernier point
+de reprise en mémoire) ; l'utilisateur a précisé, et rien n'avait été modifié.
+
+**Où en était la refonte** (reconstitué depuis git et le rendu réel, le
+contexte de la session précédente ayant été vidé) : jetons, coque, primitives et
+8 écrans sur 12 faits, `tsc`/`eslint`/tests propres, tout **non commité** sur
+`feat/ui-redesign-exponentvalue` (coupée le 2026-10-08 à 05:10 du sommet de la
+branche de migration, `66d4274`). Restaient `/journal`, `/analyse`,
+`/journal/[id]`, `/settings`, `loading`/`error`/`EmptyState`. L'ADR 0017 était
+cité dans le code et le CSS **sans exister** ; `design_system.md` décrivait
+encore l'ancien système menthe.
+
+**Fait** : les quatre écrans (composition « liste » pour le journal, « résultats /
+détail » pour l'analyse et la capture, « formulaire avec aperçu » pour Settings),
+`EmptyState` illustré, `loading`/`error` à la silhouette d'un écran, `FilterBar`,
+neuf composants de présentation nouveaux (journal, analyse, réglages) ; ADR 0017,
+`design_system.md` réécrit, index des ADR. **Aucune logique métier modifiée** (le journal garde son propre fetch) ; seuls
+écarts d'affichage : `formatQuote` (paires forex à 5 décimales), calendrier lundi
+d'abord, « aucune capture » distingué de « capture illisible ».
+
+**Défauts trouvés par la mesure, corrigés** :
+- `muted-foreground` sur `muted` à 4,40:1 (pastilles grises) → `#6c6c75` ; les
+  numéros de jour des calendriers teintés, à 4,40:1 aussi ;
+- `/settings` débordait de 155 px sur mobile (grille sans colonne explicite) ;
+- le graphique de capture avait une largeur fixe de 720 px (il suit maintenant son
+  conteneur, et ne se démonte plus sur une mesure nulle passagère) ;
+- des informations coupées par une ellipse : valeur-clé `$10,15…`, symbole `EURU…`,
+  titres de panneau, instructions de la liaison MT5, codes de verrou — le bandeau
+  et l'en-tête de carte mobile passent à la ligne, les valeurs s'enroulent ;
+- en-tête de tableau grisé sur noir (la `className` d'une colonne allait aussi à
+  son en-tête) ; « 0 / 0 » et « +$0.00 » en vert sur un journal vide ; « Failed to
+  fetch » brut ; libellés anglais ; espaces perdues par le compilateur JSX après
+  `{expr}` sur du texte multi-ligne (trois messages : `/journal`, `/market-context`,
+  `/account`).
+
+**Vérifié** : `tsc`, `eslint`, vitest (51 fichiers, 332 tests), `next build` (15
+pages). 12 routes × (1440×900 clair, 1440×900 sombre, 375×812 clair, 375×812
+sombre) = 48 chargements, huit détecteurs à zéro : débordement horizontal, thème
+appliqué, squelettes bloqués, messages console, textes tronqués, espaces
+manquantes, contraste réel AA de chaque texte rendu (détecteur lui-même éprouvé
+sur des témoins illisibles), titre `h1` (avant : un débordement, trois écrans sans
+titre). 15 contrôles d'interaction : bascule de thème et rechargement sans flash,
+tiroir mobile (arrêt d'urgence présent — jamais cliqué), filtres du journal
+cohérents entre panneau et tableau, anneaux de focus. Contrastes des 44 paires de
+jetons, deux thèmes : toutes ≥ 4,5:1. États rempli, vide et backend éteint vus sur
+les écrans alimentés par HTTP.
+
+**Non vérifié** : le cockpit contre le vrai backend (éteint depuis le 2026-09-28) et
+en source `backend` (SignalR) — seule la source mock a tourné ; les écrans HTTP
+l'ont été contre un faux serveur en lecture seule à données synthétiques (aucun
+numéro de compte réel). Piège rencontré : un build échouait sur
+`.next/dev/types/validator.ts`, fichier généré corrompu par deux régénérations
+simultanées — se règle en supprimant `.next/dev/types`.
+
+**Commit et suivi, sur demande de l'utilisateur** (« commit tout en un seul commit
+et push me egalement a jour les fichier de suivis du projet ») : un seul commit de
+la refonte sur `feat/ui-redesign-exponentvalue`, avec la mise à jour des fichiers
+de suivi — `state.md` (qui ignorait la migration Python), les fiches T05, T06 et
+T07, le tableau §10 de `migration-map.md` (resté à « ⏳ » partout : il dit
+maintenant l'état réel, 463 tests verts), l'étude de connexion (hors dépôt) et
+l'index des ADR. Le push de cette branche publie aussi les **14 commits locaux
+antérieurs** (snapshot de migration, I0–I2, ADR 0015 accepté, 7 commits Python) :
+balayés avant envoi (motifs de secrets, e-mails, chemins personnels, fichiers
+`.env` / presets / sauvegardes) sans rien trouver ; le login du compte de démo
+Exness y figure, comme déjà dans `origin/main`. À décider : la fusion dans
+`main`, et les points laissés ouverts par le design (ADR 0017).
+
+## 2026-09-26, suite (**règles déduites de SCALP et de Marco ; spread sans plafond fixe ; relevé de spread corrigé**)
+
+Demande : analyser *The SCALP Trading System* et *Liquidity Trap Strategy
+(Marco Trades)*, puis en déduire les règles de spread, de risque et de
+drawdown. En cours de route, décision de l'utilisateur, mot pour mot :
+« peutit changement ne pas definir de regle de lmite de spread laisser et
+s'adapter au regle du broker ».
+
+**Lecture de Claude, à confirmer** : pas de plafond fixe par symbole ; seule
+reste la porte de coût de S01 (`c` ≤ 0,25 du stop, spread lu en direct), à
+la décision et au remplissage. Elle s'adapte déjà au courtier. La retirer
+changerait S01. À construire avec le code (I6/I7) : la ligne « spread » de
+l'ADR 0015, le contrôle de l'agent (`SPREAD_LIMIT_MISSING` → contrôle
+relatif depuis le stop de la commande), la gate de spread du Risk Engine.
+
+**Relevé de spread corrigé.** Le « EURUSDm 2,0 pips sans variation sur 9 h »
+de l'entrée précédente date d'un samedi : `spread_log.jsonl` contient 3 684
+relevés et une seule cotation bid/ask par symbole (marché fermé). Mesure
+refaite depuis l'historique de ticks du courtier (démo Exness-MT5Trial9, 20
+jours ouvrés du 31/08 au 25/09, un relevé par minute, lecture seule, nouveau
+`tools/mt5-observer/spread_history.py`) : EURUSDm 0,8 pip, GBPUSDm 1,0 pip,
+XAUUSDm 0,26 $, identiques dans toutes les minutes des killzones (pics
+d'or à 08:30 NY) ; rollover EURUSDm jusqu'à 12,4 pips. Commission 0 sur
+les 22 deals ; exécution au marché. Flux de démo à spread fixe : le compte
+réel reste à mesurer.
+
+**Analyse** : `02_Plan_Projet/regles-deduites-scalp-marco-2026-09-26.md`.
+Points saillants : les chiffres du SCALP ne tiennent pas ensemble (50 % de
+réussite en 1:3 à 1–4 trades par semaine donnerait 4 à 17 % par mois, pas
+2 à 4 %) ; plancher de stop EURUSD 3,2 pips à 0,8 pip de spread ; à 0,1 %
+par trade, la perte du jour (5 %) et la perte totale (10 % = 100 R) ne
+peuvent être atteintes que par un dysfonctionnement. Huit décisions sont
+soumises à l'utilisateur ; rien n'est décidé à sa place.
+
+**Trouvé en chemin** :
+- l'ADR 0015 (« sans clic » après la perte du jour) contredit T02c (accusé
+  obligatoire pour tout verrou non chronométré) ;
+- la barrière de l'agent `InpMaxOpenPositions = 3` rend inopérante la
+  limite de 7 positions ; `InpMaxVolumePerOrder = 1.0` correspond à 0,1 %
+  d'un compte de 40 000 $ sur EURUSD ;
+- `resolve_broker_symbol("XAUUSD")` (`log_spread.py`) retient `XAUUSD247m`
+  (contrat 24/7) et non `XAUUSDm` ; `spread_history.py` exige le nom exact.
+
+Contrôles : `py_compile` sur `tools/mt5-observer/*.py`, unittest 34/34.
+
+**Validation, mot pour mot** : « je valide tes decisions implemente les
+parametre directement dna sle fichier […]\MQL5\Experts\TradingOsAgent\ea1.set
+afin que je le load et l'integre dans lEA dans MT5 ». Lecture de Claude : là
+où l'analyse proposait une valeur, c'est elle qui est retenue — porte de
+coût de S01 seule pour le spread ; 2 positions et 4 trades par jour au lieu
+de 7 et 7 ; pertes du jour (5 %) et totale (10 %) levées seulement par
+accusé ; arrêts de stratégie à 20 R et à 50 trades ; taille coût compris,
+ré-entrée 0,05 %, buffer du stop = max(1 pip, spread), 2 pertes de suite
+dans la journée = fin de journée. **ADR 0015 amendé** (section
+« Amendement »). Restent ouverts : capital de référence, plafond de stop à
+7 pips, demi-heure de Francfort, spread du compte réel.
+
+**Preset de l'agent** `tools/mt5-execution-agent/ea1.set` (gitignoré, UTF-16
+comme MT5 l'écrit), aligné sur l'agent 1.10 : `InpMaxOpenPositions=2` ;
+`InpMaxSpreadCsv=EURUSDm=0.01,XAUUSDm=10` (aucun plafond effectif ; sans
+effet tant que `g_mode` est figé à OBSERVE) ; `InpMaxSpreadPoints` retiré
+(n'existe plus depuis I1) ; `InpTradableLogins` et `InpClosableLogins`
+explicitement vides ; `InpReportReplayMinutes=60`. `InpAccountId` recopié
+sans être lu ni affiché. `InpMaxVolumePerOrder` reste à 1.0 jusqu'au capital
+de référence (capital / 40 000 lot). Le reste des règles n'a pas d'entrée
+dans l'EA : Risk Engine et configuration de l'autonomie, I6/I7 (ADR 0010 :
+l'EA n'est pas le cerveau). Rien de commité.
+
+## 2026-09-26 (**ADR 0015 accepté ; limites du compte réel ; S01 confirmée**)
+
+Reprise au point d'arrêt (étude, « Suivi d'avancement »). Réponse de
+l'utilisateur, mot pour mot :
+1. « J'approuve l'ADR 0015 » ;
+2. limites pour le compte réel : « risque par trade: 0.1% du capital »,
+   « Daily loss 5.0% », « Max drawdown 10.0% », « nombre maximal de
+   trades et de positions, 7 », « spread maximal par symbole, » (sans
+   valeur), « heures de trading : session de London kill zone et de New
+   york am / kill zone » ;
+3. « je confirme S01 ».
+
+**ADR 0015 accepté.** Conséquences écrites : charte v3 (principe 6),
+`.claude/CLAUDE.md` (accords I3 à I8 ; Claude ne déclenche jamais d'ordre),
+roadmap et catalogue (le bot autonome sort des exclusions). Rien
+d'autonome n'existe encore dans le code : `g_mode` reste
+`const MODE_OBSERVE`.
+
+**Lecture des valeurs par Claude**, à corriger si elle est fausse :
+
+| Limite | Valeur | Lecture |
+|---|---|---|
+| Risque par trade | 0,1 % | du solde au moment de l'ordre, comme le calcul de taille actuel |
+| Perte du jour | 5 % | (équité à l'ancre du jour − équité) / capital de référence, comme la gate actuelle |
+| Perte totale | 10 % | (capital de référence − équité) / capital de référence |
+| Trades par jour | 7 | « trades et positions, 7 » lu comme 7 et 7 |
+| Positions ouvertes | 7 | idem |
+| Spread maximal | **manque** | par symbole ; l'autonomie refuse de démarrer sans |
+| Fenêtres | killzones de S01 | Londres 02:00–05:00 et NY AM 07:00–10:00, heure de New York (`lib/setup/preconditions.ts`) |
+| Stratégie | S01 | EURUSD seul ; XAUUSD suppose des seuils relatifs à l'ATR, non décidé |
+
+**Manque aussi le capital de référence du compte réel** (Settings). Il est
+vide pour Exness : les 10 % se mesurent alors depuis le solde au démarrage
+du Risk Engine, un plancher qui glisse. L'autonomie refusera de démarrer
+sans lui.
+
+Spreads mesurés sur ce terminal (démo Exness, symboles `m`) : EURUSDm
+2,0 pips (20 points) sans variation sur 9 h le 2026-09-12, killzone de
+Londres comprise ; XAUUSDm 0,26 $ (260 points à 3 décimales) au p95 sur
+214 000 ticks, killzones comprises. Un compte réel d'un autre type peut
+différer.
+
+**Trouvé en vérifiant** : la gate de spread du cockpit lit le seul symbole
+de l'observateur (l'or, choisi par `start-live`) et calcule
+`(ask − bid) / 0,01` (`lib/realtime/signalr-client.ts:473-476`). Sur
+XAUUSDm, 0,26 $ donne 26, sous la limite de 40. Elle ne dit donc rien
+d'EURUSD, et sur EURUSDm le même calcul donnerait 0 : **ce n'est pas une
+gate par symbole**. À refaire avec le seuil par symbole (I1 dans l'agent,
+puis le Risk Engine côté serveur en I6), l'unité fixée symbole par symbole.
+
+**I0 terminé côté code** (détail : fiche EA-05 ; tableau des portes :
+`context/security/security_principles.md`). Hub et écritures `/api` :
+jeton du cockpit et Origin autorisée sur chaque requête, WebSockets seuls,
+`AllowedHosts` loopback, jeton masqué dans les logs. Cockpit : `next dev`
+sur `127.0.0.1`, `proxy.ts` refuse tout Host hors loopback, jeton remis
+aux seuls scripts de la page. Observateur : jeton exigé, navigateurs
+refusés ; le Gateway n'écrit plus un `agent.disconnected` toutes les 3 s
+quand l'observateur est arrêté. `start-live.ps1` crée les jetons dans
+`.env` (jamais affichés) et gagne `-Build`. Gates vertes (`dotnet test`
+94/94, vitest 312/312, unittest 31/31, `tsc`, lint, `next build`).
+Vérifié en réel sur une instance isolée, observateur réel compris ; le
+conteneur n'est **pas encore reconstruit** (geste de l'utilisateur).
+Trouvé en chemin : `start-live.ps1` ne se lisait pas sous Windows
+PowerShell 5.1 (UTF-8 sans BOM, défaut antérieur) — corrigé ; un premier
+démarrage de `next dev` après l'ajout de `proxy.ts` a servi 404 partout
+sauf `/`, disparu au redémarrage, jamais revu (noté au runbook). Le jeton
+de l'agent (9765) passe à I1.
+
+**I1 terminé côté code** (détail : fiche EA-05, README de l'agent). Agent
+1.10 : identité tirée du login du terminal (`InpAccountId` facultatif,
+refus sans détacher), halt local persistant (bouton, `control.halt` qui
+ne peut que le poser, fichier), instance unique, spread maximal par symbole
+en unités de prix, jeton de la passerelle lu dans `MQL5\Files`, permissions
+et EA étrangers publiés, store par login, trace d'ordre courte, rapports
+renvoyés à la reconnexion. Passerelle : jeton de l'agent, ping et halt,
+état de l'agent, `SubmitCommand` refuse un agent en halt. Harnais
+`scripts/dev-submit-command.ts`. **Trouvé et corrigé** : les ids courtier
+partaient en nombres alors que le contrat dit chaînes — le rapport du
+premier vrai remplissage aurait été jeté ; la trace `"TradingOS " +
+commandId` dépassait ce qu'un courtier garde (réconciliation aveugle) ; le
+fil du cockpit ignorait les refus. Barrière vérifiée par lecture : un seul
+`OrderSend(`, `g_mode` constante OBSERVE jamais affectée. Gates vertes
+(MetaEditor 0/0, `dotnet test` 109/109, vitest 316/316, unittest 31/31,
+`tsc`, lint, `next build`). **Rien n'est déployé** : le geste de
+l'utilisateur (`start-live -Build`, réattacher l'EA avec
+`InpMaxSpreadCsv`) précède les étapes 2 à 6 du README.
+
+**I2 terminé côté code** (détail : fiche T12, incrément 3). L'observateur
+publie type de compte, levier, hedging ou netting et permissions — jamais
+le nom du titulaire (testé) — et s'arrête si le login du terminal change ;
+la passerelle transmet ces champs et l'état de l'agent (instantané du hub,
+`execution.agent.status` sur changement) ; le cockpit se remet à zéro au
+changement de compte ; Account affiche la chaîne complète. Vérifié en
+préversion mock (rendu). Gates vertes (vitest 332/332, `dotnet test`
+116/116, unittest 34/34, `tsc`, lint, `next build`). D13 (réglages par
+compte) reporté à I7.
+
 ## 2026-09-25 (**étude connexion/pilotage de l'agent ; I0 côté Gateway**)
 
 Demande : connexion au compte MT5 depuis l'application, bouton pour

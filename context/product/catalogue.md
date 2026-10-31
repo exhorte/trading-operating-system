@@ -1,4 +1,6 @@
 > **Note de reprise (2026-09-04).** Ce document est la recherche qui a produit la roadmap.
+
+> **Amendement du 2026-10-09 (ADR 0016).** Les chemins `lib/…`, `backend/` et `tools/mt5-observer` cités ici sont ceux de l'époque : ils sont devenus `python/trading_os/…` (voir « Ancrage actuel » en tête de chaque fiche d'outil, et la correspondance du rapport `docs/architecture/python-native-migration-report.md`). Le « hub SignalR », l'« observer » et le « Gateway » n'existent plus ; leur rôle est tenu par le cœur Python.
 > Il est conservé dans le dépôt comme référence : le raisonnement, les efforts estimés et la
 > section « ce que je ne recommande pas de construire » y sont argumentés en entier.
 > La numérotation `#1..#19` correspond aux identifiants `T01..T19` de la roadmap.
@@ -266,7 +268,7 @@ Un bot Telegram ou une notification système en **lecture seule** : DD à 70 % d
 
 ## 7. Ce que je ne recommande pas de construire
 
-- **Un bot d'exécution autonome.** Contredit l'ADR 0001, et le seul candidat de stratégie existant a été sélectionné post-hoc puis abandonné (ADR 0002).
+- ~~**Un bot d'exécution autonome.**~~ Recommandation levée le 2026-09-26 par l'ADR 0015 : l'exécution autonome est autorisée pour la stratégie que l'utilisateur a lui-même formalisée et configurée (S01), dans des limites automatiques. Reste vrai : le candidat de la série 1 est abandonné (ADR 0002), et aucune stratégie n'est inventée ni optimisée pour l'occasion.
 - **Un générateur de signaux IA.** Le point est déjà tranché dans l'audit : sentiment ≠ direction, forecasting ≠ stratégie. Ces modèles restent côté lecture.
 - **Un scraper ForexFactory.** Fragile et juridiquement exposé. FRED règle le besoin réel (voir #3).
 - **Un dashboard de marché temps réel.** Tu as déjà MT5 pour ça, et il est meilleur. Ne reconstruis pas ce que tu regardes déjà ailleurs — construis ce que MT5 ne fait pas : ton process, tes règles, ton historique.

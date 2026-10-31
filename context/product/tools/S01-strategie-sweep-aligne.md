@@ -1,5 +1,7 @@
 # S01 — Stratégie « Sweep aligné »
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/strategy/s01/` (une étape de la séquence par module) et `services/strategy.py`.
+
 Statut : **à faire** · Vague EA · Effort 3–5 j · Valeur 5 · Dépend de : rien pour
 la détection ; l'exécution dépend de EA-01 à EA-06.
 
@@ -246,3 +248,15 @@ machine et l'humain, pas la performance (ADR 0002, ADR 0011).
      fixer « correctement » demanderait un win rate mesuré, qui n'existe pas
      encore — il viendra de la phase OBSERVE et du journal (T06), pas d'un
      calcul a priori.
+
+- 2026-09-26 — **spread mesuré sur l'historique de ticks du courtier** (démo
+  Exness, 20 jours ouvrés, `tools/mt5-observer/spread_history.py`) :
+  EURUSDm 0,8 pip dans toutes les minutes des killzones, commission 0.
+  Plancher de stop qui en découle : 0,8 / 0,25 = **3,2 pips** ; les stops de
+  3 pips du SCALP sont refusés (c = 0,27). Le relevé du 2026-09-12 (2,0 pips)
+  datait d'un samedi, cotation figée : il ne comptait pas. Le compte réel
+  reste à mesurer ; un flux de démo à spread fixe ne dit rien de ses
+  variations. Même jour, l'utilisateur renonce à tout plafond de spread fixe
+  (« s'adapter au regle du broker ») : cette porte, relative au stop, devient
+  la seule règle de spread — lecture à confirmer
+  (`02_Plan_Projet/regles-deduites-scalp-marco-2026-09-26.md`).

@@ -1,5 +1,16 @@
 # T06 — Journal auto-alimenté, zéro saisie
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/services/journal.py`, `GET /api/journal/trades` ; cockpit `app/(cockpit)/journal/page.tsx`, `components/journal/`, `lib/journal/`.
+
+> **Amendement du 2026-10-09 (ADR 0018).** La capture graphique n'existe plus : la colonne
+> « lien Capture » de ce journal devient **« Dossier → »** (un lien par ligne, pour tout trade
+> clôturé), qui ouvre `/journal/{id}` — les chiffres enregistrés (entrée, stop, objectif, sortie)
+> et la chaîne Intention → Décision de risque → Commande → Résultat, sans graphique. Le compteur
+> « Avec capture » du panneau devient **« R calculable »** (entrée et stop connus) : une ligne
+> dans les captures ne dit pas que le stop est connu — le cœur reconstitue entrée et sortie depuis
+> l'historique d'un trade qu'il n'a pas vu s'ouvrir —, c'est donc le R du trade que l'on compte.
+> Le texte ci-dessous décrit la fonction telle qu'elle a été livrée.
+
 Statut : **livré** (4 incréments, 2026-09-16) · Vague 2 · Effort 3–5 j ·
 Valeur 5 · Dépend de : T05 (livré)
 
@@ -212,3 +223,22 @@ ouvrir MT5 et sans avoir rien saisi à la main.
   calendrier/les ventilations n'ont jamais été vus rendus à l'écran avec ces
   données réelles. À vérifier à la prochaine séance avec MT5 + l'observer
   connectés.
+
+- 2026-10-08 — écran repris dans la refonte visuelle de l'ADR 0017
+  (« ExponentValue Monochrome »). **La logique de données n'a pas bougé** : le
+  fetch de la page, le rapprochement S01, les violations T07 et les
+  ventilations sont ceux d'avant (la page garde son propre fetch, voir
+  l'en-tête de `lib/journal/use-journal-window.ts`). Changent la présentation —
+  titre et question de l'écran, filtres (`FilterBar`), panneau sombre des
+  chiffres de la période (trades, « dans le cadre », pris sur une proposition
+  S01, avec capture, résultat réalisé ; des tirets, jamais des zéros, quand il
+  n'y a rien à compter), tableau à en-tête sombre (cartes sous `md`), colonne
+  « Cadre » qui réunit la pastille S01 et les manquements, calendriers
+  lundi d'abord — et deux écarts d'affichage assumés : les paires forex à cinq
+  décimales (`formatQuote` ; avec `formatPrice`, l'entrée et la sortie d'un
+  EURUSD affichaient la même valeur), et « aucune capture » distingué de
+  « capture illisible ». **Vu rempli pour la première fois**, mais contre un
+  faux serveur en lecture seule à données synthétiques (100 trades sur 90 jours) :
+  filtres de période et de symbole cohérents entre le panneau et le tableau,
+  aucun débordement à 375 px, clair et sombre. Le point « jamais vu rendu avec
+  des données réelles » de l'entrée du 2026-09-16 **reste ouvert**.

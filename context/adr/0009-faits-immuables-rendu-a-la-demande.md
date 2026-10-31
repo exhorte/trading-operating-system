@@ -1,5 +1,7 @@
 # ADR 0009 — Le serveur capture des faits, le cockpit rend
 
+> **Supersédé en partie par l'ADR 0018 (2026-10-09)** : plus aucun rendu graphique. Le serveur continue de capturer des faits immuables (prix d'entrée, stop, objectif, sortie) ; le cockpit ne les dessine plus, il les affiche en chiffres.
+
 Date : 2026-09-11. Statut : accepté. Précise l'ADR 0004 sans le modifier.
 Décision prise en session le 2026-09-05 pendant T05, écrite ici avec six jours
 de retard.

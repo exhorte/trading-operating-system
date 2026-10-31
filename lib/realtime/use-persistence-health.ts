@@ -1,77 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { backendHttpBase } from "./backend-url";
+import { useApi } from "@/lib/api/use-api";
+import type { SystemHealthView } from "@/lib/api/generated";
 
 const POLL_INTERVAL_MS = 15_000;
 
-export interface PersistenceHealth {
-  status: string;
-  db: string;
-  persisted: number;
-  dropped: number;
-  queued: number;
-  dbError: string | null;
-}
-
 export type PersistenceState =
-  | { kind: "not_applicable" }
   | { kind: "unknown" }
-  | { kind: "ok"; health: PersistenceHealth }
-  | { kind: "issue"; health: PersistenceHealth };
+  | { kind: "ok"; health: SystemHealthView }
+  | { kind: "issue"; health: SystemHealthView; label: string };
 
 /**
- * Polls the backend's /health for the persistence-writer counters (ADR 0003:
- * HTTP is the sanctioned surface for health/admin, not for trading flow).
+ * What the core says about its own memory: is the database up, and has an audit event ever been lost?
  *
- * Why this exists: CockpitHub.PublishEvent broadcasts to every dashboard
- * BEFORE the write is even enqueued — a full queue or a down database drops
- * the write with zero effect on the broadcast. A published fact can
- * therefore echo back to the sender — proving the broadcast happened — while
- * never reaching the database. Only /health's `dropped` counter can catch
- * that case.
- *
- * Was the top bar's PersistenceHealthBadge until the 2026-09-24 redesign;
- * the account menu (always mounted, on every screen) now polls it and turns
- * its status dot red on an issue.
+ * Why this exists: a fact is broadcast to the cockpit before it is certain to be on disk, so a published fact can echo back —
+ * proving it happened — while never reaching the database. Only the core's counters can catch that case, and the account menu
+ * (always mounted, on every screen) turns its status dot red on one. `GET /api/system/health` is the one endpoint open without
+ * the token: a launcher or a monitor reads the same figures.
  */
 export function usePersistenceHealth(): PersistenceState {
-  const backendMode = process.env.NEXT_PUBLIC_REALTIME_SOURCE === "backend";
-  const [state, setState] = useState<PersistenceState>(
-    backendMode ? { kind: "unknown" } : { kind: "not_applicable" },
-  );
+  const { data } = useApi("system_health", {}, { pollMs: POLL_INTERVAL_MS, refreshOn: ["system.health_changed"] });
+  return persistenceOf(data);
+}
 
-  useEffect(() => {
-    if (!backendMode) {
-      return;
-    }
-    const url = `${backendHttpBase()}/health`;
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) {
-          throw new Error(String(res.status));
-        }
-        const health = (await res.json()) as PersistenceHealth;
-        if (!cancelled) {
-          setState({ kind: health.dropped > 0 || health.db !== "ok" ? "issue" : "ok", health });
-        }
-      } catch {
-        if (!cancelled) {
-          setState({ kind: "unknown" });
-        }
-      }
-    }
-
-    void poll();
-    const timer = setInterval(() => void poll(), POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [backendMode]);
-
-  return state;
+export function persistenceOf(health: SystemHealthView | null): PersistenceState {
+  if (health === null) {
+    return { kind: "unknown" };
+  }
+  if (!health.database.up) {
+    return { kind: "issue", health, label: "base injoignable" };
+  }
+  if (health.audit.lost > 0) {
+    return { kind: "issue", health, label: `${health.audit.lost} événement(s) d'audit perdu(s)` };
+  }
+  return { kind: "ok", health };
 }

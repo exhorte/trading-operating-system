@@ -10,13 +10,14 @@
  * approximation as FTMO's verdict.
  *
  * Nothing here decides anything (ADR 0007). The loss limits are enforced by
- * the Risk Engine's gates; this only reports how far the challenge is.
+ * the Risk Engine's gates in the core; the targets (minimum days, profit
+ * percentage) are written in the account's rules there too. This only
+ * reports how far the challenge is — which is why it is the one piece of
+ * account logic that stays in the browser: it is a reading, not a rule.
  */
 
+import type { AccountRules, FtmoChallenge, JournalTrade } from "@/lib/api/generated";
 import { formatMoney, formatSignedMoney } from "@/lib/format";
-import type { RiskPolicy } from "@/lib/domain/risk";
-import type { JournalTrade } from "@/lib/journal/types";
-import { ftmoObjectives, type FtmoChallenge } from "./ftmo";
 
 /**
  * Two kinds of objective, two vocabularies: a target is reached or not yet;
@@ -36,7 +37,8 @@ export interface ObjectiveRow {
 
 export interface ObjectivesInput {
   challenge: FtmoChallenge;
-  policy: RiskPolicy;
+  /** The rules in force: the loss limits, and the targets of the phase (`null` = not sourced for this phase). */
+  rules: AccountRules;
   /** Every closed trade of the account — one FTMO account is one challenge. */
   trades: JournalTrade[];
   balance: number;
@@ -86,7 +88,7 @@ function minTradingDaysRow(input: ObjectivesInput, required: number | null): Obj
 }
 
 function dailyLossRow(input: ObjectivesInput): ObjectiveRow {
-  const limit = (input.challenge.accountSize * input.policy.dailyLossLimitPercent) / 100;
+  const limit = (input.challenge.accountSize * input.rules.riskProfile.drawdown.dailyLossLimitPercent) / 100;
 
   const byDay = new Map<string, number>();
   for (const trade of input.trades) {
@@ -118,7 +120,7 @@ function dailyLossRow(input: ObjectivesInput): ObjectiveRow {
 }
 
 function maxLossRow(input: ObjectivesInput): ObjectiveRow {
-  const limit = (input.challenge.accountSize * input.policy.maxDrawdownLimitPercent) / 100;
+  const limit = (input.challenge.accountSize * input.rules.riskProfile.drawdown.maxDrawdownLimitPercent) / 100;
   const floor = input.challenge.accountSize - limit;
   const lowest = Math.min(input.balance, input.equity);
 
@@ -157,7 +159,7 @@ function profitTargetRow(input: ObjectivesInput, percent: number | null): Object
 
 /** In MetriX's order: trading days, daily loss, overall loss, profit target. */
 export function evaluateFtmoObjectives(input: ObjectivesInput): ObjectiveRow[] {
-  const { minTradingDays, profitTargetPercent } = ftmoObjectives(input.challenge);
+  const { minTradingDays, profitTargetPercent } = input.rules.tradingRules;
   return [
     minTradingDaysRow(input, minTradingDays),
     dailyLossRow(input),

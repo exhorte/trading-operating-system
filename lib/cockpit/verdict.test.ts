@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { RiskGate, RiskStatus } from "@/lib/contracts/snapshots";
+import type { GateResult, RiskStatus } from "@/lib/api/generated";
 import { sessionVerdict, tightestHeadroom } from "./verdict";
 
-function gate(gateId: string, state: RiskGate["state"]): RiskGate {
+function gate(gateId: string, state: GateResult["state"]): GateResult {
   return { gateId, label: gateId, state, detail: "" };
 }
 
@@ -13,12 +13,18 @@ function risk(overrides: Partial<RiskStatus> = {}): RiskStatus {
     dailyLossUsedPercent: 1,
     maxDrawdownLimitPercent: 10,
     maxDrawdownUsedPercent: 1,
+    openRiskLimitPercent: 1,
+    openRiskPercent: 0,
+    correlatedExposureLimitPercent: 1,
+    correlatedExposurePercent: 0,
     maxTradesPerDay: 6,
     tradesToday: 1,
     consecutiveLosses: 0,
     lockoutReason: null,
     lockoutUntil: null,
+    lockoutId: null,
     gates: [gate("daily-loss", "open"), gate("session", "open")],
+    evaluatedAt: "2026-10-09T10:00:00Z",
     ...overrides,
   };
 }

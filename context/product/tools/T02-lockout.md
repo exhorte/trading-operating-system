@@ -1,5 +1,7 @@
 # T02 — Lockout comportemental
 
+> **Amendement du 2026-10-09 (ADR 0016).** Archive : cette fiche décrit la fonction telle qu'elle a été livrée, avec les composants de l'époque (Gateway .NET, SignalR, observateur Python, modules `lib/…` en TypeScript, scripts Node). Ils n'existent plus ; leur rôle est tenu par le cœur Python. La fonction, ses décisions et son critère de réussite restent ceux de la fiche. **Ancrage actuel** : `python/trading_os/domain/risk/{gates,evaluate,lockout}.py` et `services/risk.py` (registre persistant des verrous, accusés, kill switch), événements `risk.lockout_*` ; cockpit `components/shell/{lockout-ack-banner,lockout-violation-banner,kill-switch-button}.tsx` et `components/cockpit/lockout-history.tsx`.
+
 Statut : **livré** (T02a et T02b livrés le 2026-09-05 ; T02c livré le 2026-09-17) · Vague 1 · Effort 1–2 j · Dépend de : rien
 
 Découpé en deux incréments en cours de route — le plan initial (7 incréments,

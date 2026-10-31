@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Written by `python -m trading_os gen-types` from the core's own schemas; a test fails when it is stale.
+    "lib/api/generated.ts",
   ]),
 ]);
 

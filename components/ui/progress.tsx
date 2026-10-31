@@ -6,8 +6,8 @@ import { Progress as ProgressPrimitive } from "radix-ui"
 
 /**
  * shadcn/ui's Progress, plus `indicatorClassName`: the cockpit colours a bar
- * by what it measures (mint while there is room, gold then coral as a limit
- * gets consumed), which the generated component could not express.
+ * by what it measures (neutral while there is room, warning then error as a
+ * limit gets consumed), which the generated component could not express.
  */
 function Progress({
   className,
@@ -19,14 +19,15 @@ function Progress({
     <ProgressPrimitive.Root
       data-slot="progress"
       className={cn(
-        "relative h-2 w-full overflow-hidden rounded-full bg-primary/20",
+        "relative h-2 w-full overflow-hidden rounded-full bg-secondary",
         className
       )}
+      value={value}
       {...props}
     >
       <ProgressPrimitive.Indicator
         data-slot="progress-indicator"
-        className={cn("h-full w-full flex-1 bg-primary transition-all", indicatorClassName)}
+        className={cn("h-full w-full flex-1 bg-primary transition-transform duration-300", indicatorClassName)}
         style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
       />
     </ProgressPrimitive.Root>

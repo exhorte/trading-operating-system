@@ -1,110 +1,114 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Layers } from "lucide-react";
 import { cn } from "cn";
 import { useCockpit, useIsDataUntrusted } from "@/lib/realtime/provider";
-import { formatPrice, formatSignedMoney } from "@/lib/format";
-import { Panel } from "@/components/ui/panel";
+import type { Position } from "@/lib/api/generated";
+import { formatQuote, formatSignedMoney } from "@/lib/format";
+import { DataList, MobileCardHeader, MobileFields, type Column } from "@/components/ui/data-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusPill } from "@/components/ui/status-pill";
 
-const HEADERS = ["Symbole", "Sens", "Volume", "Entrée", "Cours", "SL", "TP", "P&L latent", "R", "Stratégie", ""];
+const pnlClass = (value: number) => (value >= 0 ? "text-success" : "text-destructive");
 
-/** What is open right now — the only thing on the Command Center one can act on.
- *  Also heads /positions, where the "view all" link would point to itself. */
-export function PositionsTable({ showViewAll = true }: { showViewAll?: boolean }) {
+const SideBadge = ({ side }: { side: Position["side"] }) => (
+  <StatusPill tone={side === "buy" ? "profit" : "loss"}>{side === "buy" ? "Achat" : "Vente"}</StatusPill>
+);
+
+/** The file of the trade: its levels are recorded the moment the position was seen opening — a link, not a button. */
+const FileLink = ({ id }: { id: string }) => (
+  <Link
+    href={`/journal/${id}`}
+    className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+  >
+    Dossier →
+  </Link>
+);
+
+const COLUMNS: Column<Position>[] = [
+  { key: "symbol", header: "Symbole", cell: (p) => <span className="font-medium">{p.symbol}</span> },
+  { key: "side", header: "Sens", cell: (p) => <SideBadge side={p.side} /> },
+  { key: "volume", header: "Volume", align: "right", cell: (p) => p.volume.toFixed(2) },
+  { key: "entry", header: "Entrée", align: "right", cell: (p) => formatQuote(p.entryPrice) },
+  { key: "price", header: "Cours", align: "right", cell: (p) => (p.currentPrice === null ? "—" : formatQuote(p.currentPrice)) },
+  {
+    key: "sl",
+    header: "SL",
+    align: "right",
+    cell: (p) => <span className="text-muted-foreground">{formatQuote(p.stopLoss)}</span>,
+  },
+  {
+    key: "tp",
+    header: "TP",
+    align: "right",
+    cell: (p) => <span className="text-muted-foreground">{formatQuote(p.takeProfit)}</span>,
+  },
+  {
+    key: "pnl",
+    header: "P&L latent",
+    align: "right",
+    cell: (p) => <span className={cn("font-medium", pnlClass(p.unrealizedPnl))}>{formatSignedMoney(p.unrealizedPnl)}</span>,
+  },
+  {
+    key: "r",
+    header: "R",
+    align: "right",
+    cell: (p) => <span className={pnlClass(p.rMultiple)}>{p.rMultiple.toFixed(2)}</span>,
+  },
+  { key: "strategy", header: "Stratégie", cell: (p) => <span className="text-muted-foreground">{p.strategyId}</span> },
+  { key: "file", header: "", align: "right", cell: (p) => <FileLink id={p.positionId} /> },
+];
+
+/**
+ * What is open right now — the only thing on the Command Center one can act
+ * on. A dark-header table from `md` up, one card per position below. Also
+ * heads /positions. The screen puts its own title above (SectionHeading).
+ */
+export function PositionsTable() {
   const { positions, connection } = useCockpit();
   const untrusted = useIsDataUntrusted();
 
-  const viewAll = showViewAll ? (
-    <Link
-      href="/positions"
-      className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-    >
-      Voir tout
-      <ArrowRight className="size-3.5" />
-    </Link>
-  ) : undefined;
-
   if (connection === "connecting") {
+    return <Skeleton className="h-28 rounded-xl" />;
+  }
+
+  if (positions.length === 0) {
     return (
-      <Panel title="Positions ouvertes" icon={Layers} actions={viewAll}>
-        <Skeleton className="h-28 rounded-xl" />
-      </Panel>
+      <p className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">
+        Aucune position ouverte.
+      </p>
     );
   }
 
   return (
-    <Panel
-      title="Positions ouvertes"
-      description={positions.length > 0 ? `${positions.length} position(s) suivie(s) en direct` : undefined}
-      icon={Layers}
-      actions={viewAll}
-      untrusted={untrusted}
-    >
-      {positions.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
-          Aucune position ouverte.
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                {HEADERS.map((header, index) => (
-                  <th key={`${header}-${index}`} className="pr-4 pb-3 font-medium">
-                    {header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {positions.map((position) => (
-                <tr
-                  key={position.positionId}
-                  className="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
-                >
-                  <td className="py-3 pr-4 font-medium">{position.symbol}</td>
-                  <td className="py-3 pr-4">
-                    <StatusPill tone={position.side === "buy" ? "profit" : "loss"}>
-                      {position.side === "buy" ? "Achat" : "Vente"}
-                    </StatusPill>
-                  </td>
-                  <td className="tnum py-3 pr-4">{position.volume.toFixed(2)}</td>
-                  <td className="tnum py-3 pr-4">{formatPrice(position.entryPrice)}</td>
-                  <td className="tnum py-3 pr-4">{formatPrice(position.currentPrice)}</td>
-                  <td className="tnum py-3 pr-4 text-loss/80">{formatPrice(position.stopLoss)}</td>
-                  <td className="tnum py-3 pr-4 text-profit/80">{formatPrice(position.takeProfit)}</td>
-                  <td
-                    className={cn(
-                      "tnum py-3 pr-4 font-medium",
-                      position.unrealizedPnl >= 0 ? "text-profit" : "text-loss",
-                    )}
-                  >
-                    {formatSignedMoney(position.unrealizedPnl)}
-                  </td>
-                  <td className={cn("tnum py-3 pr-4", position.rMultiple >= 0 ? "text-profit" : "text-loss")}>
-                    {position.rMultiple.toFixed(2)}
-                  </td>
-                  <td className="py-3 pr-4 text-muted-foreground">{position.strategyId}</td>
-                  <td className="py-3 text-right">
-                    {/* T05: entry capture is server-recorded the moment the
-                        position was observed opening — link, not a button,
-                        since there's nothing to trigger here. */}
-                    <Link
-                      href={`/journal/${position.positionId}`}
-                      className="text-xs text-muted-foreground transition-colors hover:text-primary"
-                    >
-                      Capture →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Panel>
+    <div className={cn("transition-opacity", untrusted && "opacity-60")}>
+      <DataList
+        rows={positions}
+        columns={COLUMNS}
+        rowKey={(p) => p.positionId}
+        mobileCard={(p) => (
+          <>
+            <MobileCardHeader name={p.symbol} subtitle={p.strategyId} badge={<SideBadge side={p.side} />} />
+            <MobileFields
+              fields={[
+                { label: "Volume", value: p.volume.toFixed(2) },
+                { label: "Entrée", value: formatQuote(p.entryPrice) },
+                { label: "Cours", value: p.currentPrice === null ? "—" : formatQuote(p.currentPrice) },
+                { label: "SL", value: formatQuote(p.stopLoss) },
+                { label: "TP", value: formatQuote(p.takeProfit) },
+                {
+                  label: "P&L latent",
+                  value: <span className={pnlClass(p.unrealizedPnl)}>{formatSignedMoney(p.unrealizedPnl)}</span>,
+                },
+              ]}
+            />
+            <div className="mt-3 flex items-center justify-between text-xs">
+              <span className={cn("tabular-nums", pnlClass(p.rMultiple))}>R {p.rMultiple.toFixed(2)}</span>
+              <FileLink id={p.positionId} />
+            </div>
+          </>
+        )}
+      />
+    </div>
   );
 }

@@ -4,69 +4,147 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Trading cockpit design system — shadcn/ui tokens (2026-09-24).
+ * Cockpit design system — « ExponentValue Monochrome » (ADR 0017, 2026-10-08;
+ * replaces the dark-only mint palette of ADR 0012).
  *
- * Dark only: <html class="dark">. Palette taken from the reference mock-up
- * (05_screenchot/dashboar.jpg): near-black with a green undertone, cards one
- * step lighter behind a hairline border, ONE accent (mint) for what matters
- * — active item, primary action, positive value, progress — and a discreet
- * gold as the only second accent. Everything else is white and greys.
+ * White, very light greys and a near-black with a blue cast (#151320). That
+ * near-black is the colour of ACTION — primary buttons, the dark metric panel,
+ * table headers — and sits on surfaces only, never on text. The one accent is
+ * the pale mint chip that picks out a single metric of a panel. Strong colours
+ * are reserved for meaning (success / warning / error).
  *
- * Trading meaning stays on its own tokens so a component never has to guess:
- * profit (mint), loss (muted coral), warning (gold), info (steel, barely
- * tinted). See context/frontend/design_system.md.
+ * Values are hex, the format this project already used: two SVG components
+ * (discipline gauge, trade chart) read `var(--profit)`, `var(--card)`… as
+ * plain colours, which an HSL-triplet format would break. The HSL source of
+ * each value is in the comments. Light is the :root; `.dark` on <html> is set
+ * before first paint by the inline script in app/layout.tsx.
+ *
+ * Trading meaning keeps its own names so a component never has to guess:
+ * profit = success, loss = destructive, warning, info (a quiet slate for
+ * « simulated / informational »). See context/frontend/design_system.md.
  */
 :root {
-  --radius: 0.75rem;
+  --radius: 0.625rem;
 
-  --background: #0b0d0c;
-  --foreground: #edf1ef;
-  --card: #121615;
-  --card-foreground: #edf1ef;
-  --popover: #151a18;
-  --popover-foreground: #edf1ef;
-  --primary: #a3efcc;
-  --primary-foreground: #07120d;
-  --secondary: #1a1f1d;
-  --secondary-foreground: #e3e8e6;
-  --muted: #181d1b;
-  --muted-foreground: #8b9591;
-  --accent: #1c2220;
-  --accent-foreground: #edf1ef;
-  --destructive: #e7766e;
-  --border: rgb(255 255 255 / 0.07);
-  --input: rgb(255 255 255 / 0.1);
-  --ring: rgb(163 239 204 / 0.45);
+  --background: #ffffff; /* 0 0% 100% */
+  --foreground: #18181b; /* 240 6% 10% */
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
 
-  --chart-1: #a3efcc;
-  --chart-2: #e5c47f;
-  --chart-3: #6bbf9c;
-  --chart-4: #8b9591;
-  --chart-5: #e7766e;
+  /* The blue-cast near-black: action surfaces only. */
+  --primary: #151320; /* 249 27% 10% */
+  --primary-foreground: #fafafa;
 
-  --sidebar: #0d100f;
-  --sidebar-foreground: #a9b3af;
-  --sidebar-primary: #a3efcc;
-  --sidebar-primary-foreground: #07120d;
-  --sidebar-accent: #171c1a;
-  --sidebar-accent-foreground: #f1f5f3;
-  --sidebar-border: rgb(255 255 255 / 0.06);
-  --sidebar-ring: rgb(163 239 204 / 0.45);
+  --secondary: #f3f3f4; /* 240 5% 95.5% */
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5; /* 240 5% 96% */
+  /* 240 4% 44% — 5.2:1 on white and ≥ 4.5:1 on every grey surface (muted 4.7,
+     secondary 4.7, accent 4.5, sidebar 4.8). The default design's #71717a
+     (46 %) is 4.8:1 on white but only 4.4 on `muted`, where the grey status
+     pills put their 11 px text. */
+  --muted-foreground: #6c6c75;
+  --accent: #efeff0; /* 240 5% 94% */
+  --accent-foreground: #18181b;
 
-  /* Trading semantics. */
-  --profit: #93e8c2;
-  --loss: #e7766e;
-  --warning: #e5c47f;
-  --info: #9db4c9;
+  /* Semantic colours, text-safe: the default design's values (#dc2828, #218c5a,
+     #d17205) measure 4.8 / 4.2 / 3.4 : 1 on white — and less on their own 10 %
+     tint — so small labels in them fail WCAG AA. These are darkened to
+     5.6 / 5.8 / 5.5 : 1 (4.8 / 5.0 / 4.8 on the tint). */
+  --destructive: #ca2121; /* 0 72% 46% */
+  --destructive-foreground: #ffffff;
+  --success: #1b744a; /* 152 62% 28% */
+  --success-foreground: #ffffff;
+  --warning: #9f5704; /* 32 95% 32% */
+  --warning-foreground: #ffffff;
+
+  --border: #e4e4e7; /* 240 6% 90% */
+  --input: #dfdfe2; /* 240 6% 88% */
+  --ring: #a1a1aa; /* 240 5% 65% */
+
+  /* Sidebar: a slightly rosy light grey, distinct from the content. */
+  --sidebar: #f6f4f5; /* 330 10% 96% */
+  --sidebar-foreground: #67676f; /* 240 4% 42% — 5.1:1 on the sidebar */
+  --sidebar-border: #e7e7e9;
+  --sidebar-accent: #ffffff;
+  --sidebar-accent-foreground: #18181b;
+
+  /* Dark panel: key metrics, table headers. Dark in BOTH themes. */
+  --panel: #151320;
+  --panel-foreground: #fafafa;
+  --panel-muted: #a3a1af; /* 249 8% 66% — 7.2:1 on the panel */
+  --panel-border: #2b2938;
+  /* The single highlighted chip of a panel: pale mint (#E7F3EE), not white. */
+  --panel-highlight: #e7f3ee;
+  --panel-highlight-foreground: #151320;
+  /* Semantic colours lightened to stay readable on the dark panel. */
+  --panel-success: #54d498;
+  --panel-warning: #fab742;
+  --panel-destructive: #f47171;
+
+  --chart-1: #151320;
+  --chart-2: #b9b9c0;
+  --chart-3: #259d65;
+  --chart-4: #6f6f7b;
+  --chart-5: #f98806;
+
+  /* Trading semantics (names kept from ADR 0012). */
+  --profit: var(--success);
+  --loss: var(--destructive);
+  --info: #52637a; /* 215 20% 40% — slate, barely tinted */
+}
+
+.dark {
+  --background: #0e0e10; /* 240 6% 6% */
+  --foreground: #f5f5f5;
+  --card: #141417; /* 240 6% 8.5% */
+  --card-foreground: #f5f5f5;
+  --popover: #161618;
+  --popover-foreground: #f5f5f5;
+
+  --primary: #f5f5f5; /* inverts: a light button on a dark page */
+  --primary-foreground: #18181b;
+
+  --secondary: #222225;
+  --secondary-foreground: #f5f5f5;
+  --muted: #1f1f23;
+  --muted-foreground: #9c9ca5; /* 240 5% 63% */
+  --accent: #27272b;
+  --accent-foreground: #f5f5f5;
+
+  --destructive: #ef5757; /* lightened: 5.4 : 1 on the card, 4.9 on its tint, 4.6 as a pill on a tinted row */
+  --destructive-foreground: #131316; /* dark text on the red fill: 5.4 : 1 (white would be 3.4) */
+  --success: #37be7f;
+  --success-foreground: #131316;
+  --warning: #f6a328;
+  --warning-foreground: #131316;
+
+  --border: #27272b;
+  --input: #303036;
+  --ring: #6d6d78;
+
+  --sidebar: #121214;
+  --sidebar-foreground: #9c9ca5;
+  --sidebar-border: #222225;
+  --sidebar-accent: #1f1f23;
+  --sidebar-accent-foreground: #f5f5f5;
+
+  /* The panel stays distinct from the card: page 6 %, card 8.5 %, panel 13 %. */
+  --panel: #1e1d26; /* 249 14% 13% */
+  --panel-foreground: #fafafa;
+  --panel-muted: #9f9ea9;
+  --panel-border: #32303b;
+
+  --chart-1: #ebebeb;
+  --chart-2: #52525b;
+  --chart-3: #39c684;
+  --chart-4: #94949e;
+
+  --info: #99abc2; /* 213 25% 68% */
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -82,9 +160,30 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+
+  --color-panel: var(--panel);
+  --color-panel-foreground: var(--panel-foreground);
+  --color-panel-muted: var(--panel-muted);
+  --color-panel-border: var(--panel-border);
+  --color-panel-success: var(--panel-success);
+  --color-panel-warning: var(--panel-warning);
+  --color-panel-destructive: var(--panel-destructive);
+  --color-panel-highlight: var(--panel-highlight);
+  --color-panel-highlight-foreground: var(--panel-highlight-foreground);
 
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -92,57 +191,41 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-
   --color-profit: var(--profit);
   --color-loss: var(--loss);
-  --color-warning: var(--warning);
   --color-info: var(--info);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-feature-settings:
+      "cv11",
+      "ss01";
   }
-  /* Thin, quiet scrollbars — the default ones are the loudest thing on a
-     dark screen. */
+  /* Thin, quiet scrollbars. */
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgb(255 255 255 / 0.12) transparent;
-  }
-}
-
-@layer components {
-  /* The mock-up's card: one step above the page, lit from the top. */
-  .surface-card {
-    background-image: linear-gradient(180deg, rgb(255 255 255 / 0.028), rgb(255 255 255 / 0) 55%);
-  }
-  /* A highlighted card: a mint glow in its top-right corner, as on the
-     mock-up's equity and profile cards. Reserved for the one card per screen
-     that answers the screen's question. */
-  .surface-glow {
-    background-image:
-      radial-gradient(120% 90% at 100% 0%, rgb(163 239 204 / 0.13), rgb(163 239 204 / 0) 60%),
-      linear-gradient(180deg, rgb(255 255 255 / 0.028), rgb(255 255 255 / 0) 55%);
-  }
-  .surface-glow-loss {
-    background-image:
-      radial-gradient(120% 90% at 100% 0%, rgb(231 118 110 / 0.14), rgb(231 118 110 / 0) 60%),
-      linear-gradient(180deg, rgb(255 255 255 / 0.028), rgb(255 255 255 / 0) 55%);
+    scrollbar-color: color-mix(in oklab, var(--foreground) 22%, transparent) transparent;
   }
 }
 

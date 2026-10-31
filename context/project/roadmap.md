@@ -1,5 +1,7 @@
 # Roadmap
 
+> **Amendement du 2026-10-09 (ADR 0016).** Les chemins `lib/…`, `backend/` et `tools/mt5-observer` cités ici sont ceux de l'époque : ils sont devenus `python/trading_os/…` (voir « Ancrage actuel » en tête de chaque fiche d'outil, et la correspondance du rapport `docs/architecture/python-native-migration-report.md`). Le « hub SignalR », l'« observer » et le « Gateway » n'existent plus ; leur rôle est tenu par le cœur Python.
+
 Version 2 — 2026-09-04. L'unité de travail est **l'outil**, groupé en **vagues**. Les phases numérotées de la série 1 n'existent plus (ADR 0006).
 
 Effort en jours de travail effectif, à la louche. Valeur = impact quotidien réel, 1 à 5.
@@ -139,7 +141,7 @@ Hors plateforme, construisibles isolément, sans dépendance à l'avancement des
 
 ## Hors périmètre, volontairement
 
-- Bot d'exécution autonome, générateur de signaux IA, copy-trading.
+- Générateur de signaux IA, copy-trading. (« Bot d'exécution autonome » est sorti de cette liste le 2026-09-26 : l'ADR 0015 autorise l'exécution autonome de la stratégie que l'utilisateur configure lui-même, dans des limites automatiques — jamais d'une stratégie inventée ou optimisée.)
 - Nouvelle recherche d'edge, optimiseur de stratégie, backtester.
 - Scraper ForexFactory.
 - Dashboard de marché temps réel dupliquant MT5.

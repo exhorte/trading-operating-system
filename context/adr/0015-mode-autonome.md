@@ -1,10 +1,14 @@
 # ADR 0015 — Mode autonome : le Trading OS exécute la stratégie configurée
 
-Date : 2026-09-25. Statut : **proposé** — en attente de l'accord nommé de
-l'utilisateur (« J'approuve l'ADR 0015 »). Supersède la clause « Aucun mode
-AUTO dans ce chantier » de l'ADR 0010. Amende l'ADR 0001 (« l'humain décide
-et déclenche ») et le principe 6 de la charte (« aucun ordre n'est envoyé
-sans qu'un humain l'ait déclenché »).
+> **Chemins déplacés (2026-10-09, ADR 0016).** `lib/analysis/` est devenu `python/trading_os/domain/market/analysis/`, `lib/risk/` `python/trading_os/domain/risk/` : le principe de cet ADR est inchangé.
+
+Date : 2026-09-25. Statut : **accepté le 2026-09-26** — accord nommé de
+l'utilisateur : « J'approuve l'ADR 0015 » (voir « Accord » en fin
+d'ADR) ; **amendé le même jour** (spread, levée des limites de perte,
+arrêts de stratégie : voir « Amendement » en fin d'ADR). Supersède la clause « Aucun mode AUTO dans ce chantier » de l'ADR
+0010. Amende l'ADR 0001 (« l'humain décide et déclenche ») et le principe 6
+de la charte (« aucun ordre n'est envoyé sans qu'un humain l'ait
+déclenché »).
 
 ## Contexte
 
@@ -58,8 +62,8 @@ des limites automatiques.**
 | Risk Engine exécuté dans l'onglet du navigateur | **Côté serveur**, et il fait foi : aucun ordre sans son accord. |
 | Taille de position et risque par trade | Gardés : la taille est calculée depuis les spécifications du courtier, le risque par trade est fixé par l'utilisateur. |
 | Stop posé chez le courtier dès l'ouverture | Gardé : il protège même si tout le reste tombe. |
-| Perte maximale du jour et perte maximale totale | Gardées : l'autonomie est suspendue jusqu'au jour de trading suivant, sans clic. |
-| Nombre maximal de trades et de positions, liste des symboles, spread maximal par symbole | Gardés, valeurs fixées par l'utilisateur. |
+| Perte maximale du jour et perte maximale totale | Gardées : l'autonomie est suspendue jusqu'au jour de trading suivant, sans clic. *Amendé : levée par accusé.* |
+| Nombre maximal de trades et de positions, liste des symboles, spread maximal par symbole | Gardés, valeurs fixées par l'utilisateur. *Amendé : pas de plafond de spread fixe, la porte de coût de S01 en tient lieu.* |
 | Arrêt d'urgence | Gardé : il coupe l'autonomie, et c'est l'utilisateur qui la relance. |
 | Homme mort | **Nouveau** : sans nouvelles du Trading OS, l'agent n'ouvre plus rien, et les stops restent chez le courtier. |
 | Idempotence, état `UNKNOWN`, instance unique, `ACCOUNT_MISMATCH` | Gardés (ADR 0010). |
@@ -106,3 +110,43 @@ des limites automatiques.**
   `02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`.
 - **Claude ne déclenche jamais lui-même l'autonomie, ni aucun ordre.** Les
   essais sur le compte réel sont faits par l'utilisateur.
+
+## Accord
+
+Le 2026-09-26, dans un même message, l'utilisateur écrit « J'approuve
+l'ADR 0015 », confirme la stratégie (« je confirme S01 ») et donne ses
+premières valeurs de limites pour le compte réel. Les valeurs sont notées
+mot pour mot dans `context/project/session-log.md` (2026-09-26), avec ce
+qui reste à préciser. Elles n'appartiennent pas à cet ADR : elles vivront
+dans la configuration de l'autonomie (incrément I7), compte par compte, et
+peuvent changer sans le remplacer.
+
+Cet accord n'ouvre rien à lui seul : l'autonomie n'existe pas encore dans
+le code. Chaque élargissement se construit dans son incrément (I4 à I8 de
+l'étude), après l'ADR ou la fiche qui le précède.
+
+## Amendement du 2026-09-26
+
+Accord de l'utilisateur, mot pour mot : « je valide tes decisions », sur
+l'analyse `02_Plan_Projet/regles-deduites-scalp-marco-2026-09-26.md`, après
+« ne pas definir de regle de lmite de spread laisser et s'adapter au regle
+du broker ».
+
+- **Spread.** Pas de plafond fixe par symbole. La seule règle de spread est
+  la porte de coût de S01 — coût aller-retour ÷ distance du stop, sous le
+  seuil du profil de compte —, évaluée à la décision et au remplissage.
+- **Levée des limites de perte.** La perte du jour, la perte totale et le
+  nombre maximal de trades atteints suspendent l'autonomie jusqu'à l'accusé
+  de l'utilisateur (T02c), et non jusqu'au jour suivant sans clic. À 0,1 %
+  de risque par trade, ces limites ne peuvent être atteintes que par un
+  dysfonctionnement : se relancer seul le laisserait recommencer. Ce qui
+  arrive en marche normale (pause sur pertes consécutives, fin de séance)
+  se lève seul.
+- **Deux arrêts de stratégie**, levés seulement par accusé : un drawdown
+  exprimé en R depuis le plus haut (20 R à ce jour) et une revue après un
+  échantillon de trades autonomes (50 à ce jour ; moins de 20 gagnants,
+  l'autonomie reste coupée). Ils arrêtent, ils ne choisissent aucun
+  paramètre : l'ADR 0002 est inchangé.
+
+Les valeurs vivent, comme les autres, dans la configuration de l'autonomie
+(I7).

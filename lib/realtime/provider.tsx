@@ -10,98 +10,73 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type { ConnectionState } from "@/lib/contracts/enums";
-import { MockRealtimeClient } from "./mock-client";
-import { SignalRRealtimeClient } from "./signalr-client";
-import type { RealtimeClient } from "./client";
-import { CockpitStore, EMPTY_COCKPIT_SNAPSHOT, type CockpitSnapshot } from "./store";
+import type { CockpitEvent, EventType } from "@/lib/api/generated";
+import { CockpitController } from "./controller";
+import { CockpitStore, EMPTY_COCKPIT_SNAPSHOT, type CockpitSnapshot, type ConnectionState } from "./store";
 
 const CockpitStoreContext = createContext<CockpitStore | null>(null);
 
-interface RealtimeActions {
-  triggerKillSwitch: () => void;
-  acknowledgeLockout: (lockoutId: string) => void;
-  refreshAccountSettings: () => void;
+interface CockpitActions {
+  engageKillSwitch: () => Promise<void>;
+  acknowledgeLockout: (lockoutId: string) => Promise<void>;
 }
 
-const RealtimeActionsContext = createContext<RealtimeActions | null>(null);
+const CockpitActionsContext = createContext<CockpitActions | null>(null);
 
-// Mock is the default everywhere. NEXT_PUBLIC_REALTIME_SOURCE="backend" opts
-// into the production path: SignalR to the ASP.NET Core gateway (ADR 0009).
-// The former "live" browser-side translation prototype (ADR 0007) was
-// superseded by the backend and deleted after live validation.
-function createClient(store: CockpitStore): RealtimeClient {
-  if (process.env.NEXT_PUBLIC_REALTIME_SOURCE === "backend") {
-    const hubUrl =
-      process.env.NEXT_PUBLIC_BACKEND_HUB_URL ?? "http://localhost:5080/hub/cockpit";
-    return new SignalRRealtimeClient(store, hubUrl);
-  }
-  return new MockRealtimeClient(store);
-}
-
+/**
+ * The cockpit's live link to the core, for the whole app: one store, one stream. The page never talks to MT5 or to a broker —
+ * only to the core (ADR 0016), which is the one place a trading fact is decided.
+ */
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [store] = useState(() => new CockpitStore());
-  const clientRef = useRef<RealtimeClient | null>(null);
+  const [controller] = useState(() => new CockpitController(store));
 
   useEffect(() => {
-    const client = createClient(store);
-    clientRef.current = client;
-    client.start();
-    return () => {
-      client.stop();
-      clientRef.current = null;
-    };
-  }, [store]);
+    controller.start();
+    return () => controller.stop();
+  }, [controller]);
 
-  // Stable identity: the ref is what may change (reconnects, transport
-  // swaps), the action function passed down never needs to.
-  const actions = useMemo<RealtimeActions>(
+  // Stable identity: the controller is, so the functions passed down never need to change.
+  const actions = useMemo<CockpitActions>(
     () => ({
-      triggerKillSwitch: () => clientRef.current?.triggerKillSwitch(),
-      acknowledgeLockout: (lockoutId) => clientRef.current?.acknowledgeLockout(lockoutId),
-      refreshAccountSettings: () => clientRef.current?.refreshAccountSettings(),
+      engageKillSwitch: () => controller.engageKillSwitch(),
+      acknowledgeLockout: (lockoutId) => controller.acknowledgeLockout(lockoutId),
     }),
-    [],
+    [controller],
   );
 
   return (
     <CockpitStoreContext.Provider value={store}>
-      <RealtimeActionsContext.Provider value={actions}>{children}</RealtimeActionsContext.Provider>
+      <CockpitActionsContext.Provider value={actions}>{children}</CockpitActionsContext.Provider>
     </CockpitStoreContext.Provider>
   );
 }
 
-function useRealtimeActions(): RealtimeActions {
-  const actions = useContext(RealtimeActionsContext);
+function useActions(): CockpitActions {
+  const actions = useContext(CockpitActionsContext);
   if (!actions) {
-    throw new Error("realtime action hooks must be used inside <RealtimeProvider>");
+    throw new Error("cockpit action hooks must be used inside <RealtimeProvider>");
   }
   return actions;
 }
 
-/** T02a: manual kill switch — locks the account, no close_all command. */
-export function useTriggerKillSwitch(): () => void {
-  return useRealtimeActions().triggerKillSwitch;
+/** T02a: the manual kill switch — locks the account in the core's ledger; no close command exists. Rejects with the core's refusal. */
+export function useTriggerKillSwitch(): () => Promise<void> {
+  return useActions().engageKillSwitch;
 }
 
-/** T02a: acknowledge having closed positions manually. */
-export function useAcknowledgeLockout(): (lockoutId: string) => void {
-  return useRealtimeActions().acknowledgeLockout;
+/** T02a/T02c: acknowledge an untimed lockout — the only way one is lifted. */
+export function useAcknowledgeLockout(): (lockoutId: string) => Promise<void> {
+  return useActions().acknowledgeLockout;
 }
 
-/** T12 incrément 2: re-read the account settings ledger after a write. */
-export function useRefreshAccountSettings(): () => void {
-  return useRealtimeActions().refreshAccountSettings;
-}
-
-/** T02c: dismiss a live lockout-violation notice — local to this tab, not a
- *  server round-trip (the fact itself is already durably persisted). */
+/** T02c: dismiss a live lockout-violation notice — local to this tab; the fact itself is already in the journal. */
 export function useDismissLockoutViolation(): (brokerPositionId: string) => void {
   const store = useCockpitStore();
   return (brokerPositionId) => store.dismissLockoutViolation(brokerPositionId);
 }
 
-function useCockpitStore(): CockpitStore {
+export function useCockpitStore(): CockpitStore {
   const store = useContext(CockpitStoreContext);
   if (!store) {
     throw new Error("useCockpit must be used inside <RealtimeProvider>");
@@ -109,28 +84,45 @@ function useCockpitStore(): CockpitStore {
   return store;
 }
 
-/** Latest known cockpit state; re-renders on every applied realtime event. */
+/** Latest known cockpit state; re-renders when what a screen can show changes. */
 export function useCockpit(): CockpitSnapshot {
   const store = useCockpitStore();
-  return useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    () => EMPTY_COCKPIT_SNAPSHOT,
-  );
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, () => EMPTY_COCKPIT_SNAPSHOT);
 }
 
 export function useConnectionState(): ConnectionState {
   return useCockpit().connection;
 }
 
-/** True when live panels should render in a degraded/untrusted style. */
+/** True when live panels should render in a degraded/untrusted style: the link is not a live one, or the core says it is unwell. */
 export function useIsDataUntrusted(): boolean {
   const connection = useConnectionState();
   return (
     connection === "stale" ||
     connection === "degraded" ||
     connection === "disconnected" ||
-    connection === "reconnecting" ||
-    connection === "error"
+    connection === "reconnecting"
   );
+}
+
+/**
+ * Run `handler` when an event of one of these types arrives — the way a screen that reads something over HTTP learns that what
+ * it shows may have changed (a trade closed, a proposal evaluated…). The handler may change on every render; the subscription
+ * does not.
+ */
+export function useCockpitEvents(types: readonly EventType[], handler: (frame: CockpitEvent) => void): void {
+  const store = useCockpitStore();
+  const latest = useRef(handler);
+  useEffect(() => {
+    latest.current = handler;
+  });
+  const key = types.join("|");
+  useEffect(() => {
+    const wanted = new Set<string>(key === "" ? [] : key.split("|"));
+    return store.onEvent((frame) => {
+      if (wanted.has(frame.type)) {
+        latest.current(frame);
+      }
+    });
+  }, [store, key]);
 }

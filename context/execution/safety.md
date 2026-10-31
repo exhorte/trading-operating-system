@@ -25,15 +25,15 @@ stratégie déguisée dans l'EA (interdit, ADR 0010, contrainte 1).
 | **Positions simultanées maximum** | Protège contre un empilement de positions si plusieurs commandes légitimes arrivent en rafale (ex. plusieurs signaux rapprochés). | Rejet des commandes au-delà du plafond. |
 | **Stop-loss obligatoire** | Une position sans SL n'a pas de risque explicite — viole le principe 8 de la charte (« toute position a un risque explicite, une invalidation, un stop »). | Toute commande `place_order` sans `stopLoss` valide est rejetée avant `OrderSend`, jamais exécutée avec un stop ajouté après coup. |
 | **Spread maximum au moment de l'exécution** | Le spread peut s'être élargi entre la proposition et l'exécution (ouvertures de session, en particulier). Un stop très serré rend le coût réel du trade sensible au spread — c'est la porte de coût de S01 (`c = coût / distance SL`), revérifiée ici au dernier instant, pas seulement à la proposition. | Commande annulée, motif journalisé, jamais exécutée à un coût dégradé silencieusement. |
-| **Kill switch local** | Doit fonctionner même si le backend est injoignable — sinon ce n'est pas un kill switch, c'est un espoir. Local veut dire : une commande locale à l'agent, pas un aller-retour réseau. | Aucune commande n'est exécutée tant que le kill switch local est armé, quel que soit l'état du lien avec le gateway. |
-| **`accountId` de la commande ≠ compte du terminal** | Isolation des comptes (ADR 0010) : un environnement par compte (terminal, instance d'agent, magic number, profil de risque). Une commande mal adressée ne doit jamais s'exécuter « au mieux » sur le mauvais compte. | Rejet `ACCOUNT_MISMATCH` (`lib/contracts/execution/reject-reason.ts`) — voir `protocol.md`. |
+| **Kill switch local** | Doit fonctionner même si le cœur est injoignable — sinon ce n'est pas un kill switch, c'est un espoir. Local veut dire : une commande locale à l'agent, pas un aller-retour réseau. | Aucune commande n'est exécutée tant que le kill switch local est armé, quel que soit l'état du lien avec le cœur. |
+| **`accountId` de la commande ≠ compte du terminal** | Isolation des comptes (ADR 0010) : un environnement par compte (terminal, instance d'agent, magic number, profil de risque). Une commande mal adressée ne doit jamais s'exécuter « au mieux » sur le mauvais compte. | Rejet `ACCOUNT_MISMATCH` (`RejectCode`, `python/trading_os/domain/execution/reasons.py`) — voir `protocol.md`. |
 | **Magic number propre à l'environnement** | Distingue les positions gérées par le Trading OS des positions manuelles du même terminal. Sans lui, la réconciliation (EA-06) ne peut pas savoir laquelle des positions ouvertes lui appartient. | Toute position ouverte par l'agent porte ce magic number ; une position sans ce magic number est traitée comme externe, jamais comme une commande du Trading OS (EA-06, `EXTERNAL_POSITION`). |
 
 ## Ce que ces barrières ne sont pas
 
 - Elles ne remplacent pas le Risk Engine : une commande qui n'a jamais été
-  approuvée par le Risk Engine n'atteint pas l'agent (contrat côté OS,
-  `buildPlaceOrderCommand` ne construit rien sans `riskApprovalId`).
+  approuvée par le Risk Engine n'atteint pas l'agent (contrat côté cœur : le moteur
+  d'exécution refuse toute commande sans décision de risque approuvée, liée au même compte et non expirée).
 - Elles ne décident jamais d'attendre un meilleur prix, d'ajuster une entrée,
   ou de modifier un stop en dehors d'un événement significatif — l'agent
   reste orienté événement, pas tick (contrainte FTMO citée dans le prompt de
@@ -51,3 +51,23 @@ implémente chaque barrière comme un contrôle local avant `OrderSend`, et par
 EA-06 (réconciliation), qui s'appuie sur le magic number et
 `ACCOUNT_MISMATCH` pour distinguer les positions gérées des positions
 externes.
+
+## État de l'implémentation (2026-09-26, après I1)
+
+| Barrière | Où | Code de refus |
+|---|---|---|
+| Whitelist de symboles | `ValidateOrderCommand`, `InpAllowedSymbolsCsv` | `SYMBOL_MISMATCH` |
+| Volume maximum | `ValidateOrderCommand`, `InpMaxVolumePerOrder` | `VOLUME_LIMIT` |
+| Positions simultanées | `ValidateOrderCommand`, `InpMaxOpenPositions` (toutes positions du terminal) | `POSITIONS_LIMIT` |
+| Stop-loss obligatoire | `ValidateOrderCommand` | `STOP_MISSING` |
+| Spread maximum | `ValidateOrderCommand`, **par symbole en unités de prix** depuis I1 (`InpMaxSpreadCsv`) ; symbole sans entrée = refus | `SPREAD_LIMIT_MISSING`, `SPREAD_TOO_WIDE` |
+| Kill switch local | **Existe depuis I1** : fichier dans `MQL5\Files` (bouton du graphique, `control.halt` qui ne peut que le poser, ou dépôt manuel de `tradingos_halt.flag`) ; levé seulement par un humain sur le graphique ; tient le cœur éteint | `HALTED` |
+| Compte de la commande ≠ terminal | `HandleOrderCommand`, contre le **login réel** du terminal depuis I1 | `ACCOUNT_MISMATCH` |
+| Identité attendue (nouveau, I1) | `InpAccountId` facultatif ; s'il diffère du login, l'agent reste chargé et refuse tout | `IDENTITY_REFUSED` |
+| Magic number | `InpMagicNumber` > 0, porté par tout ordre ; positions externes signalées (EA-06) | — |
+| **Homme mort** (nouveau, build 1.11) | `ValidateOrderCommand`, premier contrôle : aucun `control.ping` du cœur depuis `InpDeadManSeconds` (30 s ; 5 à 600, jamais désactivable), ou aucun encore sur la connexion en cours. Seul le ping compte comme preuve de vie, pas un ordre reçu. Un refus seulement : il n'ouvre ni ne ferme rien, et ne touche jamais un stop déjà posé chez le courtier | `DEAD_MAN` |
+| Instance unique (nouveau, I1) | variable globale temporaire du terminal + liste des graphiques ; la seconde instance se retire | — |
+
+Toutes ces barrières s'appliquent avant l'accusé `ACCEPTED`, en mode
+`observe` comme ailleurs : une commande refusée ne produit jamais de
+`SIMULATED`.

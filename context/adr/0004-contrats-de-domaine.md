@@ -1,5 +1,7 @@
 # ADR 0004 — Contrats de domaine et wire MT5
 
+> **Amendement du 2026-10-09 (ADR 0016).** Le modèle canonique n'est plus du TypeScript portable avec un miroir C# : ce sont les modèles pydantic de `python/trading_os/domain/`, dont le cockpit reçoit une version **générée** (`lib/api/generated.ts`). Il n'y a plus de Gateway, d'enveloppe interne ni de wire WSS : le lien avec l'agent est un socket TCP local (`context/realtime/mt5_wire_protocol.md`). L'invariant de non-anticipation tient — il est testé sur le moteur d'analyse Python.
+
 Date : 2026-09-04. Statut : accepté. Consolide les anciens ADR 0004 et 0005, sans changement technique.
 
 ## Décision

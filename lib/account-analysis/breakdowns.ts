@@ -14,7 +14,7 @@
  * that judges anything.
  */
 
-import type { JournalTrade } from "@/lib/journal/types";
+import type { JournalTrade } from "@/lib/api/generated";
 
 export interface Bucket {
   label: string;
