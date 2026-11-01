@@ -19,13 +19,15 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from pydantic import Field, SecretStr
 
 from trading_os.domain.accounts import anti_tilt
+from trading_os.domain.accounts import discovery as broker_facts
 from trading_os.domain.accounts.anti_tilt import GuardDecision
+from trading_os.domain.accounts.discovery import DiscoveredAccount, DiscoveredSymbol
 from trading_os.domain.accounts.models import (
     Account,
     AccountRules,
@@ -65,7 +67,7 @@ from trading_os.domain.events import (
 )
 from trading_os.domain.primitives import DomainModel
 from trading_os.infrastructure.database.repositories import Repositories
-from trading_os.infrastructure.mt5.client import Mt5AccountInfo, Mt5Client
+from trading_os.infrastructure.mt5.client import MARGIN_MODES, TRADE_MODES, Mt5AccountInfo, Mt5Client
 from trading_os.infrastructure.mt5.protocol import WorkerError
 from trading_os.infrastructure.security.credentials import CredentialStore
 from trading_os.shared.errors import Conflict, NotFound, TradingOsError, Unavailable, ValidationFailed
@@ -75,6 +77,7 @@ from trading_os.shared.time import Clock
 logger = logging.getLogger(__name__)
 
 ACTIVE_ACCOUNT_KEY = "active_account"
+DEPOSIT_HISTORY_START = datetime(2010, 1, 1, tzinfo=UTC)  # before any MT5 account existed
 
 # A guard answers « may this account be switched away from / disconnected right now? » with a refusal, or None.
 Guard = Callable[[str], Awaitable[str | None]]
@@ -100,6 +103,9 @@ class AccountCreate(DomainModel):
     symbol_suffix: str | None = None
     reference_balance: float | None = Field(default=None, gt=0)  # direct accounts: the capital committed
     challenge: FtmoChallenge | None = None  # prop accounts
+    # The provider whose rules to rehearse when it is not the broker's: an Exness *demo* account can follow the FTMO
+    # profile (ADR 0020). Never on a real account: a prop profile on real money would be a lie about the contract.
+    rules_profile: Provider | None = None
 
 
 @dataclass
@@ -228,7 +234,7 @@ class AccountService:
         """The account with the rules that govern it *now* (ledger resolved against the current trading-day anchor)."""
         account = await self._repos.accounts.require(account_id)
         resolution = await self._resolution(account)
-        ceilings = provider_ceilings(account.provider, resolution.rules.trading_rules.challenge)
+        ceilings = provider_ceilings(resolution.rules.trading_rules.challenge)
         return self._view(account.with_rules(apply_provider_ceilings(resolution.rules, ceilings)))
 
     async def _resolution(self, account: Account) -> RuleResolution:
@@ -239,8 +245,14 @@ class AccountService:
     # ------------------------------------------------------------------------------------------ registry
     async def create(self, spec: AccountCreate) -> Account:
         profile = provider_profile(spec.provider)
+        rules_provider = spec.rules_profile or spec.provider
+        if rules_provider is not spec.provider and spec.environment is Environment.LIVE:
+            raise ValidationFailed(
+                f"the {rules_provider.value} rules profile can be rehearsed on a demo account only, not on a real one",
+                code="rules_profile_demo_only",
+            )
         rules = default_rules(
-            spec.provider,
+            rules_provider,
             ProfileParams(
                 account_type=spec.account_type, reference_balance=spec.reference_balance, challenge=spec.challenge
             ),
@@ -306,6 +318,115 @@ class AccountService:
         await self._repos.accounts.set_trading_enabled(account_id, enabled)
         await self._events.publish(AccountTradingToggled(account_id=account_id, enabled=enabled))
         return await self.get(account_id)
+
+    # ------------------------------------------------------------------------------------------ discovery
+    async def discover(
+        self, *, login: int, server: str, password: SecretStr | None = None, terminal_path: str | None = None
+    ) -> DiscoveredAccount:
+        """Attach to the terminal with these identifiers, **read** what the broker says about the account, detach, forget.
+
+        Read-only by construction (the worker's whitelist has no order function), nothing is registered and no password is kept:
+        the terminal stays logged in, so registering and connecting afterwards needs none. Refused while another account holds
+        the same terminal: one terminal answers for one account at a time."""
+        now = self._clock.now()
+        rules = default_rules(Provider.EXNESS, ProfileParams(account_type=AccountType.DIRECT))
+        probe = Account(
+            id=f"probe-{login}", name="probe", provider=Provider.EXNESS, account_type=AccountType.DIRECT, login=login,
+            server=server, environment=Environment.DEMO, terminal_path=terminal_path, risk_profile=rules.risk_profile,
+            trading_rules=rules.trading_rules, execution_profile=rules.execution_profile, created_at=now,
+        )  # fmt: skip
+        async with self._lock:
+            clash = self._terminal_clash(probe)
+            if clash is not None:
+                raise Conflict(
+                    f"account {clash} is connected on the same terminal: disconnect it first", code="terminal_in_use"
+                )
+            client = self._factory(probe)
+            try:
+                info = await client.connect(login=login, server=server, terminal_path=terminal_path, password=password)
+                return await self._read_facts(client, info, terminal_path, now)
+            finally:
+                with contextlib.suppress(TradingOsError):
+                    await client.disconnect()  # the worker of a probe never lingers; the terminal keeps its login
+
+    async def _read_facts(
+        self, client: Mt5Client, info: Mt5AccountInfo, terminal_path: str | None, now: datetime
+    ) -> DiscoveredAccount:
+        warnings: list[str] = []
+        positions, orders = await client.positions(), await client.orders()
+        names = await client.symbol_names()
+        spellings = {c: n for c in broker_facts.INSTRUMENTS if (n := broker_facts.broker_name_of(c, names)) is not None}
+        for canonical in broker_facts.INSTRUMENTS:
+            if canonical not in spellings:
+                warnings.append(f"{canonical} is not among this broker's symbols")
+        suffix, odd = broker_facts.suffix_of(spellings)
+        warnings += odd
+
+        symbols: list[DiscoveredSymbol] = []
+        for canonical, broker_name in spellings.items():
+            await client.select_symbol(broker_name)  # a symbol outside Market Watch has no spec or quote to read
+            spec = await client.symbol_spec(broker_name)
+            if spec is None:
+                warnings.append(f"{broker_name}: the broker gave no specification")
+                continue
+            tick = await client.tick(broker_name)
+            symbols.append(
+                DiscoveredSymbol(
+                    canonical=canonical,
+                    broker_name=broker_name,
+                    volume_min=spec.volume_min,
+                    volume_step=spec.volume_step,
+                    contract_size=spec.contract_size,
+                    tick_size=spec.tick_size,
+                    tick_value=spec.tick_value,
+                    digits=spec.digits,
+                    spread=tick.spread if tick else None,
+                    tradable=spec.trade_allowed,
+                )
+            )
+
+        provider = broker_facts.recognise_provider(info.server, info.company)
+        environment = broker_facts.environment_of(info.trade_mode)
+        if provider is None:
+            warnings.append("neither the server nor the company is Exness or FTMO: choose the provider yourself")
+        if environment is None:
+            warnings.append("the account's mode (demo / real) is unknown: choose the environment yourself")
+        if not info.trade_allowed:
+            warnings.append("trading is not allowed on this account")
+        if not info.trade_expert:
+            warnings.append("automated trading is off for this account: the execution agent could not place orders")
+        if MARGIN_MODES.get(info.margin_mode) != "hedging":
+            warnings.append("this is not a hedging account")
+        if positions or orders:
+            warnings.append(
+                f"{len(positions)} open position(s) and {len(orders)} pending order(s) already on the account"
+            )
+
+        return DiscoveredAccount(
+            login=info.login, server=info.server, company=info.company, currency=info.currency, leverage=info.leverage,
+            balance=info.balance, equity=info.equity, margin=info.margin, margin_free=info.margin_free,
+            margin_level=info.margin_level if info.margin > 0 else None,
+            trade_mode=TRADE_MODES.get(info.trade_mode, "unknown"),
+            margin_mode=MARGIN_MODES.get(info.margin_mode, "unknown"),
+            fifo_close=info.fifo_close, trade_allowed=info.trade_allowed, trade_expert=info.trade_expert,
+            open_positions=len(positions), pending_orders=len(orders), provider=provider, environment=environment,
+            symbol_suffix=suffix, symbols=symbols,
+            capital=broker_facts.capital_proposal(await self._first_deposit(client, now), info.balance),
+            suggested_name=broker_facts.suggested_name(provider, info.company, info.login, environment),
+            terminal_path=terminal_path, warnings=warnings,
+        )  # fmt: skip
+
+    @staticmethod
+    async def _first_deposit(client: Mt5Client, now: datetime) -> tuple[float, datetime] | None:
+        """The first balance operation in the broker's own history: the best evidence of what the account was funded with."""
+        try:
+            deals = await client.deals_between(DEPOSIT_HISTORY_START, now + timedelta(days=1))
+        except (WorkerError, Unavailable):
+            return None  # no history to read is not an error: the capital is then only proposed from the balance
+        deposits = sorted(
+            (d for d in deals if d.type == broker_facts.DEAL_TYPE_BALANCE and d.profit > 0), key=lambda d: d.time
+        )
+        return (deposits[0].profit, client.to_utc(deposits[0].time)) if deposits else None
 
     # ------------------------------------------------------------------------------------------ connections
     async def connect(self, account_id: str, password: SecretStr | None = None) -> Account:

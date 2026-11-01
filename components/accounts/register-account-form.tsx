@@ -189,8 +189,8 @@ export function RegisterAccountForm({ onRegistered }: { onRegistered?: () => voi
 
   return (
     <Panel
-      title="Enregistrer un compte"
-      description="quel compte c'est, et comment il se trade — sans mot de passe"
+      title="Enregistrer sans se connecter"
+      description="quel compte c'est et comment il se trade, à la main — pour un compte dont MT5 n'est pas encore ouvert"
       icon={Plus}
     >
       <form

@@ -117,13 +117,10 @@ class ProviderCeilings(DomainModel):
     max_drawdown_percent: float | None = None
 
 
-def provider_ceilings(provider: Provider, challenge: FtmoChallenge | None) -> ProviderCeilings:
-    if (
-        provider is Provider.FTMO
-        and challenge is not None
-        and challenge.type == "2-step"
-        and challenge.phase == "challenge"
-    ):
+def provider_ceilings(challenge: FtmoChallenge | None) -> ProviderCeilings:
+    """The ceilings of the contract the rules describe. A FTMO challenge *in the rules* is the FTMO contract, whichever broker
+    carries the account: that is what lets a demo account at another broker rehearse the FTMO profile (ADR 0020)."""
+    if challenge is not None and challenge.type == "2-step" and challenge.phase == "challenge":
         return ProviderCeilings(daily_loss_percent=5.0, max_drawdown_percent=10.0)  # sourced: FTMO MetriX exports
     return ProviderCeilings()  # TODO(FTMO-rules): verification, funded and 1-step ceilings are not sourced
 

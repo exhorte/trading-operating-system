@@ -182,6 +182,12 @@ export interface Candle {
   volume: number;
   closed: boolean;
 }
+export interface CapitalProposal {
+  amount: number;
+  source: "first_deposit" | "current_balance";
+  at: string | null;
+  reliable: boolean;
+}
 export interface CheckResult {
   checkId: string;
   label: string;
@@ -247,6 +253,7 @@ export interface CreateAccountRequest {
   symbolSuffix?: string | null;
   referenceBalance?: number | null;
   challenge?: FtmoChallenge | null;
+  rulesProfile?: Provider | null;
 }
 /** Write-only: the vault never gives a password back. */
 export interface CredentialRequest {
@@ -267,6 +274,52 @@ export interface DisarmRequest {
   target?: AutonomyMode;
   acknowledge?: boolean;
   reason?: string | null;
+}
+/** The identifiers to read an account with. The password is optional (without it the core attaches to the terminal as it is, already logged in by the trader), used for this call only, and never part of any answer. Sizes are bounded: nothing here is free text. */
+export interface DiscoverRequest {
+  login: number;
+  server: string;
+  password?: string | null;
+  terminalPath?: string | null;
+}
+export interface DiscoveredAccount {
+  login: number;
+  server: string;
+  company: string;
+  currency: string;
+  leverage: number;
+  balance: number;
+  equity: number;
+  margin: number;
+  marginFree: number;
+  marginLevel: number | null;
+  tradeMode: "demo" | "contest" | "real" | "unknown";
+  marginMode: "netting" | "exchange" | "hedging" | "unknown";
+  fifoClose: boolean;
+  tradeAllowed: boolean;
+  tradeExpert: boolean;
+  openPositions: number;
+  pendingOrders: number;
+  provider: Provider | null;
+  environment: Environment | null;
+  symbolSuffix: string | null;
+  symbols: DiscoveredSymbol[];
+  capital: CapitalProposal;
+  suggestedName: string;
+  terminalPath: string | null;
+  warnings: string[];
+}
+export interface DiscoveredSymbol {
+  canonical: string;
+  brokerName: string;
+  volumeMin: number;
+  volumeStep: number;
+  contractSize: number;
+  tickSize: number;
+  tickValue: number;
+  digits: number;
+  spread: number | null;
+  tradable: boolean;
 }
 export interface DrawdownPolicyInput {
   dailyLossLimitPercent?: number;
@@ -1033,6 +1086,14 @@ export interface Operations {
     body: CreateAccountRequest;
     response: Account;
   };
+  accounts_discover: {
+    method: "POST";
+    path: "/api/accounts/discover";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: DiscoverRequest;
+    response: DiscoveredAccount;
+  };
   accounts_preview_rules: {
     method: "POST";
     path: "/api/accounts/rules-preview";
@@ -1500,6 +1561,7 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   accounts_credentials_status: { method: "GET", path: "/api/accounts/{account_id}/credentials" },
   accounts_delete_credentials: { method: "DELETE", path: "/api/accounts/{account_id}/credentials" },
   accounts_disconnect: { method: "POST", path: "/api/accounts/{account_id}/disconnect" },
+  accounts_discover: { method: "POST", path: "/api/accounts/discover" },
   accounts_get: { method: "GET", path: "/api/accounts/{account_id}" },
   accounts_get_active: { method: "GET", path: "/api/active-account" },
   accounts_list: { method: "GET", path: "/api/accounts" },

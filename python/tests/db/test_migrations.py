@@ -98,6 +98,45 @@ async def test_the_existing_database_is_recognised_and_its_legacy_rows_kept(pg_s
         pg_server.drop_database(name)
 
 
+async def test_the_dotnet_era_bookkeeping_is_retired_not_deleted(pg_server: Server) -> None:
+    """The real database still holds the .NET backend's `schema_migrations(migration_id, checksum_sha256, applied_at)` — same
+    name as ours, other layout, one row (read from a copy of the real database on 2026-10-31). The migrator must set it aside
+    without losing the row, then work as on any database; and `status` must read it without touching it."""
+    baseline = next(m for m in discover() if m.version == "0001")
+    name = unique_name()
+    url = pg_server.create_database(name)
+    try:
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute(baseline.sql)
+            conn.execute(
+                "CREATE TABLE schema_migrations (migration_id text PRIMARY KEY, checksum_sha256 char(64) NOT NULL, "
+                "applied_at timestamptz NOT NULL DEFAULT now(), "
+                "CONSTRAINT ck_schema_migrations_checksum CHECK (checksum_sha256 ~ '^[0-9a-f]{64}$'))"
+            )
+            conn.execute(
+                "INSERT INTO schema_migrations (migration_id, checksum_sha256) "
+                "VALUES ('014_02_phase_14_2_schema_expand', repeat('a', 64))"
+            )
+        states = await status(url)  # read-only: nothing applied by this migrator, and nothing changed
+        assert states and not any(s.applied for s in states)
+        with psycopg.connect(url) as conn:
+            assert conn.execute("SELECT count(*) FROM schema_migrations").fetchone() == (1,)
+            assert conn.execute("SELECT to_regclass('schema_migrations_dotnet')").fetchone() == (None,)
+
+        assert await migrate(url) == [m.version for m in discover()]
+        with psycopg.connect(url) as conn:
+            assert conn.execute("SELECT migration_id FROM schema_migrations_dotnet").fetchall() == [
+                ("014_02_phase_14_2_schema_expand",)
+            ]  # the old row is still there
+            assert conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall() == [
+                (m.version,) for m in discover()
+            ]
+        assert await migrate(url) == []  # idempotent: nothing left to retire, nothing to apply
+        assert all(s.applied and not s.drifted for s in await status(url))
+    finally:
+        pg_server.drop_database(name)
+
+
 async def test_no_column_of_any_table_can_hold_a_secret(db: Database) -> None:
     rows = await db.fetch_all(
         "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'"

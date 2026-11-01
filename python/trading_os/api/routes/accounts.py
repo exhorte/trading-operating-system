@@ -19,12 +19,14 @@ from trading_os.api.schemas.accounts import (
     CreateAccountRequest,
     CredentialRequest,
     CredentialStatus,
+    DiscoverRequest,
     RulesPreviewRequest,
     RulesRequest,
     TradingSwitchRequest,
     UpdateAccountRequest,
 )
 from trading_os.app.dependencies import Core
+from trading_os.domain.accounts.discovery import DiscoveredAccount
 from trading_os.domain.accounts.models import Account, AccountRules, AccountSnapshot
 from trading_os.domain.accounts.profiles import ProfileParams, default_rules
 from trading_os.domain.accounts.rules_ledger import RuleVersion
@@ -47,6 +49,16 @@ async def list_accounts(c: Core) -> list[Account]:
 @router.post("", response_model=Account, status_code=201, summary="Register an account (no secret is stored)")
 async def create_account(body: CreateAccountRequest, c: Core) -> Account:
     return await c.accounts.create(AccountCreate.model_validate(body.model_dump()))
+
+
+@router.post(
+    "/discover", response_model=DiscoveredAccount,
+    summary="Read an account's facts from the broker with its identifiers (read-only; the password is used once and not kept)",
+)  # fmt: skip
+async def discover(body: DiscoverRequest, c: Core) -> DiscoveredAccount:
+    return await c.accounts.discover(
+        login=body.login, server=body.server, password=body.password, terminal_path=body.terminal_path
+    )
 
 
 @router.post(

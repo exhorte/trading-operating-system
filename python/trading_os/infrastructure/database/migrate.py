@@ -93,6 +93,37 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 """
 
 
+LEGACY_BOOKKEEPING = (
+    "schema_migrations_dotnet"  # where the .NET era's bookkeeping table is kept, untouched, once retired
+)
+
+
+async def _has_legacy_bookkeeping(conn: psycopg.AsyncConnection[tuple[object, ...]]) -> bool:
+    """The .NET backend kept ``schema_migrations(migration_id, checksum_sha256, applied_at)``: same name, other layout."""
+    found = await (
+        await conn.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = 'schema_migrations' AND column_name = 'migration_id'"
+        )
+    ).fetchone()
+    return found is not None
+
+
+async def _retire_legacy_bookkeeping(conn: psycopg.AsyncConnection[tuple[object, ...]]) -> bool:
+    """Rename the .NET era's table out of the way — **never delete a row of it** — so the Python bookkeeping can be created.
+
+    Its rows describe a schema this migrator does not own (the baseline recognises that schema as it is); they stay readable in
+    ``schema_migrations_dotnet``. The primary key's index keeps its old name on a rename and would collide with the new table's,
+    so it is renamed too. Idempotent: once retired, the legacy layout is no longer found."""
+    if not await _has_legacy_bookkeeping(conn):
+        return False
+    logger.info("retiring the .NET-era schema_migrations table to %s (rows kept)", LEGACY_BOOKKEEPING)
+    async with conn.transaction():
+        await conn.execute(f"ALTER TABLE schema_migrations RENAME TO {LEGACY_BOOKKEEPING}")
+        await conn.execute(f"ALTER INDEX IF EXISTS schema_migrations_pkey RENAME TO {LEGACY_BOOKKEEPING}_pkey")
+    return True
+
+
 async def _connect(url: str) -> psycopg.AsyncConnection[tuple[object, ...]]:
     try:
         return await psycopg.AsyncConnection.connect(url, autocommit=True, connect_timeout=5)
@@ -107,7 +138,7 @@ async def status(url: str) -> list[MigrationStatus]:
     try:
         exists = await (await conn.execute("SELECT to_regclass('public.schema_migrations') IS NOT NULL")).fetchone()
         applied: dict[str, str] = {}
-        if exists and exists[0]:
+        if exists and exists[0] and not await _has_legacy_bookkeeping(conn):
             rows = await (await conn.execute("SELECT version, checksum FROM schema_migrations")).fetchall()
             applied = {str(r[0]): str(r[1]) for r in rows}
     finally:
@@ -125,6 +156,7 @@ async def migrate(url: str, *, target: str | None = None) -> list[str]:
     try:
         await conn.execute("SELECT pg_advisory_lock(%s)", (ADVISORY_LOCK_KEY,))
         try:
+            await _retire_legacy_bookkeeping(conn)
             await conn.execute(_BOOKKEEPING)
             rows = await (await conn.execute("SELECT version, checksum FROM schema_migrations")).fetchall()
             applied = {str(r[0]): str(r[1]) for r in rows}

@@ -25,7 +25,7 @@ Ce dépôt est un **poste de travail personnel pour trader intraday**. Depuis l'
 - **Ne jamais élargir au-delà sans nouvel accord explicite et séparé** : autre chemin d'exécution, autre stratégie, autre compte, garde-fou automatique retiré. Ça ne se déduit d'aucune consigne générale d'avancement ou de « clôture ».
 - **Claude ne déclenche jamais lui-même un ordre, un armement ou l'autonomie**, ni en démo ni en réel : aucun clic sur Démarrer, Armer, Valider, Fermer tout, Arrêt d'urgence ou halt, aucune commande envoyée à un agent en live. Les essais sur le compte réel sont faits par l'utilisateur (ADR 0015 ; étude, §6).
 - Pas de martingale, pas de grille, pas de moyenne à la baisse.
-- Aucun identifiant de compte n'est jamais demandé, stocké ou partagé (règle réécrite avec l'ADR 0013, avant le code d'I3).
+- Aucun mot de passe de compte n'est stocké, journalisé ni renvoyé par le Trading OS : le formulaire « Connecter un compte » le reçoit, le cœur s'en sert une fois pour lire le compte chez le courtier, puis l'oublie ; MT5 peut garder le sien selon ses réglages (ADR 0013, 0020). **Claude ne voit, ne saisit, ne lit ni ne teste jamais le vrai mot de passe** : l'essai réel est fait par l'utilisateur dans son navigateur.
 
 ## Mode de travail
 

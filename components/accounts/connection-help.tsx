@@ -2,8 +2,8 @@ import { Plug } from "lucide-react";
 import { Panel } from "@/components/ui/panel";
 
 /**
- * How an account gets attached — the only way there is: MT5 logs in, the core
- * attaches (ADR 0003, 0013). One terminal can follow one account at a time; the
+ * How an account gets attached: MT5 is logged in (by the trader, or by the connection form
+ * with a password the core uses once and keeps nowhere), the core attaches (ADR 0013, 0020). One terminal can follow one account at a time; the
  * accounts are switched from Account, and the core refuses to switch away from
  * an account that is holding risk.
  */
@@ -12,13 +12,14 @@ export function ConnectionHelp() {
     <Panel title="Connexion MT5 — procédure" description="MT5 se connecte, le cœur s'attache" icon={Plug}>
       <ol className="flex list-decimal flex-col gap-3 pl-4 text-sm leading-snug text-muted-foreground">
         <li>
-          Dans MT5 : <span className="text-foreground">Fichier → Connexion à un compte de trading</span>, et choisis le
-          compte. Le mot de passe reste dans MT5 — le Trading OS ne le demande jamais, ne le stocke pas et ne le transmet
-          pas.
+          Le plus simple : <span className="text-foreground">Connecter un compte</span> ci-dessus — le login, le serveur et,
+          si MT5 n&apos;est pas déjà sur ce compte, son mot de passe. Le cœur s&apos;en sert une fois pour lire le compte
+          chez le courtier ; il ne le garde, ne le journalise et ne le renvoie jamais. Sinon, dans MT5 :{" "}
+          <span className="text-foreground">Fichier → Connexion à un compte de trading</span>, et choisis le compte.
         </li>
         <li>
-          Ici, <span className="text-foreground">Enregistrer un compte</span> (une seule fois par compte) : le login, le
-          serveur, le type. Le cœur en tire les limites du fournisseur, que tu ajustes ensuite.
+          Ici, <span className="text-foreground">Enregistrer sans se connecter</span> (une seule fois par compte) : le
+          login, le serveur, le type. Le cœur en tire les limites du fournisseur, que tu ajustes ensuite.
         </li>
         <li>
           Dans <span className="text-foreground">Account</span>, <span className="text-foreground">Rattacher</span> : le cœur

@@ -6,6 +6,31 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-11-01 (suite : **connexion par identifiants, lecture chez le courtier, application lancée**)
+
+Demandes, mot pour mot : « Arrete tout autre processsus et lance l'application », « Construi le formulaire de connexion
+demandant les identifiant reel soit FTM ou exness », « Extraire tout les informations liers compte (le capital, l'effet de
+levier, ..., ) directement chez le courtier une fois que nous avons les identifiants », « Etant donner que les regle sont les
+meme pour les deux courtier on peut utilise exness pour tester le profil FTMO pour l'instant ». Réalise l'incrément **I3** de
+l'ADR 0013 (accord nommé du 2026-09-25), ADR 0020.
+
+**Fait** — rien de commité, aucun ordre, `OBSERVE` :
+- Formulaire « Connecter un compte » (Settings) → `POST /api/accounts/discover` : lit société, levier, solde, équité, marge, mode,
+  symboles (suffixe, lot min, contrat, tick, spread) ; capital initial **proposé puis confirmé** par l'utilisateur ; fournisseur
+  reconnu depuis les noms du courtier ; profil FTMO répétable sur une démo (`rules_profile`, démo seulement).
+- Migrateur : l'ancienne table `schema_migrations` de l'ère .NET est **renommée, pas vidée** (remplace la modification non
+  commitée destructive). Schéma 0001 à 0004 appliqué à la vraie base **après sauvegarde `pg_dump -Fc` relue** (30,7 Mo,
+  `exports/backups/`) ; données intactes.
+- Application lancée sur **3001 / 8001 / 5434** : l'arrêt des conteneurs d'autres projets qui tiennent 3000, 8000 et 5433 a été
+  **refusé par la couche de permissions** et n'a pas été contourné ; la base du projet (conteneur recréé, volume intact) lit
+  `TRADINGOS_DB_PORT`.
+- Vérifié dans le navigateur intégré, sans mot de passe, sur la démo Exness : toutes les valeurs lues sont les vraies.
+
+**Pas fait** : le chemin avec mot de passe n'est éprouvé que contre le terminal simulé (ADR 0013 : l'essai réel est à
+l'utilisateur) ; « Enregistrer et rattacher » non cliqué ; `scripts/start.ps1` inchangé (ports par défaut).
+
+---
+
 ## 2026-11-01 (**phase 0 et phase 1 de la mission « Trading OS autonome » : Risk Engine, ADR 0019**)
 
 Demande, mot pour mot (extraits de la mission) : « Faire évoluer Trading Operating System vers une plateforme de trading

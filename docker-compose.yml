@@ -13,11 +13,12 @@ services:
     image: timescale/timescaledb:latest-pg17
     container_name: tradingos-timescaledb
     ports:
-      # 5433 on the host: avoids colliding with any locally installed Postgres.
+      # 5433 on the host by default (TRADINGOS_DB_PORT to change it): avoids colliding with any locally installed Postgres,
+      # and lets the database start on another port while something else holds 5433 (the matching DATABASE_URL names it).
       # Loopback only — published on 0.0.0.0 until 2026-09-25, which let any
       # device on the LAN read and write the trading database with the dev
       # password below.
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:${TRADINGOS_DB_PORT:-5433}:5432"
     environment:
       POSTGRES_DB: tradingos
       POSTGRES_USER: tradingos

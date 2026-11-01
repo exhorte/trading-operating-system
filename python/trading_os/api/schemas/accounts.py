@@ -31,6 +31,17 @@ class ConnectRequest(SecretRequest):
     password: SecretStr | None = None
 
 
+class DiscoverRequest(SecretRequest):
+    """The identifiers to read an account with. The password is optional (without it the core attaches to the terminal as it is,
+    already logged in by the trader), used for this call only, and never part of any answer. Sizes are bounded: nothing here
+    is free text."""
+
+    login: int = Field(gt=0, le=2**53)
+    server: str = Field(min_length=1, max_length=100)
+    password: SecretStr | None = Field(default=None, max_length=256)
+    terminal_path: str | None = Field(default=None, max_length=260)
+
+
 class CredentialRequest(SecretRequest):
     """Write-only: the vault never gives a password back."""
 

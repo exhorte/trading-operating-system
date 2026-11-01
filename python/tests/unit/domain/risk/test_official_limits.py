@@ -285,7 +285,7 @@ class TestProviderRules:
 
     def test_provider_ceilings_clamp_looser_internal_limits(self) -> None:
         ftmo_challenge = FtmoChallenge(type="2-step", account_size=10_000, phase="challenge")
-        ceilings = provider_ceilings(Provider.FTMO, ftmo_challenge)
+        ceilings = provider_ceilings(ftmo_challenge)
         assert (ceilings.daily_loss_percent, ceilings.max_drawdown_percent) == (5.0, 10.0)
         loose = AccountRules(
             risk_profile=RiskProfile(
@@ -304,20 +304,18 @@ class TestProviderRules:
             execution_profile=ExecutionProfile(),
         )
         challenge = FtmoChallenge(type="2-step", account_size=10_000, phase="challenge")
-        assert apply_provider_ceilings(strict, provider_ceilings(Provider.FTMO, challenge)) is not None
+        assert apply_provider_ceilings(strict, provider_ceilings(challenge)) is not None
         assert (
-            apply_provider_ceilings(
-                strict, provider_ceilings(Provider.FTMO, challenge)
-            ).risk_profile.drawdown.daily_loss_limit_percent
+            apply_provider_ceilings(strict, provider_ceilings(challenge)).risk_profile.drawdown.daily_loss_limit_percent
             == 2.0
         )
         funded = FtmoChallenge(type="1-step", account_size=10_000, phase="funded")
-        assert provider_ceilings(Provider.FTMO, funded).daily_loss_percent is None  # not sourced: not guessed
-        assert provider_ceilings(Provider.EXNESS, None).daily_loss_percent is None
+        assert provider_ceilings(funded).daily_loss_percent is None  # not sourced: not guessed
+        assert provider_ceilings(None).daily_loss_percent is None
         loose = strict.model_copy(
             update={"risk_profile": RiskProfile(drawdown=DrawdownPolicy(daily_loss_limit_percent=9.0))}
         )
-        assert apply_provider_ceilings(loose, provider_ceilings(Provider.EXNESS, None)) is loose
+        assert apply_provider_ceilings(loose, provider_ceilings(None)) is loose
 
     def test_the_position_limit_is_the_strictest_of_profile_and_provider(self) -> None:
         profile = RiskProfile(positions=PositionLimits(max_open_positions=2))

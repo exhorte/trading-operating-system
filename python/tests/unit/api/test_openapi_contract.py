@@ -30,7 +30,7 @@ SURFACE: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/accounts/{account_id}/snapshot"), ("GET", "/api/accounts/{account_id}/positions"),
         ("GET", "/api/accounts/{account_id}/orders"),
         ("GET", "/api/accounts/{account_id}/rules"), ("POST", "/api/accounts/{account_id}/rules"),
-        ("POST", "/api/accounts/{account_id}/rules/{version_id}/cancel"), ("POST", "/api/accounts/rules-preview"),
+        ("POST", "/api/accounts/{account_id}/rules/{version_id}/cancel"), ("POST", "/api/accounts/rules-preview"), ("POST", "/api/accounts/discover"),
         ("GET", "/api/accounts/{account_id}/credentials"), ("PUT", "/api/accounts/{account_id}/credentials"),
         ("DELETE", "/api/accounts/{account_id}/credentials"),
         ("GET", "/api/active-account"), ("PUT", "/api/active-account"),

@@ -176,6 +176,50 @@ async def test_a_validation_error_on_a_secret_route_never_echoes_what_was_sent(a
     assert (await api.put("/api/accounts/exness-1000002/credentials", {"password": ""})).status_code == 422
 
 
+# ------------------------------------------------------------------------------------------------------ discovery (ADR 0020)
+
+
+DISCOVER = {"login": 1_000_002, "server": "Exness-MT5Trial", "terminalPath": "C:/MT5/exness-1000002"}
+
+
+async def test_discovery_answers_with_the_brokers_facts_and_registers_nothing(api: Api) -> None:
+    before = (await api.get("/api/accounts")).json()
+    response = await api.post("/api/accounts/discover", {**DISCOVER, "password": "pw-1000002"})
+    assert response.status_code == 200, response.text
+    found = response.json()
+    assert found["login"] == 1_000_002 and found["provider"] == "EXNESS" and found["environment"] == "DEMO"
+    assert found["balance"] == 10_000.0 and found["capital"]["source"] == "current_balance"
+    assert "pw-1000002" not in response.text
+    assert (await api.get("/api/accounts")).json() == before
+
+
+async def test_discovery_with_a_wrong_password_is_a_refusal_that_does_not_contain_it(
+    api: Api, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.DEBUG):
+        response = await api.post("/api/accounts/discover", {**DISCOVER, "password": SENTINEL})
+    assert response.status_code == 502 and response.json()["code"] == "login_failed"
+    assert SENTINEL not in response.text and SENTINEL not in caplog.text
+    assert SENTINEL not in await everything_the_api_says(api)
+
+
+async def test_discovery_never_echoes_what_was_sent_when_the_request_is_invalid(api: Api) -> None:
+    for body in (
+        {**DISCOVER, "login": "abc", "password": SENTINEL},
+        {**DISCOVER, "password": SENTINEL, "extra": "x"},
+        {**DISCOVER, "password": SENTINEL * 20},  # longer than a password can be
+        {"server": "Exness-MT5Trial", "password": SENTINEL},
+    ):
+        response = await api.post("/api/accounts/discover", body)
+        assert response.status_code == 422 and SENTINEL not in response.text, body
+
+
+async def test_discovery_needs_the_cockpit_token(api: Api) -> None:
+    async with api.bare() as bare:
+        response = await bare.post("/api/accounts/discover", json=DISCOVER)
+    assert response.status_code in {401, 403}
+
+
 # ------------------------------------------------------------------------------------------------------ the vault
 
 
