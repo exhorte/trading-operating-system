@@ -24,7 +24,7 @@ const TONE_CLASSES: Record<NonNullable<StatTileProps["tone"]>, string> = {
 export function StatTile({ label, value, detail, tone = "default" }: StatTileProps) {
   return (
     <div className="rounded-lg border bg-muted/40 px-3.5 py-3">
-      <p className="text-[13px] text-muted-foreground">{label}</p>
+      <p className="text-[0.8125rem] text-muted-foreground">{label}</p>
       <p className={cn("mt-1 text-lg font-semibold tracking-tight tabular-nums", TONE_CLASSES[tone])}>{value}</p>
       <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{detail}</p>
     </div>

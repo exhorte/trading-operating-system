@@ -124,7 +124,7 @@ export function AccountMenu() {
         >
           <span className="hidden min-w-0 sm:block">
             <span className="block truncate text-sm font-medium leading-tight text-foreground">{name}</span>
-            <span className="block truncate text-[11px] tracking-wide text-muted-foreground uppercase">{subtitle}</span>
+            <span className="block truncate text-[0.6875rem] tracking-wide text-muted-foreground uppercase">{subtitle}</span>
           </span>
           <span className="relative shrink-0">
             <Avatar size="lg" className="ring-1 ring-border">
@@ -159,7 +159,7 @@ export function AccountMenu() {
         <div className="flex flex-col gap-2 px-2 py-2 text-xs">
           <StatusRow label="Cœur" value={link.label} tone={link.tone} />
           {connectionIssue && connection !== "connected" ? (
-            <p className="text-[11px] leading-snug text-warning">{connectionIssue}</p>
+            <p className="text-[0.6875rem] leading-snug text-warning">{connectionIssue}</p>
           ) : null}
           <StatusRow label="Persistance" value={store.label} tone={store.tone} />
           <StatusRow

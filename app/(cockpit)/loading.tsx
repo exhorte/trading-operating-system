@@ -16,7 +16,7 @@ export default function CockpitLoading() {
           <Skeleton className="h-56 rounded-xl" />
         </div>
         <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
-          <Skeleton className="h-[72px] rounded-xl" />
+          <Skeleton className="h-[4.5rem] rounded-xl" />
           <Skeleton className="h-96 rounded-xl" />
         </div>
       </div>

@@ -30,7 +30,7 @@ export function PageHeader({
     <div className={cn("flex flex-wrap items-end justify-between gap-4", className)}>
       <div className="min-w-0">
         {typeof heading === "string" ? (
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-[28px]">{heading}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.75rem]">{heading}</h1>
         ) : (
           heading
         )}

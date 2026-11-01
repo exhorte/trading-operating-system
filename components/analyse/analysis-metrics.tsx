@@ -37,8 +37,8 @@ export function AnalysisMetrics({
   if (loading || data === null) {
     return (
       <>
-        <Skeleton className="h-[72px] rounded-xl" />
-        <Skeleton className="h-[420px] rounded-xl" />
+        <Skeleton className="h-[4.5rem] rounded-xl" />
+        <Skeleton className="h-[26.25rem] rounded-xl" />
       </>
     );
   }

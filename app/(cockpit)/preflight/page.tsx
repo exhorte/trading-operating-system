@@ -105,15 +105,15 @@ export default function PreflightPage() {
           main={
             <>
               <PageHeader screen={screenAt("/preflight")} />
-              <Skeleton className="h-[160px] rounded-xl" />
+              <Skeleton className="h-[10rem] rounded-xl" />
               <div className="grid gap-4 sm:grid-cols-2">
                 {Array.from({ length: 6 }).map((_, index) => (
-                  <Skeleton key={index} className="h-[132px] rounded-xl" />
+                  <Skeleton key={index} className="h-[8.25rem] rounded-xl" />
                 ))}
               </div>
             </>
           }
-          aside={<Skeleton className="h-[320px] rounded-xl" />}
+          aside={<Skeleton className="h-[20rem] rounded-xl" />}
         />
       </div>
     );

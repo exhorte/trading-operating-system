@@ -93,8 +93,8 @@ export function NewsStatus({ onNavigate }: { onNavigate?: () => void }) {
         )}
       </span>
       <span className="flex min-w-0 flex-col leading-tight">
-        <span className={cn("truncate text-[13px] font-medium", toneText)}>{line.title}</span>
-        <span className="truncate text-[11px] text-sidebar-foreground">{line.detail}</span>
+        <span className={cn("truncate text-[0.8125rem] font-medium", toneText)}>{line.title}</span>
+        <span className="truncate text-[0.6875rem] text-sidebar-foreground">{line.detail}</span>
       </span>
     </Link>
   );

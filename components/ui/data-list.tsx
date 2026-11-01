@@ -89,7 +89,7 @@ export function Monogram({ name, className }: { name: string; className?: string
   return (
     <span
       className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold ring-1 ring-border",
+        "flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-[0.6875rem] font-semibold ring-1 ring-border",
         className,
       )}
       aria-hidden="true"

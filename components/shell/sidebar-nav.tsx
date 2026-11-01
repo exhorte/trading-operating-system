@@ -62,7 +62,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       <nav className="flex-1 overflow-y-auto px-3 py-6" aria-label="Navigation principale">
         {SECTIONS.map((section, index) => (
           <div key={section} className={cn(index > 0 && "mt-8")}>
-            <p className="px-3 text-[11px] font-medium tracking-wider text-sidebar-foreground uppercase">
+            <p className="px-3 text-[0.6875rem] font-medium tracking-wider text-sidebar-foreground uppercase">
               {SECTION_LABELS[section]}
             </p>
             <ul className="mt-3 flex flex-col gap-1">

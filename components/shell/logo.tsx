@@ -28,7 +28,7 @@ export function Logo({ className }: { className?: string }) {
       <LogoMark />
       <span className="flex flex-col leading-none">
         <span className="text-sm font-semibold tracking-tight text-foreground">Trading OS</span>
-        <span className="mt-1 text-[11px] font-medium text-muted-foreground">Poste de travail intraday</span>
+        <span className="mt-1 text-[0.6875rem] font-medium text-muted-foreground">Poste de travail intraday</span>
       </span>
     </span>
   );

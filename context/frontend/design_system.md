@@ -47,9 +47,16 @@ celles du design d'origine (voir ADR 0017) ; en sombre, le texte d'un aplat
 - **Inter** variable, auto-hébergée (`@fontsource-variable/inter`),
   `font-feature-settings: "cv11", "ss01"`. Chiffres tabulaires sur toute valeur
   numérique (`tabular-nums`, ou `.tnum`).
-- Titre de page `text-2xl sm:text-[28px] font-semibold tracking-tight` ; section
+- Titre de page `text-2xl sm:text-[1.75rem] font-semibold tracking-tight` ; section
   (h2) `text-xl` ; titre de carte `text-sm font-semibold` ; corps `text-sm` ;
-  libellé de champ `text-[13px]` gris ; micro-texte `text-xs`.
+  libellé de champ `text-[0.8125rem]` gris ; micro-texte `text-xs`.
+- **Échelle : un seul réglage.** Toute taille est en `rem` (les classes Tailwind, et les
+  quelques valeurs arbitraires — jamais de `px` pour un texte, une icône ou une hauteur de
+  squelette). `html { font-size: 106.25% }` (`app/globals.css`) fait donc grandir texte,
+  icônes et espacements ensemble : 17 px au lieu de 16 px depuis le 2026-11-01 (« un peu plus
+  grand »). Pour changer l'échelle, c'est cette ligne et nulle part ailleurs ; elle suit le
+  réglage de taille du navigateur de l'utilisateur, et les points de rupture (media queries)
+  ne bougent pas. Les valeurs `0.6875rem` / `0.8125rem` / `1.75rem` sont les anciens 11 / 13 / 28 px.
 - Rayon `--radius: 0.625rem`. Cartes, panneaux, tableaux `rounded-xl` ; boutons,
   champs, badges `rounded-md` ; navigation `rounded-lg` ; pastilles `rounded-full`.
 - Une carte = `border` + `shadow-xs` ; le panneau sombre n'a pas de bordure

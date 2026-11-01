@@ -212,6 +212,11 @@
   }
   html {
     color-scheme: light;
+    /* One knob for the scale of the whole cockpit (2026-11-01): every size is in rem (Tailwind's text-*, size-*, spacing, and
+       the few arbitrary values, converted from px), so text, icons and spacing grow together — a light zoom, not a re-layout.
+       106.25 % of the browser's size = 17 px by default, and it still follows the user's own browser setting. Breakpoints are
+       media queries, which ignore this value: the layout switches at the same widths. */
+    font-size: 106.25%;
   }
   html.dark {
     color-scheme: dark;
