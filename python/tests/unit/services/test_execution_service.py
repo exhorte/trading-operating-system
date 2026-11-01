@@ -306,8 +306,9 @@ async def test_trading_switch_halt_and_missing_agent_are_refused(h: Harness) -> 
 async def test_only_the_active_account_receives_automatic_commands(h: Harness) -> None:
     rig = await make_rig(h, AutonomyMode.ARMED)
     second = await rig.accounts.create(exness(login=8_000_008, terminal_path="C:/MT5/second"))
-    await rig.accounts.connect(second.id)
-    assert rig.accounts.active_account_id == rig.account.id
+    assert (
+        rig.accounts.active_account_id == rig.account.id
+    )  # the second one is registered, not connected: it cannot be taken
     decision = make_decision(second.id, approved=True).model_copy(
         update={"expires_at": h.clock.now() + timedelta(seconds=60)}
     )

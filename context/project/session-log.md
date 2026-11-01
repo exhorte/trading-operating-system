@@ -6,6 +6,21 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-11-01 (suite 2 : **un seul compte connecté, formulaire sur Account, plus d'écrans muets**)
+
+Demande, mot pour mot : « pourquoi les donner ne s'afiche pas et pourquoi j'ai pas de formulaire pour entree mes identifiant du
+coutier et me connecter a un compte et le formulaire de connexion doit menssioner un choix de compte a ajouter entre exness et
+FTMO et uniquement un compte doit etre connecter a la fois » (ADR 0021).
+
+**Cause** : aucun compte n'était enregistré (0 ligne en base) ; chaque écran montrait des squelettes qui ne se remplissent jamais, et
+le formulaire était en bas de Settings. **Fait** : le cœur refuse un second compte connecté (`another_account_connected`) ; le
+formulaire (choix Exness / FTMO en deux cartes) est sur Account et remplace tout écran qui lit un compte quand aucun n'est
+connecté ; entrée « Connecter un compte » dans le menu ; « Rendre actif » supprimé. La démo Exness est enregistrée et rattachée
+depuis le formulaire (sans mot de passe) : les données s'affichent. Mesuré : pytest (tous dossiers relancés) vert, 223 tests vitest,
+tsc, eslint, ruff, mypy ; les 11 écrans répondent 200. **Reste** : retirer `set_active` (route, schéma, types) dans un lot à part.
+
+---
+
 ## 2026-11-01 (suite : **connexion par identifiants, lecture chez le courtier, application lancée**)
 
 Demandes, mot pour mot : « Arrete tout autre processsus et lance l'application », « Construi le formulaire de connexion

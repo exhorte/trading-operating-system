@@ -120,23 +120,30 @@ async def test_the_jobs_run_on_the_clock_and_stop_when_the_engine_stops(h: Harne
     assert len(core.recorder.of(SystemHeartbeat)) == beats, "nothing runs after the stop"
 
 
-async def test_one_account_failing_never_skips_the_others(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_one_job_failing_never_stops_the_others(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     core = await make_core(h, settings=FAST)
-    first = await core.add_account(login=1_000_001)
-    second = await core.add_account(login=1_000_002)
-    real = core.c.positions.poll
+    await core.add_account(login=1_000_001)
 
     async def poll(account_id: str) -> bool:
-        if account_id == first.id:
-            raise RuntimeError("a defect in one account's poll")
-        return await real(account_id)
+        raise RuntimeError("a defect in the positions poll")
+
+    def failures(job: str) -> int:
+        stat = core.c.scheduler.stat(job)
+        return stat.failures if stat is not None else 0
+
+    def runs(job: str) -> int:
+        stat = core.c.scheduler.stat(job)
+        return stat.runs if stat is not None else 0
 
     monkeypatch.setattr(core.c.positions, "poll", poll)
     await core.engine.start()
     try:
-        await eventually(lambda: core.c.positions.snapshot(second.id) is not None)
+        await eventually(lambda: failures("positions") > 0)
         stat = core.c.scheduler.stat("positions")
-        assert stat is not None and stat.failures > 0 and "a defect" in (stat.last_error or "")
+        assert stat is not None and "a defect" in (stat.last_error or "")
+        # the other jobs kept running beside the broken one
+        await eventually(lambda: runs("risk") > 0 and runs("heartbeat") > 0)
+        assert failures("risk") == 0 and failures("heartbeat") == 0
     finally:
         await core.engine.stop()
 

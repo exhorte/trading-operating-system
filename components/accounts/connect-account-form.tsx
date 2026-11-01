@@ -2,8 +2,11 @@
 
 import { useRef, useState } from "react";
 import { PlugZap } from "lucide-react";
+import { cn } from "cn";
 import type { DiscoveredAccount, Environment, Provider } from "@/lib/api/generated";
 import { call } from "@/lib/api/client";
+import { useCockpit } from "@/lib/realtime/provider";
+import { connectedAccount } from "@/lib/accounts/connected";
 import {
   blockers,
   loginOf,
@@ -16,8 +19,14 @@ import {
 import { PROVIDER_NAMES } from "@/lib/accounts/profile";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { Panel } from "@/components/ui/panel";
-import { failureOf } from "./use-account-actions";
+import { failureOf, useAccountActions } from "./use-account-actions";
 import { Field, inputClass, primaryButtonClass, secondaryButtonClass } from "./form-controls";
+
+/** The two accounts the trader can add. Not a free choice of broker: each brings its own rules (ADR 0020). */
+const PROVIDER_CHOICES: Array<{ provider: Provider; text: string }> = [
+  { provider: "EXNESS", text: "Compte direct, démo ou réel" },
+  { provider: "FTMO", text: "Challenge 2-Step : sa taille est le capital initial que tu confirmes" },
+];
 
 const ENVIRONMENTS: Array<{ value: Environment; label: string }> = [
   { value: "DEMO", label: "Démo" },
@@ -106,6 +115,9 @@ function Facts({ found }: { found: DiscoveredAccount }) {
  * referrer. The core uses it once and keeps nothing. Registering and attaching afterwards need none: the terminal is logged in.
  */
 export function ConnectAccountForm({ onRegistered }: { onRegistered?: () => void }) {
+  const { accounts } = useCockpit();
+  const connected = connectedAccount(accounts);
+  const detach = useAccountActions(connected?.id ?? "");
   const passwordRef = useRef<HTMLInputElement>(null);
   const [wanted, setWanted] = useState<Wanted>({ provider: "EXNESS", rules: "own" });
   const [login, setLogin] = useState("");
@@ -177,6 +189,46 @@ export function ConnectAccountForm({ onRegistered }: { onRegistered?: () => void
   const reviewing = phase.step === "review" || phase.step === "saving";
   const issues = reviewing ? blockers(phase.found, wanted, phase.review) : [];
 
+  // One account at a time (ADR 0021): while another is connected there is nothing to fill in — it has to be detached first.
+  if (connected !== null && phase.step === "identify") {
+    return (
+      <Panel
+        title="Un compte est connecté"
+        description="un seul compte à la fois : détache-le pour en connecter un autre"
+        icon={PlugZap}
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-foreground">
+            {PROVIDER_NAMES[connected.provider]} · {connected.name} · <span className="tnum">{connected.login}</span> ·{" "}
+            {connected.server}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={detach.state.status === "busy"}
+              onClick={() => void detach.disconnect()}
+              className={secondaryButtonClass}
+            >
+              {detach.state.status === "busy" ? detach.state.what : `Détacher « ${connected.name} »`}
+            </button>
+          </div>
+          {detach.state.status === "failed" && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm leading-snug" role="alert">
+              <p className="text-destructive">{detach.state.failure.message}</p>
+              {detach.state.failure.reasons.length > 0 && (
+                <ul className="mt-1.5 list-disc pl-4 text-foreground">
+                  {detach.state.failure.reasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      </Panel>
+    );
+  }
+
   return (
     <Panel
       title="Connecter un compte"
@@ -211,21 +263,32 @@ export function ConnectAccountForm({ onRegistered }: { onRegistered?: () => void
               }
             }}
           >
-            <Field label="Fournisseur">
-              <select
-                value={wanted.provider}
-                onChange={(e) => setProvider(e.target.value as Provider)}
-                disabled={reviewing || phase.step === "reading"}
-                className={inputClass}
-              >
-                {(Object.keys(PROVIDER_NAMES) as Provider[]).map((provider) => (
-                  <option key={provider} value={provider}>
-                    {PROVIDER_NAMES[provider]}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {wanted.provider === "EXNESS" ? (
+            <div className="sm:col-span-2" role="radiogroup" aria-label="Quel compte veux-tu ajouter ?">
+              <p className="mb-2 text-[0.8125rem] text-muted-foreground">Quel compte veux-tu ajouter ?</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {PROVIDER_CHOICES.map((choice) => {
+                  const selected = wanted.provider === choice.provider;
+                  return (
+                    <button
+                      key={choice.provider}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={reviewing || phase.step === "reading"}
+                      onClick={() => setProvider(choice.provider)}
+                      className={cn(
+                        "flex flex-col gap-0.5 rounded-lg border px-4 py-3 text-left transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60",
+                        selected ? "border-foreground bg-accent" : "hover:bg-accent/60",
+                      )}
+                    >
+                      <span className="text-sm font-semibold text-foreground">{PROVIDER_NAMES[choice.provider]}</span>
+                      <span className="text-xs leading-snug text-muted-foreground">{choice.text}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {wanted.provider === "EXNESS" && (
               <Field
                 label="Règles à suivre"
                 hint="Les règles internes sont les mêmes ; le profil FTMO ajoute le contrat du challenge (−5 % / −10 %), sa taille et ses objectifs. Démo seulement."
@@ -240,8 +303,6 @@ export function ConnectAccountForm({ onRegistered }: { onRegistered?: () => void
                   <option value="ftmo">Profil FTMO Challenge 2-Step — répété sur cette démo</option>
                 </select>
               </Field>
-            ) : (
-              <div />
             )}
             <Field label="Login MT5" hint="Le numéro du compte, tel que MT5 l'affiche.">
               <input

@@ -1,10 +1,11 @@
 """Accounts: the registry, the connections, the single active account, the trading switch, and the versioned rules.
 
 * An account is *configuration* (``Account``): no secret. A connection is *runtime* (``AccountSession``): one MT5 client per
-  connected account, one terminal each. A password is handed to ``connect`` and forgotten — or read from the
-  ``CredentialStore`` the user opted into — and never stored on the session.
-* **Exactly one account is active.** Only it receives automatic commands; a human command names its ``accountId``
-  explicitly and must match the account really attached (ADR 0010).
+  connected account. A password is handed to ``connect`` and forgotten — or read from the ``CredentialStore`` the user
+  opted into — and never stored on the session.
+* **Only one account is connected at a time** (ADR 0021), and the connected account is the active one. Only it receives
+  automatic commands; a human command names its ``accountId`` explicitly and must match the account really attached
+  (ADR 0010). Connecting another account means detaching the first, which is refused while it could hide risk.
 * **Switching and disconnecting are refused while they could hide risk** (ADR 0013): open positions, pending orders, an
   armed session, a command in doubt. The services that know register a *guard*; this service asks them.
 * Rule changes go through the anti-tilt ledger: applied at once only when no session is in progress, else deferred to the
@@ -327,7 +328,7 @@ class AccountService:
 
         Read-only by construction (the worker's whitelist has no order function), nothing is registered and no password is kept:
         the terminal stays logged in, so registering and connecting afterwards needs none. Refused while another account holds
-        the same terminal: one terminal answers for one account at a time."""
+        another account: one account is connected at a time, and one terminal answers for one account."""
         now = self._clock.now()
         rules = default_rules(Provider.EXNESS, ProfileParams(account_type=AccountType.DIRECT))
         probe = Account(
@@ -336,11 +337,7 @@ class AccountService:
             trading_rules=rules.trading_rules, execution_profile=rules.execution_profile, created_at=now,
         )  # fmt: skip
         async with self._lock:
-            clash = self._terminal_clash(probe)
-            if clash is not None:
-                raise Conflict(
-                    f"account {clash} is connected on the same terminal: disconnect it first", code="terminal_in_use"
-                )
+            self._require_none_connected_but(probe.id)
             client = self._factory(probe)
             try:
                 info = await client.connect(login=login, server=server, terminal_path=terminal_path, password=password)
@@ -434,11 +431,7 @@ class AccountService:
             account = await self._repos.accounts.require(account_id)
             if account_id in self._sessions:
                 return self._view(account)
-            clash = self._terminal_clash(account)
-            if clash is not None:
-                raise Conflict(
-                    f"account {clash} is connected on the same terminal: disconnect it first", code="terminal_in_use"
-                )
+            self._require_none_connected_but(account_id)
             self._connecting.add(account_id)
             client = self._factory(account)
             try:
@@ -463,15 +456,18 @@ class AccountService:
                 account_id=account_id, server=info.server, currency=info.currency, environment=account.environment
             )
         )
-        if self.active_account_id is None:
-            await self._set_active_id(account_id)
+        await self._set_active_id(account_id)  # the only connected account is the active one (ADR 0021)
         return self._view(account)
 
-    def _terminal_clash(self, account: Account) -> str | None:
+    def _require_none_connected_but(self, account_id: str) -> None:
+        """One account at a time (ADR 0021): refused, with the account to detach first, while another one is connected."""
         for other in self._sessions.values():
-            if other.account.id != account.id and other.account.terminal_path == account.terminal_path:
-                return other.account.id
-        return None
+            if other.account.id != account_id:
+                raise Conflict(
+                    f"only one account can be connected at a time: {other.account.name!r} is connected — detach it first",
+                    code="another_account_connected",
+                    details={"connectedAccountId": other.account.id, "connectedAccountName": other.account.name},
+                )
 
     async def disconnect(self, account_id: str, *, force: bool = False, reason: str = "user") -> Account:
         async with self._lock:

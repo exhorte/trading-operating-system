@@ -5,7 +5,6 @@ import { useCockpit } from "@/lib/realtime/provider";
 import { useRules } from "@/lib/accounts/use-rules";
 import { PROVIDER_NAMES } from "@/lib/accounts/profile";
 import { ConnectionHelp } from "@/components/accounts/connection-help";
-import { ConnectAccountForm } from "@/components/accounts/connect-account-form";
 import { Field, inputClass } from "@/components/accounts/form-controls";
 import { RegisterAccountForm } from "@/components/accounts/register-account-form";
 import { RulesForm, type SavedNotice } from "@/components/accounts/rules-form";
@@ -24,14 +23,13 @@ import { SplitLayout } from "@/components/ui/split-layout";
  * Which accounts exist, and the limits each one is held to. Every change to the
  * limits goes to the core's append-only ledger, which decides at the moment
  * of writing whether it applies now or at the next trading day (the anti-tilt
- * guard): a limit never loosens mid-session (ADR 0007). A password is asked only
- * by the connection form, goes to the core and is kept nowhere (ADR 0013, 0020).
+ * guard): a limit never loosens mid-session (ADR 0007). No password is asked
+ * here: accounts are connected from Account (ADR 0013, 0020, 0021).
  *
  * Composition (ADR 0017, « formulaire avec aperçu en direct »): the guard
  * answer, the account to set and its limits on the left, the dark panel of what
  * is in force (and when a change would apply) on the right and sticky; then the
- * connection of a new account from its broker identifiers, the registration
- * without connecting, the connection procedure, the history and the
+ * registration of an account without connecting it, the connection procedure, the history and the
  * « Important » note.
  */
 export default function SettingsPage() {
@@ -86,7 +84,8 @@ export default function SettingsPage() {
             ) : (
               !selected && (
                 <Callout title="Aucun compte enregistré" variant="info">
-                  Les limites sont celles d&apos;un compte : enregistre le premier ci-dessous, puis reviens ici les écrire.
+                  Les limites sont celles d&apos;un compte : connecte le premier depuis Account (« Connecter un compte »), puis
+                  reviens ici les écrire.
                 </Callout>
               )
             )}
@@ -95,8 +94,6 @@ export default function SettingsPage() {
         aside={<SettingsMetrics account={selected} overview={overview} error={error} />}
       />
 
-      <ConnectAccountForm />
-
       <RegisterAccountForm />
 
       <ConnectionHelp />
@@ -104,9 +101,8 @@ export default function SettingsPage() {
       {selected && overview && <SettingsHistory versions={overview.versions} registeredRules={selected} />}
 
       <Callout title="Important">
-        Le seul formulaire qui touche un mot de passe est « Connecter un compte » : il va du champ au cœur, qui s&apos;en sert
-        une fois pour lire le compte chez le courtier et ne le garde ni ne le journalise (ADR 0013, 0020) ; MT5 conserve le sien
-        selon ses propres réglages. Chaque changement est inscrit dans un registre en ajout seul, et le cœur décide au moment d&apos;enregistrer s&apos;il
+        Rien ici ne demande de mot de passe : les comptes se connectent depuis Account, un seul à la fois (ADR 0013, 0021).
+        Chaque changement est inscrit dans un registre en ajout seul, et le cœur décide au moment d&apos;enregistrer s&apos;il
         s&apos;applique tout de suite ou au prochain jour de trading — une limite ne se desserre jamais en pleine séance (ADR
         0007). Le plafond d&apos;autonomie d&apos;un compte et ses fenêtres de trading ne se changent pas depuis cet écran.
       </Callout>

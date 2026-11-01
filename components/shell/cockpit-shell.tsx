@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { ConnectGate } from "./connect-gate";
 import { LockoutAckBanner } from "./lockout-ack-banner";
 import { LockoutViolationBanner } from "./lockout-violation-banner";
 import { SidebarNav } from "./sidebar-nav";
@@ -26,7 +27,9 @@ export function CockpitShell({ children }: { children: ReactNode }) {
         <LockoutViolationBanner />
 
         <main className="flex-1 px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
-          <div className="mx-auto w-full max-w-6xl">{children}</div>
+          <div className="mx-auto w-full max-w-6xl">
+            <ConnectGate>{children}</ConnectGate>
+          </div>
         </main>
 
         <footer className="border-t px-4 sm:px-6 lg:px-10">

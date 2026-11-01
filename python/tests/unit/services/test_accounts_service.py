@@ -93,32 +93,33 @@ async def test_an_account_type_that_does_not_fit_the_provider_is_refused(h: Harn
         await accounts.create(exness(name="same login again"))
 
 
-async def test_the_first_connected_account_becomes_active_and_the_choice_is_remembered(h: Harness) -> None:
+async def test_the_connected_account_is_the_active_one_and_it_is_remembered(h: Harness) -> None:
     accounts = service(h)
     first = await accounts.create(exness())
-    second = await accounts.create(ftmo())
+    await accounts.create(ftmo())
     connected = await accounts.connect(first.id)
-    await accounts.connect(second.id)
     assert connected.status is AccountStatus.CONNECTED
     assert accounts.active_account_id == first.id
     assert [e.current for e in h.recorder.of(ActiveAccountChanged)] == [first.id]
-    assert {e.account_id for e in h.recorder.of(AccountConnected)} == {first.id, second.id}
+    assert {e.account_id for e in h.recorder.of(AccountConnected)} == {first.id}
 
     restarted = service(h)  # a new process: the active account comes back from the database
     await restarted.start()
     assert restarted.active_account_id == first.id
 
 
-async def test_connecting_twice_is_idempotent_and_two_accounts_cannot_share_a_terminal(h: Harness) -> None:
+async def test_connecting_twice_is_idempotent_and_only_one_account_is_connected_at_a_time(h: Harness) -> None:
     accounts = service(h)
     first = await accounts.create(exness(terminal_path=None))
-    other = await accounts.create(exness(login=3_000_003, terminal_path=None))
+    other = await accounts.create(exness(login=3_000_003, terminal_path="C:/MT5/other"))  # even on its own terminal
     await accounts.connect(first.id)
     await accounts.connect(first.id)
     assert len(h.recorder.of(AccountConnected)) == 1
     with pytest.raises(Conflict) as caught:
         await accounts.connect(other.id)
-    assert caught.value.code == "terminal_in_use"
+    assert caught.value.code == "another_account_connected"
+    assert caught.value.details["connectedAccountId"] == first.id
+    assert not accounts.is_connected(other.id) and accounts.active_account_id == first.id
 
 
 async def test_a_wrong_server_is_refused_and_remembered_as_an_error_until_fixed(h: Harness) -> None:
@@ -158,12 +159,11 @@ async def test_a_password_comes_from_the_store_or_the_call_and_never_leaks(
     assert password not in repr(rows)
 
 
-async def test_disconnecting_and_switching_are_refused_while_a_guard_sees_risk(h: Harness) -> None:
+async def test_detaching_is_refused_while_a_guard_sees_risk_and_so_is_taking_another_account(h: Harness) -> None:
     accounts = service(h)
     a = await accounts.create(exness())
     b = await accounts.create(ftmo())
     await accounts.connect(a.id)
-    await accounts.connect(b.id)
 
     async def guard(account_id: str) -> str | None:
         return "a position is open" if account_id == a.id else None
@@ -174,28 +174,26 @@ async def test_disconnecting_and_switching_are_refused_while_a_guard_sees_risk(h
     assert disconnect.value.code == "disconnect_refused" and disconnect.value.details["reasons"] == [
         "a position is open"
     ]
-    with pytest.raises(Conflict) as switch:
-        await accounts.set_active(b.id)
-    assert switch.value.code == "switch_refused" and accounts.active_account_id == a.id
+    with pytest.raises(Conflict) as other:  # b cannot come in while a holds risk — and a cannot leave
+        await accounts.connect(b.id)
+    assert other.value.code == "another_account_connected" and accounts.active_account_id == a.id
 
-    await accounts.disconnect(b.id)  # nothing at risk on b
-    assert (await accounts.get(b.id)).status is AccountStatus.DISCONNECTED
     forced = await accounts.disconnect(a.id, force=True)
     assert forced.status is AccountStatus.DISCONNECTED
-    assert [e.reason for e in h.recorder.of(AccountDisconnected)] == ["user", "user"]
+    assert [e.reason for e in h.recorder.of(AccountDisconnected)] == ["user"]
     with pytest.raises(Conflict) as offline:
         await accounts.set_active(b.id)
     assert offline.value.code == "account_not_connected"
 
 
-async def test_switching_to_another_connected_account_works_when_nothing_is_at_risk(h: Harness) -> None:
+async def test_taking_another_account_means_detaching_the_first_and_the_new_one_becomes_active(h: Harness) -> None:
     accounts = service(h)
     a = await accounts.create(exness())
     b = await accounts.create(ftmo())
     await accounts.connect(a.id)
+    await accounts.disconnect(a.id)  # nothing at risk: allowed
     await accounts.connect(b.id)
-    await accounts.set_active(b.id)
-    assert accounts.active_account_id == b.id
+    assert accounts.active_account_id == b.id and not accounts.is_connected(a.id)
     assert [(e.previous, e.current) for e in h.recorder.of(ActiveAccountChanged)] == [(None, a.id), (a.id, b.id)]
 
 
@@ -305,14 +303,14 @@ async def test_a_wrong_password_is_refused_without_echoing_it_and_the_terminal_i
     assert DEMO_PASSWORD not in found.model_dump_json()  # a password is never part of what comes back
 
 
-async def test_discovery_refuses_while_a_registered_account_holds_the_terminal(h: Harness) -> None:
+async def test_discovery_refuses_while_another_account_is_connected(h: Harness) -> None:
     accounts = service(h)
     demo_terminal(h)
     created = await accounts.create(exness(login=DEMO_LOGIN, server=DEMO_SERVER, terminal_path=DEMO_PATH))
     await accounts.connect(created.id)
     with pytest.raises(Conflict) as refused:
         await accounts.discover(login=DEMO_LOGIN, server=DEMO_SERVER, terminal_path=DEMO_PATH)
-    assert refused.value.code == "terminal_in_use"
+    assert refused.value.code == "another_account_connected"
 
 
 async def test_an_unknown_server_and_an_account_with_positions_are_warned_about(h: Harness) -> None:

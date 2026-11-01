@@ -12,7 +12,7 @@ export function ConnectionHelp() {
     <Panel title="Connexion MT5 — procédure" description="MT5 se connecte, le cœur s'attache" icon={Plug}>
       <ol className="flex list-decimal flex-col gap-3 pl-4 text-sm leading-snug text-muted-foreground">
         <li>
-          Le plus simple : <span className="text-foreground">Connecter un compte</span> ci-dessus — le login, le serveur et,
+          Le plus simple : <span className="text-foreground">Connecter un compte</span> depuis Account — le login, le serveur et,
           si MT5 n&apos;est pas déjà sur ce compte, son mot de passe. Le cœur s&apos;en sert une fois pour lire le compte
           chez le courtier ; il ne le garde, ne le journalise et ne le renvoie jamais. Sinon, dans MT5 :{" "}
           <span className="text-foreground">Fichier → Connexion à un compte de trading</span>, et choisis le compte.
@@ -33,9 +33,8 @@ export function ConnectionHelp() {
         </li>
       </ol>
       <p className="mt-5 border-t pt-4 text-sm leading-snug text-muted-foreground">
-        Un terminal, des comptes successifs : détacher ou changer de compte est refusé tant qu&apos;une position, un ordre en
-        attente ou une commande en doute pourrait être perdu de vue. Deux comptes rattachés en même temps exigent deux terminaux
-        (le chemin du <code className="text-foreground">terminal.exe</code> de chacun, à l&apos;enregistrement).
+        Un seul compte est connecté à la fois : pour en prendre un autre, détache le premier. Détacher est refusé tant qu&apos;une
+        position, un ordre en attente ou une commande en doute pourrait être perdu de vue.
       </p>
     </Panel>
   );

@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from tests.support.api import Api, create_second, make_api, new_account
+from tests.support.api import Api, create_second, detach_first, make_api, new_account
 from tests.support.core import MemoryCredentialStore
 from tests.support.harness import Harness
 
@@ -96,15 +96,21 @@ async def test_the_trading_switch_is_a_put(api: Api) -> None:
 
 
 async def test_connect_and_disconnect_attach_and_detach_the_terminal(api: Api) -> None:
+    first = api.core.account
+    assert first is not None
     await create_second(api)
+    refused = await api.post("/api/accounts/exness-1000002/connect")  # the first is connected: only one at a time
+    assert refused.status_code == 409 and refused.json()["code"] == "another_account_connected"
+    assert refused.json()["details"]["connectedAccountId"] == first.id
+    await detach_first(api)
     connected = await api.post("/api/accounts/exness-1000002/connect")
     assert connected.status_code == 200 and connected.json()["status"] == "CONNECTED"
     again = await api.post("/api/accounts/exness-1000002/connect")  # connecting twice is harmless
     assert again.status_code == 200
+    # the account that is connected is the active one
+    assert (await api.get("/api/active-account")).json() == {"accountId": "exness-1000002"}
     detached = await api.post("/api/accounts/exness-1000002/disconnect")
     assert detached.status_code == 200 and detached.json()["status"] == "DISCONNECTED"
-    # the first account stayed the active one throughout
-    assert (await api.get("/api/active-account")).json() == {"accountId": api.core.account.id}  # type: ignore[union-attr]
 
 
 async def test_disconnecting_is_refused_while_risk_is_open_and_forcing_is_explicit(api: Api) -> None:
@@ -148,6 +154,7 @@ async def test_a_wrong_password_is_a_clear_refusal_that_does_not_contain_it(
     api: Api, caplog: pytest.LogCaptureFixture
 ) -> None:
     await create_second(api)
+    await detach_first(api)
     with caplog.at_level(logging.DEBUG):
         response = await api.post("/api/accounts/exness-1000002/connect", {"password": SENTINEL})
     assert response.status_code == 502 and response.json()["code"] == "login_failed"
@@ -160,6 +167,7 @@ async def test_a_wrong_password_is_a_clear_refusal_that_does_not_contain_it(
 
 async def test_a_right_password_connects_and_is_kept_nowhere(api: Api, caplog: pytest.LogCaptureFixture) -> None:
     await create_second(api)
+    await detach_first(api)
     with caplog.at_level(logging.DEBUG):
         response = await api.post("/api/accounts/exness-1000002/connect", {"password": "pw-1000002"})
     assert response.status_code == 200 and response.json()["status"] == "CONNECTED"
@@ -183,6 +191,7 @@ DISCOVER = {"login": 1_000_002, "server": "Exness-MT5Trial", "terminalPath": "C:
 
 
 async def test_discovery_answers_with_the_brokers_facts_and_registers_nothing(api: Api) -> None:
+    await detach_first(api)  # one account at a time: the terminal is free to be read
     before = (await api.get("/api/accounts")).json()
     response = await api.post("/api/accounts/discover", {**DISCOVER, "password": "pw-1000002"})
     assert response.status_code == 200, response.text
@@ -196,6 +205,7 @@ async def test_discovery_answers_with_the_brokers_facts_and_registers_nothing(ap
 async def test_discovery_with_a_wrong_password_is_a_refusal_that_does_not_contain_it(
     api: Api, caplog: pytest.LogCaptureFixture
 ) -> None:
+    await detach_first(api)  # one account at a time: the terminal is free to be read
     with caplog.at_level(logging.DEBUG):
         response = await api.post("/api/accounts/discover", {**DISCOVER, "password": SENTINEL})
     assert response.status_code == 502 and response.json()["code"] == "login_failed"
@@ -249,6 +259,7 @@ async def test_the_default_vault_stores_nothing_and_says_why(h: Harness) -> None
 
 async def test_a_stored_password_is_used_by_the_connection(api: Api, vault: MemoryCredentialStore) -> None:
     await create_second(api)
+    await detach_first(api)
     await api.put("/api/accounts/exness-1000002/credentials", {"password": "pw-1000002"})
     response = await api.post(
         "/api/accounts/exness-1000002/connect"
@@ -259,30 +270,28 @@ async def test_a_stored_password_is_used_by_the_connection(api: Api, vault: Memo
 # ------------------------------------------------------------------------------------------------------ the active account
 
 
-async def test_the_active_account_is_one_and_only_a_connected_one(api: Api) -> None:
+async def test_the_active_account_is_the_connected_one_and_only_a_connected_one(api: Api) -> None:
     first = api.core.account
     assert first is not None
     await create_second(api)
     refused = await api.put("/api/active-account", {"accountId": "exness-1000002"})
     assert refused.status_code == 409 and refused.json()["code"] == "account_not_connected"
-    await api.post("/api/accounts/exness-1000002/connect")
-    switched = await api.put("/api/active-account", {"accountId": "exness-1000002"})
-    assert switched.status_code == 200 and switched.json() == {"accountId": "exness-1000002"}
-    assert (await api.get("/api/system/status")).json()["activeAccountId"] == "exness-1000002"
+    assert (await api.get("/api/system/status")).json()["activeAccountId"] == first.id
     assert (await api.put("/api/active-account", {"accountId": first.id})).status_code == 200
 
 
-async def test_the_active_account_cannot_be_switched_away_from_while_it_holds_risk(api: Api) -> None:
+async def test_another_account_cannot_be_taken_while_the_connected_one_holds_risk(api: Api) -> None:
     first = api.core.account
     assert first is not None
     await create_second(api)
-    await api.post("/api/accounts/exness-1000002/connect")
     api.core.terminal.add_position(
         identifier=779, symbol="EURUSDm", side=0, volume=0.05, price_open=1.1, sl=1.099, magic=0
     )
     await api.core.c.positions.poll(first.id)
-    refused = await api.put("/api/active-account", {"accountId": "exness-1000002"})
-    assert refused.status_code == 409 and refused.json()["code"] == "switch_refused"
+    taken = await api.post("/api/accounts/exness-1000002/connect")
+    assert taken.status_code == 409 and taken.json()["code"] == "another_account_connected"
+    left = await api.post(f"/api/accounts/{first.id}/disconnect")  # and the first cannot be let go of either
+    assert left.status_code == 409 and left.json()["code"] == "disconnect_refused"
     assert (await api.get("/api/active-account")).json() == {"accountId": first.id}
 
 

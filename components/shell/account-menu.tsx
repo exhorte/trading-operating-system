@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronsUpDown, Settings, UserRound, Wallet } from "lucide-react";
+import { ChevronsUpDown, PlugZap, Settings, UserRound, Wallet } from "lucide-react";
 import { cn } from "cn";
 import { useCockpit } from "@/lib/realtime/provider";
 import type { ConnectionState } from "@/lib/realtime/store";
@@ -152,7 +152,7 @@ export function AccountMenu() {
               ? `${account.label} · ${account.currency}`
               : registered
                 ? `${registered.name} — rattache-le dans Account`
-                : "Enregistre un compte dans Settings, puis rattache-le."}
+                : "Aucun compte connecté : connecte-en un depuis Account."}
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -174,6 +174,14 @@ export function AccountMenu() {
           />
         </div>
         <DropdownMenuSeparator />
+        {!account && (
+          <DropdownMenuItem asChild className="gap-2.5 rounded-lg py-2">
+            <Link href="/account#connecter">
+              <PlugZap className="size-4" strokeWidth={1.75} />
+              Connecter un compte
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild className="gap-2.5 rounded-lg py-2">
           <Link href="/account">
             <Wallet className="size-4" strokeWidth={1.75} />
