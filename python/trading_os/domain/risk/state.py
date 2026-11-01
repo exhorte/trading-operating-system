@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Literal
 
 from trading_os.domain.primitives import AccountId, DomainModel
+from trading_os.domain.risk.dynamic_risk import RiskAllowance
 
 
 class RiskMode(StrEnum):
@@ -33,7 +34,10 @@ class RiskState(DomainModel):
     account_id: AccountId
     mode: RiskMode
     daily_loss_used_percent: float
+    weekly_loss_used_percent: float
     max_drawdown_used_percent: float
+    performance_percent: float | None  # equity vs the initial capital; None = no initial capital fixed
+    allowance: RiskAllowance  # what a new trade may risk right now (ADR 0019)
     open_risk_percent: float
     correlated_exposure_percent: float = 0.0
     trades_today: int | None  # None = unknown (no trade history), never a guessed zero

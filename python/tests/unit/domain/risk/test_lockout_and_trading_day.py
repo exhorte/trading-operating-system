@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 
+from tests.unit.domain.risk.fixtures import inputs
+from trading_os.domain.risk.evaluate import risk_allowance
 from trading_os.domain.risk.lockout import (
     CONSECUTIVE_LOSS_REASON,
     KILL_SWITCH_REASON,
@@ -33,7 +35,10 @@ def state(
         account_id="TEST-ACC-1",
         mode=mode,
         daily_loss_used_percent=5.5,
+        weekly_loss_used_percent=5.5,
         max_drawdown_used_percent=0.0,
+        performance_percent=-5.5,
+        allowance=risk_allowance(inputs()),
         open_risk_percent=0.0,
         trades_today=3,
         consecutive_losses=0,

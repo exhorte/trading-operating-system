@@ -35,7 +35,13 @@ from trading_os.domain.accounts.models import (
     FtmoChallenge,
     Provider,
 )
-from trading_os.domain.accounts.profiles import ProfileParams, default_rules, provider_profile
+from trading_os.domain.accounts.profiles import (
+    ProfileParams,
+    apply_provider_ceilings,
+    default_rules,
+    provider_ceilings,
+    provider_profile,
+)
 from trading_os.domain.accounts.rules_ledger import (
     CancelOutcome,
     RuleResolution,
@@ -222,7 +228,8 @@ class AccountService:
         """The account with the rules that govern it *now* (ledger resolved against the current trading-day anchor)."""
         account = await self._repos.accounts.require(account_id)
         resolution = await self._resolution(account)
-        return self._view(account.with_rules(resolution.rules))
+        ceilings = provider_ceilings(account.provider, resolution.rules.trading_rules.challenge)
+        return self._view(account.with_rules(apply_provider_ceilings(resolution.rules, ceilings)))
 
     async def _resolution(self, account: Account) -> RuleResolution:
         versions = await self._repos.rules.for_account(account.id)

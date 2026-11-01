@@ -15,6 +15,7 @@ from __future__ import annotations
 from pydantic import Field
 
 from trading_os.domain.primitives import DomainModel
+from trading_os.domain.risk.dynamic_risk import DynamicRiskPolicy
 
 # Usage fraction of a limit at/above which the posture escalates to "warning".
 WARNING_THRESHOLD = 0.6
@@ -22,6 +23,7 @@ WARNING_THRESHOLD = 0.6
 
 class DrawdownPolicy(DomainModel):
     daily_loss_limit_percent: float = Field(default=5.0, gt=0)
+    weekly_loss_limit_percent: float = Field(default=10.0, gt=0)  # ADR 0019; the week runs Monday 00:00 broker time
     max_drawdown_limit_percent: float = Field(default=10.0, gt=0)
     # Balance every percentage is measured against. FTMO: the challenge size, fixed for its whole life. A direct
     # account: the capital the trader commits (Settings). None keeps the historical behaviour (balance at
@@ -37,17 +39,20 @@ class NewsPolicy(DomainModel):
 
 
 class PositionLimits(DomainModel):
-    max_open_positions: int = Field(default=3, ge=1)
+    max_open_positions: int = Field(default=5, ge=1)  # account-wide, never per symbol (ADR 0019)
     max_positions_per_symbol: int = Field(default=1, ge=1)
     max_volume_per_order: float | None = Field(default=None, gt=0)
 
 
 class RiskProfile(DomainModel):
-    max_risk_per_trade_percent: float = Field(default=1.0, gt=0)
+    # Ceiling of the dynamic grid (ADR 0019), not the risk of a trade: the trade's risk is ``RiskAllowance.risk_percent``,
+    # the minimum of this ceiling, the grid and the loss budgets left. Lowering it caps every trade.
+    max_risk_per_trade_percent: float = Field(default=1.5, gt=0)
+    dynamic: DynamicRiskPolicy = DynamicRiskPolicy()
     max_open_risk_percent: float = Field(default=2.0, gt=0)
     # Same-currency, same-direction exposure across positions (e.g. long EURUSD + long GBPUSD = short USD twice).
     max_correlated_risk_percent: float = Field(default=1.5, gt=0)
-    max_trades_per_day: int = Field(default=6, ge=1)
+    max_trades_per_day: int = Field(default=15, ge=1)
     max_consecutive_losses: int = Field(default=3, ge=1)
     consecutive_loss_pause_minutes: int = Field(default=30, ge=1)
     drawdown: DrawdownPolicy = DrawdownPolicy()

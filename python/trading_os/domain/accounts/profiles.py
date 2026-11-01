@@ -109,6 +109,39 @@ PROFILES: Mapping[Provider, ProviderProfile] = {
 }
 
 
+class ProviderCeilings(DomainModel):
+    """What the provider's own contract forbids exceeding (ADR 0019): ``None`` = no sourced ceiling, never a guess.
+    An internal limit is a promise to oneself; it is never a licence to go past this — the strictest always wins."""
+
+    daily_loss_percent: float | None = None
+    max_drawdown_percent: float | None = None
+
+
+def provider_ceilings(provider: Provider, challenge: FtmoChallenge | None) -> ProviderCeilings:
+    if (
+        provider is Provider.FTMO
+        and challenge is not None
+        and challenge.type == "2-step"
+        and challenge.phase == "challenge"
+    ):
+        return ProviderCeilings(daily_loss_percent=5.0, max_drawdown_percent=10.0)  # sourced: FTMO MetriX exports
+    return ProviderCeilings()  # TODO(FTMO-rules): verification, funded and 1-step ceilings are not sourced
+
+
+def apply_provider_ceilings(rules: AccountRules, ceilings: ProviderCeilings) -> AccountRules:
+    """The rules with every loss limit brought under the provider's ceiling. Same object when nothing changes."""
+    drawdown = rules.risk_profile.drawdown
+    daily, total = drawdown.daily_loss_limit_percent, drawdown.max_drawdown_limit_percent
+    if ceilings.daily_loss_percent is not None:
+        daily = min(daily, ceilings.daily_loss_percent)
+    if ceilings.max_drawdown_percent is not None:
+        total = min(total, ceilings.max_drawdown_percent)
+    if (daily, total) == (drawdown.daily_loss_limit_percent, drawdown.max_drawdown_limit_percent):
+        return rules
+    clamped = drawdown.model_copy(update={"daily_loss_limit_percent": daily, "max_drawdown_limit_percent": total})
+    return rules.model_copy(update={"risk_profile": rules.risk_profile.model_copy(update={"drawdown": clamped})})
+
+
 def provider_profile(provider: Provider) -> ProviderProfile:
     return PROFILES[provider]
 

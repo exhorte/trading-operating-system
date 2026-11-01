@@ -11,7 +11,7 @@ function rulesOf(overrides: Partial<AccountRules["tradingRules"]> = {}): Account
   return {
     riskProfile: {
       ...base.riskProfile,
-      drawdown: { dailyLossLimitPercent: 5, maxDrawdownLimitPercent: 10, referenceBalance: 10_000 },
+      drawdown: { dailyLossLimitPercent: 5, weeklyLossLimitPercent: 10, maxDrawdownLimitPercent: 10, referenceBalance: 10_000 },
     },
     tradingRules: { ...base.tradingRules, challenge, minTradingDays: 4, profitTargetPercent: 10, ...overrides },
     executionProfile: base.executionProfile,

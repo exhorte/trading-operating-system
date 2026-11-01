@@ -251,6 +251,27 @@ async def test_a_rule_change_with_no_live_account_waits_for_the_next_trading_day
     assert (await accounts.effective(a.id)).risk_profile.max_trades_per_day == 6
 
 
+async def test_a_looser_limit_never_goes_past_the_providers_contract(h: Harness) -> None:
+    accounts = service(h)
+    a = await accounts.create(ftmo())
+    await accounts.connect(a.id)
+    drawdown = a.risk_profile.drawdown.model_copy(
+        update={"daily_loss_limit_percent": 8.0, "max_drawdown_limit_percent": 15.0}
+    )
+    looser = a.rules.model_copy(update={"risk_profile": a.risk_profile.model_copy(update={"drawdown": drawdown})})
+    await accounts.request_rules(a.id, looser)
+    effective = (await accounts.effective(a.id)).risk_profile.drawdown
+    assert (effective.daily_loss_limit_percent, effective.max_drawdown_limit_percent) == (5.0, 10.0)  # FTMO's own
+    h.clock.advance(minutes=1)
+    # A stricter internal limit is kept: the strictest of the two applies.
+    stricter = drawdown.model_copy(update={"daily_loss_limit_percent": 3.0, "max_drawdown_limit_percent": 8.0})
+    await accounts.request_rules(
+        a.id, a.rules.model_copy(update={"risk_profile": a.risk_profile.model_copy(update={"drawdown": stricter})})
+    )
+    effective = (await accounts.effective(a.id)).risk_profile.drawdown
+    assert (effective.daily_loss_limit_percent, effective.max_drawdown_limit_percent) == (3.0, 8.0)
+
+
 async def test_a_rule_change_is_immediate_only_when_no_session_is_in_progress(h: Harness) -> None:
     accounts = service(h)
     a = await accounts.create(exness())

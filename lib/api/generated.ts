@@ -126,6 +126,11 @@ export interface AgreementRow {
   tradeOpenedAt: string | null;
   brokerPositionId: string | null;
 }
+export interface AppliedCap {
+  code: string;
+  limitPercent: number;
+  detail: string;
+}
 /** Climb to ``target`` — exactly one rung above the current mode, never above the ceiling. */
 export interface ArmRequest {
   target: AutonomyMode;
@@ -159,6 +164,7 @@ export interface CanITradeResult {
   decision: "ALLOWED" | "DENIED";
   reasons: string[];
   checks: CheckResult[];
+  allowance: RiskAllowance;
   evaluatedAt: string;
 }
 export type CancelOutcome = "cancelled" | "not_found" | "not_deferred" | "already_cancelled" | "already_in_effect";
@@ -264,13 +270,25 @@ export interface DisarmRequest {
 }
 export interface DrawdownPolicyInput {
   dailyLossLimitPercent?: number;
+  weeklyLossLimitPercent?: number;
   maxDrawdownLimitPercent?: number;
   referenceBalance?: number | null;
 }
 export interface DrawdownPolicyOutput {
   dailyLossLimitPercent: number;
+  weeklyLossLimitPercent: number;
   maxDrawdownLimitPercent: number;
   referenceBalance: number | null;
+}
+export interface DynamicRiskPolicyInput {
+  grid?: GridTierInput[];
+  absoluteLossTriggerAmount?: number;
+  absoluteLossRiskCapPercent?: number;
+}
+export interface DynamicRiskPolicyOutput {
+  grid: GridTierOutput[];
+  absoluteLossTriggerAmount: number;
+  absoluteLossRiskCapPercent: number;
 }
 export type Environment = "DEMO" | "SIMULATED" | "LIVE";
 /** What every refusal looks like, whatever its status. ``code`` is stable and is what a client switches on; ``details`` carries the structure of the refusal (the reasons a disconnect was refused, the fields a body was refused for — never the values). */
@@ -401,6 +419,14 @@ export interface GateResult {
   label: string;
   state: "open" | "blocked";
   detail: string;
+}
+export interface GridTierInput {
+  levelPercent: number;
+  riskPercent?: number | null;
+}
+export interface GridTierOutput {
+  levelPercent: number;
+  riskPercent: number | null;
 }
 export interface GuardDecision {
   deferred: boolean;
@@ -648,6 +674,18 @@ export interface ReviewRequest {
   validForSeconds?: number;
   intentId?: string | null;
 }
+/** What a new trade may risk right now, and why — every cap that was weighed, the one that decided, the reason when the answer is no. Persisted with the decision (``RiskDecision.allowance``). */
+export interface RiskAllowance {
+  status: "allowed" | "stopped" | "unavailable";
+  riskPercent: number;
+  performancePercent: number | null;
+  tierLevelPercent: number | null;
+  gridPercent: number | null;
+  bindingCap: string | null;
+  caps: AppliedCap[];
+  reason: string | null;
+  detail: string;
+}
 export interface RiskDecision {
   decisionId: string;
   intentId: string | null;
@@ -662,6 +700,7 @@ export interface RiskDecision {
   reasons: string[];
   checks: CheckResult[];
   sizing: SizingResult | null;
+  allowance: RiskAllowance | null;
   gates: GateResult[];
   decidedAt: string;
   expiresAt: string;
@@ -669,6 +708,7 @@ export interface RiskDecision {
 export type RiskMode = "normal" | "warning" | "locked";
 export interface RiskProfileInput {
   maxRiskPerTradePercent?: number;
+  dynamic?: DynamicRiskPolicyInput;
   maxOpenRiskPercent?: number;
   maxCorrelatedRiskPercent?: number;
   maxTradesPerDay?: number;
@@ -681,6 +721,7 @@ export interface RiskProfileInput {
 }
 export interface RiskProfileOutput {
   maxRiskPerTradePercent: number;
+  dynamic: DynamicRiskPolicyOutput;
   maxOpenRiskPercent: number;
   maxCorrelatedRiskPercent: number;
   maxTradesPerDay: number;
@@ -695,6 +736,10 @@ export interface RiskStatus {
   state: RiskMode;
   dailyLossLimitPercent: number;
   dailyLossUsedPercent: number;
+  weeklyLossLimitPercent: number;
+  weeklyLossUsedPercent: number;
+  performancePercent: number | null;
+  allowance: RiskAllowance;
   maxDrawdownLimitPercent: number;
   maxDrawdownUsedPercent: number;
   openRiskLimitPercent: number;
@@ -961,8 +1006,10 @@ export interface WebSocketView {
   closedForOverflow: number;
 }
 export type DrawdownPolicy = DrawdownPolicyOutput;
+export type DynamicRiskPolicy = DynamicRiskPolicyOutput;
 export type ExecutionLimits = ExecutionLimitsOutput;
 export type ExecutionProfile = ExecutionProfileOutput;
+export type GridTier = GridTierOutput;
 export type NewsPolicy = NewsPolicyOutput;
 export type PositionLimits = PositionLimitsOutput;
 export type RiskProfile = RiskProfileOutput;

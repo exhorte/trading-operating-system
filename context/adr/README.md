@@ -24,6 +24,7 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0016 | Architecture Python-native : le cœur est un monolithe Python | Accepté le 2026-10-07 — supersède la pile .NET/SignalR de 0003, amende 0004 et 0013 (stockage opt-in des identifiants) ; réalise le Risk Engine côté serveur de 0007/0015 ; points à confirmer listés dans l'ADR |
 | 0017 | Système de design : « ExponentValue Monochrome » | Accepté le 2026-10-08 — supersède l'apparence de 0012 (thème clair + sombre, panneau de métriques sombre, une seule pastille menthe), amende 0003 (« cockpit sombre ») ; écarts assumés par rapport au design d'origine et points laissés ouverts listés dans l'ADR |
 | 0018 | Suppression de la capture graphique : on garde les données | Accepté le 2026-10-09 — supersède 0009 pour le rendu (plus aucun graphique ni image de trade) ; les faits enregistrés (prix d'entrée, stop, objectif, sortie) et le dossier du trade restent |
+| 0019 | Risque dynamique par trade et nouvelles limites officielles | Accepté le 2026-11-01 — amende 0015 (limites : 15 trades, 5 positions, perte hebdomadaire 10 %, grille de risque −5 % → 1,5 %, déclencheur 200 $) ; interprétations et points à confirmer listés dans l'ADR |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 

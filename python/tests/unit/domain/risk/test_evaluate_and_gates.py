@@ -68,7 +68,7 @@ class TestEvaluateRiskState:
         assert gate(state, "gate-total-dd").blocked
 
     def test_locks_when_max_trades_is_reached(self) -> None:
-        state = evaluate_risk_state(inputs(trades_today=6))
+        state = evaluate_risk_state(inputs(trades_today=15))
         assert state.mode is RiskMode.LOCKED and gate(state, "gate-max-trades").blocked
 
     # T03 — the most important behaviour of the news gate: absent data never reads as « all clear ».

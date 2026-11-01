@@ -61,7 +61,7 @@ from trading_os.domain.risk.lockout import (
     detect_new_lockout,
 )
 from trading_os.domain.risk.state import RiskState
-from trading_os.domain.risk.trading_day import RiskToday, resolve_today_start_utc
+from trading_os.domain.risk.trading_day import RiskToday, resolve_today_start_utc, resolve_week_start_utc
 from trading_os.domain.risk.view import RiskStatus, to_risk_status
 from trading_os.domain.strategy.intent import TradeIntent
 from trading_os.infrastructure.database.repositories import Repositories
@@ -91,6 +91,7 @@ class AgentDirectory(Protocol):
 class _Cache:
     status: RiskStatus | None = None
     day_start_equity: float | None = None
+    week_start_equity: float | None = None
     unhealthy: list[str] = field(default_factory=list)
 
 
@@ -197,11 +198,14 @@ class RiskService:
                 problems.append("the broker clock is not measured yet: the trading day is unknown")
             elif day_start is None:
                 problems.append("the day's starting equity is unknown")
+            elif today.week_start_equity is None:
+                problems.append("the week's starting equity is unknown")
 
         balance = snapshot.balance if snapshot else 0.0
         equity = snapshot.equity if snapshot else 0.0
         profile = account.risk_profile
         reference = profile.drawdown.reference_balance or balance
+        week_start = today.week_start_equity
 
         specs = self._market.specs(account_id)
         report = open_risk(positions, specs, balance)
@@ -228,7 +232,9 @@ class RiskService:
             now=now,
             profile=profile,
             initial_balance=reference,
+            reference_fixed=profile.drawdown.reference_balance is not None,
             day_start_equity=day_start if day_start is not None else equity,
+            week_start_equity=week_start if week_start is not None else equity,
             equity=equity,
             balance=balance,
             open_risk_percent=report.percent,
@@ -299,14 +305,27 @@ class RiskService:
             estimate = await self._estimate_day_start(account.id, start, snapshot, positions, now)
             if estimate is not None and await self._repos.risk.confirm_day_start_equity(account.id, start, estimate):
                 today = today.model_copy(update={"day_start_equity": estimate})
+        week_start = resolve_week_start_utc(now, session.client.offset)
+        if today.week_anchor_starts_at_utc != week_start:
+            await self._repos.risk.record_week_anchor(account.id, week_start)
+            today = await self._repos.risk.today(account.id, now)
+        if today.week_start_equity is None:
+            estimate = await self._estimate_day_start(account.id, week_start, snapshot, positions, now)
+            if estimate is not None and await self._repos.risk.confirm_week_start_equity(
+                account.id, week_start, estimate
+            ):
+                today = today.model_copy(update={"week_start_equity": estimate})
         cache = self._cache.setdefault(account.id, _Cache())
         cache.day_start_equity = today.day_start_equity
+        cache.week_start_equity = today.week_start_equity
         return today
 
     async def _estimate_day_start(
         self, account_id: str, start: datetime, snapshot: AccountSnapshot, positions: list[Position], now: datetime
     ) -> float | None:
-        """The equity the day started with. Right after the day began, the equity seen now is it. Later (the core was off,
+        """The equity the day — or the week, ``start`` being its anchor — started with.
+
+        Right after it began, the equity seen now is it. Later (the core was off,
         or started mid-day) it is the balance less what the day has realised — valid only if nothing was carried across
         midnight, whose floating result at that moment cannot be reconstructed: then it stays unknown, never guessed."""
         if not self._positions.baselined(account_id):
@@ -487,7 +506,16 @@ class RiskService:
         return snapshot.model_copy(update=update)
 
 
-_HARD_GATES = frozenset({"gate-daily-loss", "gate-total-dd", "gate-max-trades", CONSECUTIVE_LOSS_GATE_ID})
+_HARD_GATES = frozenset(
+    {
+        "gate-daily-loss",
+        "gate-weekly-loss",
+        "gate-performance-stop",
+        "gate-total-dd",
+        "gate-max-trades",
+        CONSECUTIVE_LOSS_GATE_ID,
+    }
+)
 
 
 def _with_problems(reasons: list[str], problems: list[str]) -> list[str]:

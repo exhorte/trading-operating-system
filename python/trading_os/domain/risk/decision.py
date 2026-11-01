@@ -19,6 +19,7 @@ from pydantic import Field
 from trading_os.domain.market.models import SymbolSpec
 from trading_os.domain.positions.models import Position
 from trading_os.domain.primitives import AccountId, DomainModel, Side, SymbolCode
+from trading_os.domain.risk.dynamic_risk import RiskAllowance
 from trading_os.domain.risk.evaluate import RiskInputs, evaluate_risk_state
 from trading_os.domain.risk.exposure import currency_exposure, max_correlated_exposure, position_risk_amount
 from trading_os.domain.risk.gates import symbol_gate
@@ -66,6 +67,7 @@ class CanITradeResult(DomainModel):
     decision: Literal["ALLOWED", "DENIED"]
     reasons: list[str]
     checks: list[CheckResult]
+    allowance: RiskAllowance  # what one new trade may risk right now (ADR 0019)
     evaluated_at: datetime
 
 
@@ -112,7 +114,23 @@ def _checks(ctx: TradingContext, state: RiskState, symbol: str | None) -> list[C
         _from_gate(
             "daily_loss", "Daily loss budget available", _gate(state, "gate-daily-loss"), "daily_risk_budget_exceeded"
         ),
+        _from_gate(
+            "weekly_loss", "Weekly loss budget available", _gate(state, "gate-weekly-loss"), "weekly_loss_limit_reached"
+        ),
+        _from_gate(
+            "performance_stop",
+            "Above the performance stop",
+            _gate(state, "gate-performance-stop"),
+            "performance_stop_reached",
+        ),
         _from_gate("max_drawdown", "Max drawdown safe", _gate(state, "gate-total-dd"), "max_drawdown_reached"),
+        _flag(
+            "risk_allowance",
+            "Dynamic risk allowance",
+            state.allowance.status == "allowed",
+            state.allowance.reason or "risk_not_allowed",
+            state.allowance.detail,
+        ),
         _from_gate("open_risk", "Open risk acceptable", _gate(state, "gate-open-risk"), "open_risk_too_high"),
         _from_gate(
             "correlation",
@@ -175,9 +193,13 @@ def can_i_trade(ctx: TradingContext, symbol: str | None = None) -> CanITradeResu
     risk = ctx.risk.model_copy(update={"require_tick": symbol is not None})
     state = evaluate_risk_state(risk)
     checks = _checks(ctx.model_copy(update={"risk": risk}), state, symbol)
-    reasons = [c.reason for c in checks if c.reason]
+    reasons = list(dict.fromkeys(c.reason for c in checks if c.reason))  # a gate and the allowance may share a code
     return CanITradeResult(
-        decision="DENIED" if reasons else "ALLOWED", reasons=reasons, checks=checks, evaluated_at=ctx.risk.now
+        decision="DENIED" if reasons else "ALLOWED",
+        reasons=reasons,
+        checks=checks,
+        allowance=state.allowance,
+        evaluated_at=ctx.risk.now,
     )
 
 
@@ -197,6 +219,8 @@ class RiskDecision(DomainModel):
     reasons: list[str]
     checks: list[CheckResult]
     sizing: SizingResult | None
+    # How the risk of this trade was bounded (ADR 0019). None on decisions recorded before the dynamic grid existed.
+    allowance: RiskAllowance | None = None
     gates: list[GateResult]
     decided_at: datetime
     expires_at: datetime
@@ -271,12 +295,14 @@ def decide(ctx: TradingContext, intent: TradeIntent, review: IntentReview) -> Ri
     failures = _intent_failures(intent, review)
     sizing: SizingResult | None = None
 
-    if not failures and review.spec is not None:
+    allowance = base.allowance
+    if not failures and review.spec is not None and allowance.status == "allowed":
         profile = ctx.risk.profile
         try:
             sizing = size_position(
-                balance=ctx.risk.balance,
-                risk_percent=profile.max_risk_per_trade_percent,
+                # The lower of the two measures: the lot can never buy more risk than either one allows.
+                balance=min(ctx.risk.balance, ctx.risk.equity),
+                risk_percent=allowance.risk_percent,
                 side=intent.side,
                 entry_price=intent.entry_price,
                 stop_loss=intent.stop_loss,
@@ -293,6 +319,18 @@ def decide(ctx: TradingContext, intent: TradeIntent, review: IntentReview) -> Ri
                     ok=False,
                     reason=error.code,
                     detail=error.safe_message,
+                )
+            )
+        if sizing is not None and sizing.effective_risk_percent > allowance.risk_percent + 1e-9:
+            # Belt and braces: the volume is floored, so this cannot happen — and an order that exceeds the allowance
+            # must never be approved, whatever the arithmetic says.
+            failures.append(
+                CheckResult(
+                    check_id="risk_over_allowance",
+                    label="Risk within the allowance",
+                    ok=False,
+                    reason="risk_over_allowance",
+                    detail=f"{sizing.effective_risk_percent:.4f}% > {allowance.risk_percent:g}%",
                 )
             )
         if sizing is not None and ctx.risk.balance > 0:
@@ -340,6 +378,7 @@ def decide(ctx: TradingContext, intent: TradeIntent, review: IntentReview) -> Ri
         reasons=reasons,
         checks=checks,
         sizing=sizing if approved else None,
+        allowance=allowance,
         gates=state.gates,
         decided_at=ctx.risk.now,
         expires_at=ctx.risk.now + review.ttl,

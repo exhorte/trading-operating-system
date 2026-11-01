@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from trading_os.domain.primitives import DomainModel
+from trading_os.domain.risk.dynamic_risk import RiskAllowance
 from trading_os.domain.risk.policy import RiskProfile
 from trading_os.domain.risk.state import GateResult, RiskMode, RiskState
 
@@ -14,6 +15,10 @@ class RiskStatus(DomainModel):
     state: RiskMode
     daily_loss_limit_percent: float
     daily_loss_used_percent: float
+    weekly_loss_limit_percent: float
+    weekly_loss_used_percent: float
+    performance_percent: float | None  # equity vs the initial capital; None = no initial capital fixed
+    allowance: RiskAllowance  # what one new trade may risk right now, and the cap that decided
     max_drawdown_limit_percent: float
     max_drawdown_used_percent: float
     open_risk_limit_percent: float
@@ -35,6 +40,10 @@ def to_risk_status(state: RiskState, profile: RiskProfile) -> RiskStatus:
         state=state.mode,
         daily_loss_limit_percent=profile.drawdown.daily_loss_limit_percent,
         daily_loss_used_percent=state.daily_loss_used_percent,
+        weekly_loss_limit_percent=profile.drawdown.weekly_loss_limit_percent,
+        weekly_loss_used_percent=state.weekly_loss_used_percent,
+        performance_percent=state.performance_percent,
+        allowance=state.allowance,
         max_drawdown_limit_percent=profile.drawdown.max_drawdown_limit_percent,
         max_drawdown_used_percent=state.max_drawdown_used_percent,
         open_risk_limit_percent=profile.max_open_risk_percent,

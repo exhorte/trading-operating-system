@@ -6,6 +6,34 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-11-01 (**phase 0 et phase 1 de la mission « Trading OS autonome » : Risk Engine, ADR 0019**)
+
+Demande, mot pour mot (extraits de la mission) : « Faire évoluer Trading Operating System vers une plateforme de trading
+algorithmique autonome, fiable et entièrement pilotée par Python », « Remplace les anciennes valeurs de risque par les
+nouvelles règles » (§6), « Les modifications doivent être appliquées directement dans le projet » (§17). La mission nomme
+aussi une stratégie S02 (ICT 2022), des ordres LIMIT/MODIFY/CLOSE/PARTIAL_CLOSE, un banc de backtest et un compte FTMO :
+**c'est l'accord explicite demandé par `.claude/CLAUDE.md` pour ces élargissements, mais chacun se construit dans son
+incrément, après son ADR** — seul le risque (ADR 0019) est construit ici.
+
+**Fait** — branche `refactor/python-native-architecture`, **rien de commité, rien de déployé, aucun ordre** :
+- Constat Git vérifié : `origin/main` **contient** la migration (PR #1, `44e797c`) ; seul le `main` local est en retard.
+- ADR 0019 + `domain/risk/dynamic_risk.py` : grille de risque (+1 % → 1,5 % … −5 % arrêt), déclencheur 200 $, plafonds
+  (profil, budgets jour / semaine / total restants) ; le risque d'un trade est le **minimum**, avec tous les plafonds pesés
+  et enregistrés dans `RiskDecision.allowance`. Nouvelles portes `gate-weekly-loss` et `gate-performance-stop` (verrous
+  persistants). Défauts : 15 trades/jour, 5 positions, perte hebdomadaire 10 %. Ancre de semaine persistée (migration 0004).
+- Plafonds contractuels du fournisseur (FTMO 2-Step Challenge) appliqués aux règles effectives.
+- Cockpit : types générés + fixtures mis à jour (le front n'affiche pas encore la semaine ni l'allocation).
+
+**Défaut trouvé en vérifiant, corrigé** : la reconstruction d'historique au démarrage ne remontait qu'au début de la
+*journée* ; un cœur lancé en milieu de semaine aurait sous-estimé la perte hebdomadaire. Elle remonte au début de la semaine.
+
+**Mesuré** : pytest 2197 passés / 10 ignorés (`live_mt5`) ; ruff, mypy strict propres ; vitest 171/171, tsc, eslint propres.
+
+**Ouvert** : voir « Points ouverts » de `context/domain/risk_rules.md` (déclencheur 200 $ sans effet tel qu'écrit, grille non
+monotone, plafond de risque ouvert à 2 %). `migrate.py` non commité : non touché.
+
+---
+
 ## 2026-10-09 (**fin de la migration Python : API, cockpit, capture graphique supprimée, agent 1.11, suppression du Gateway .NET**)
 
 Demandes, mot pour mot : « reprends la migration python », « continu », puis en cours de route

@@ -25,6 +25,16 @@ def resolve_today_start_utc(utc_now: datetime, server_utc_offset_minutes: int) -
     return midnight.astimezone(UTC)
 
 
+def resolve_week_start_utc(utc_now: datetime, server_utc_offset_minutes: int) -> datetime:
+    """UTC instant of the current server-week's start: Monday 00:00 broker server time (ADR 0019). Same clock as the
+    day, so the week follows the broker's DST shifts and never rolls over at an arbitrary UTC hour. (The offset is the one
+    measured *now*: in the week of a DST change the boundary can sit an hour off, on the safe side of nothing.)"""
+    server_tz = timezone(timedelta(minutes=server_utc_offset_minutes))
+    local_now = utc_now.astimezone(server_tz)
+    monday = (local_now - timedelta(days=local_now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    return monday.astimezone(UTC)
+
+
 def estimate_server_utc_offset_minutes(tick_epoch_seconds: float, system_epoch_seconds: float) -> int:
     """MT5 tick timestamps are epoch seconds that represent the broker's *server* time, not true UTC; comparing one
     to the real clock reveals the broker's offset. Rounded to 30 minutes: real offsets are always half-hour aligned
@@ -58,6 +68,8 @@ class RiskToday(DomainModel):
 
     day_anchor_starts_at_utc: datetime | None = None
     day_start_equity: float | None = None
+    week_anchor_starts_at_utc: datetime | None = None
+    week_start_equity: float | None = None  # unknown until confirmed, like the day's: never a guessed zero
     trades_today: int = 0
     consecutive_losses: int = 0
     last_loss_at: datetime | None = None

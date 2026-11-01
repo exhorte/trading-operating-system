@@ -44,7 +44,28 @@ class RiskRepository:
         )
         return updated == 1
 
+    async def record_week_anchor(self, account_id: str, starts_at_utc: datetime) -> None:
+        await self._db.execute(
+            "INSERT INTO trading_week_anchors (account_id, starts_at_utc) VALUES (%s, %s) "
+            "ON CONFLICT (account_id, starts_at_utc) DO NOTHING",
+            (account_id, starts_at_utc),
+        )
+
+    async def confirm_week_start_equity(self, account_id: str, starts_at_utc: datetime, equity: float) -> bool:
+        """Fills a still-unknown equity of that week's anchor — never overwrites one already captured."""
+        updated = await self._db.execute(
+            "UPDATE trading_week_anchors SET week_start_equity = %s "
+            "WHERE account_id = %s AND starts_at_utc = %s AND week_start_equity IS NULL",
+            (equity, account_id, starts_at_utc),
+        )
+        return updated == 1
+
     async def today(self, account_id: str, now: datetime) -> RiskToday:
+        week = await self._db.fetch_one(
+            "SELECT starts_at_utc, week_start_equity FROM trading_week_anchors WHERE account_id = %s "
+            "ORDER BY starts_at_utc DESC LIMIT 1",
+            (account_id,),
+        )
         anchor = await self._db.fetch_one(
             "SELECT starts_at_utc, day_start_equity FROM trading_day_anchors WHERE account_id = %s "
             "ORDER BY starts_at_utc DESC LIMIT 1",
@@ -69,6 +90,8 @@ class RiskRepository:
         return RiskToday(
             day_anchor_starts_at_utc=anchor["starts_at_utc"] if anchor else None,
             day_start_equity=anchor["day_start_equity"] if anchor else None,
+            week_anchor_starts_at_utc=week["starts_at_utc"] if week else None,
+            week_start_equity=week["week_start_equity"] if week else None,
             trades_today=trades_today,
             consecutive_losses=losses,
             last_loss_at=last_loss_at,
