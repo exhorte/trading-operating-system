@@ -314,14 +314,62 @@ class TestValidation:
         looser = request(side=Side.SELL, stop_loss=1.1020, take_profit=1.0970)
         assert RejectCode.RISK_DECISION_MISMATCH in codes(looser, ctx(decision=sell_decision))
 
-    def test_limit_orders_are_not_carried_by_the_agent_protocol(self) -> None:
+    def test_a_limit_order_needs_the_limit_capability_a_price_and_a_stop_behind_it(self) -> None:
         from trading_os.domain.strategy.intent import OrderKind
 
-        assert RejectCode.ORDER_TYPE_UNSUPPORTED in codes(request(order_type=OrderKind.LIMIT, price=1.0995), ctx())
+        limit = request(order_type=OrderKind.LIMIT, price=1.0995, stop_loss=1.0990)
+        assert RejectCode.AGENT_CAPABILITY_MISSING in codes(limit, ctx())  # agent 1.11 announces none (ADR 0023)
+        capable = ctx(agent_capabilities=frozenset({"limit"}))
+        assert validate(limit, capable) == []
+        assert RejectCode.INVALID_REQUEST in codes(request(order_type=OrderKind.LIMIT, price=None), capable)
+        above = request(
+            order_type=OrderKind.LIMIT, price=1.0995, stop_loss=1.1000
+        )  # a buy whose stop is above its price
+        assert RejectCode.INVALID_REQUEST in codes(above, capable)
+        wrong_target = request(order_type=OrderKind.LIMIT, price=1.0995, stop_loss=1.0990, take_profit=1.0990)
+        assert RejectCode.INVALID_REQUEST in codes(wrong_target, capable)
+
+    def test_stop_orders_are_still_not_carried(self) -> None:
+        from trading_os.domain.strategy.intent import OrderKind
+
+        assert RejectCode.ORDER_TYPE_UNSUPPORTED in codes(
+            request(order_type=OrderKind.STOP, price=1.1010), ctx(agent_capabilities=frozenset({"limit"}))
+        )
 
     def test_trading_disabled_and_halted(self) -> None:
         assert RejectCode.TRADING_DISABLED in codes(request(), ctx(account_trading_enabled=False))
         assert RejectCode.HALTED in codes(request(), ctx(halted=True))
+
+    def test_a_halt_stops_new_risk_not_the_way_out(self) -> None:
+        """ADR 0033: a closing or a cancelling by a human gesture goes through a halt; everything else is still refused."""
+        capable = {"decision": None, "agent_capabilities": frozenset({"close", "modify", "cancel"}), "halted": True}
+        for kind, extra in (
+            (CommandKind.CLOSE, {"position_id": "1"}),
+            (CommandKind.PARTIAL_CLOSE, {"position_id": "1", "volume": 0.01}),
+            (CommandKind.CANCEL, {"order_id": "9"}),
+        ):
+            exit_ = request(kind=kind, risk_decision_id=None, **extra)
+            assert RejectCode.HALTED not in codes(exit_, ctx(**capable)), kind  # by hand: the halt does not stop it
+            if (
+                kind is not CommandKind.PARTIAL_CLOSE
+            ):  # (a partial close also needs the position's numbers, ADR 0023: not about the halt)
+                assert validate(exit_, ctx(**capable)) == [], kind
+            assert RejectCode.HALTED in codes(exit_, ctx(automatic=True, **capable)), (
+                kind
+            )  # an automatic actor does not act while halted
+        modify = request(
+            kind=CommandKind.MODIFY, position_id="1", stop_loss=1.0995, take_profit=None, risk_decision_id=None
+        )
+        assert RejectCode.HALTED in codes(modify, ctx(**capable))  # a stop move is not an exit
+        assert RejectCode.HALTED in codes(request(), ctx(halted=True))  # an opening is refused, as before
+        assert RejectCode.HALTED in codes(request(), ctx(halted=True, automatic=True))
+
+    def test_a_halt_does_not_lift_the_other_refusals_of_an_exit(self) -> None:
+        exit_ = request(kind=CommandKind.CLOSE, position_id="1", risk_decision_id=None)
+        capable = {"decision": None, "agent_capabilities": frozenset({"close"}), "halted": True}
+        assert RejectCode.TRADING_DISABLED in codes(exit_, ctx(account_trading_enabled=False, **capable))
+        assert RejectCode.AGENT_UNREACHABLE in codes(exit_, ctx(agent_registered=False, **capable))
+        assert RejectCode.AGENT_CAPABILITY_MISSING in codes(exit_, ctx(decision=None, halted=True))
 
     def test_no_agent_registered(self) -> None:
         assert RejectCode.AGENT_UNREACHABLE in codes(request(), ctx(agent_registered=False))

@@ -14,6 +14,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from trading_os.domain.market.sessions import parse_trading_windows
+from trading_os.domain.risk.n8 import percent_to_units
 from trading_os.shared.logging.redaction import register_secret
 
 # python/trading_os/app/config.py -> repo root (04_code)
@@ -50,6 +52,30 @@ class Settings(BaseSettings):
     mt5_enabled: bool = True
     trading_mode: TradingMode = TradingMode.OBSERVE
     active_account_id: str | None = None
+    # S02 (ADR 0024): "off" evaluates nothing, "measure" records what it sees and proposes nothing to the Risk Engine, "trade" acts like
+    # S01 does. Turning it to "trade" is the user's act, never a default.
+    strategy_s02: Literal["off", "measure", "trade"] = "off"
+    # The hours each strategy looks for a setup (ADR 0030), **New York local time** — the zone moves them with daylight saving, so no
+    # offset is ever written here — as ``name=HH:MM-HH:MM`` separated by commas: ``london=02:00-05:00,new_york_am=08:30-11:00``.
+    # Empty = the strategy's own defaults (S01: 02:00–05:00 and 07:00–10:00; S02: 02:00–05:00 and 08:30–11:00). A malformed value
+    # stops the core at start: it is never guessed.
+    strategy_s01_windows: str = ""
+    strategy_s02_windows: str = ""
+
+    # Account Guardian (ADR 0032). OFF by default — a new automatic behaviour, the user's to switch on: the core's resting orders on a symbol whose
+    # spread is over the cap he wrote for it (``max_spread_by_symbol``) are cancelled. Positions are never closed for a spread.
+    guardian_cancel_orders_on_wide_spread: bool = False
+
+    # N8 « Drawdown Flatlining » (ADR 0031): a reduction of the risk of the next trade — it can only LOWER it, never raise it, and it cannot go
+    # round any limit (the final risk is the smallest of all the caps). Off by default, and inert until its smallest unit is written: the notes
+    # do not give that value, and it is not guessed. The unit is in multiples of 0.1 %; 0 means « no new trade » while a trigger holds.
+    risk_n8_enabled: bool = False
+    risk_n8_minimum_percent: float | None = Field(default=None, ge=0)
+    risk_n8_reduce_after_loss: bool = True  # N8 §j.3: one loss → the smallest unit until a trade wins
+    risk_n8_wins_before_minimum: int = Field(
+        default=5, ge=0
+    )  # N8 §j.4: after 5 wins in a row the next trade is at the smallest unit; 0 = off
+    risk_n8_reduce_below_starting_equity: bool = True  # N8 §j.2: equity under the starting capital → the smallest unit
 
     # Network surface — loopback only.
     api_host: str = "127.0.0.1"
@@ -81,6 +107,20 @@ class Settings(BaseSettings):
     @classmethod
     def _strip(cls, value: str) -> str:
         return ",".join(part.strip() for part in value.split(",") if part.strip())
+
+    @field_validator("strategy_s01_windows", "strategy_s02_windows")
+    @classmethod
+    def _windows_are_well_formed(cls, value: str) -> str:
+        if value.strip():
+            parse_trading_windows(value)  # raises ValueError, which pydantic reports against the setting's name
+        return value.strip()
+
+    @field_validator("risk_n8_minimum_percent")
+    @classmethod
+    def _n8_minimum_is_a_whole_unit(cls, value: float | None) -> float | None:
+        if value is not None:
+            percent_to_units(value)  # raises ValueError: a value between two 0.1 % units is refused, never rounded
+        return value
 
     @property
     def origins(self) -> list[str]:

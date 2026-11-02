@@ -55,7 +55,11 @@ class StrategyRepository:
         return [TradeIntent.model_validate(dict(r)) for r in rows]
 
     async def record_evaluation(self, evaluation: StrategyEvaluation) -> None:
-        """Idempotent on (symbol, event_at): a re-detected setup updates its own row."""
+        """Idempotent on (symbol, event_at): a re-detected setup updates its own row. S01 writes ``setup_proposals`` (EA-02 reads
+        it); every other strategy writes ``strategy_evaluations`` under its own id (ADR 0024)."""
+        if evaluation.strategy_id != "S01":
+            await self._record_other(evaluation)
+            return
         await self._db.execute(
             "INSERT INTO setup_proposals (symbol, event_at, status, stage, detail, side, swept_level_kind, "
             "swept_level_price, entry_price, stop_loss, take_profit, cost_ratio, risk_reward_ratio) "
@@ -82,11 +86,44 @@ class StrategyRepository:
             ),
         )
 
+    async def _record_other(self, evaluation: StrategyEvaluation) -> None:
+        await self._db.execute(
+            "INSERT INTO strategy_evaluations (strategy_id, symbol, event_at, status, stage, detail, side, "
+            "swept_level_kind, swept_level_price, entry_price, stop_loss, take_profit, cost_ratio, risk_reward_ratio) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (strategy_id, symbol, event_at) DO UPDATE SET status = EXCLUDED.status, "
+            "stage = EXCLUDED.stage, detail = EXCLUDED.detail, side = EXCLUDED.side, "
+            "swept_level_kind = EXCLUDED.swept_level_kind, swept_level_price = EXCLUDED.swept_level_price, "
+            "entry_price = EXCLUDED.entry_price, stop_loss = EXCLUDED.stop_loss, take_profit = EXCLUDED.take_profit, "
+            "cost_ratio = EXCLUDED.cost_ratio, risk_reward_ratio = EXCLUDED.risk_reward_ratio, recorded_at = now()",
+            (
+                evaluation.strategy_id,
+                evaluation.symbol,
+                evaluation.event_at,
+                evaluation.status,
+                evaluation.stage,
+                evaluation.detail,
+                evaluation.side.value if evaluation.side else None,
+                evaluation.swept_level_kind,
+                evaluation.swept_level_price,
+                evaluation.entry_price,
+                evaluation.stop_loss,
+                evaluation.take_profit,
+                evaluation.cost_ratio,
+                evaluation.risk_reward_ratio,
+            ),
+        )
+
     async def evaluations_since(self, since: datetime) -> list[StrategyEvaluation]:
+        """Every strategy's evaluations since ``since``, newest first: S01 from ``setup_proposals``, the others from
+        ``strategy_evaluations``."""
         rows = await self._db.fetch_all(
-            "SELECT symbol, event_at, status, stage, detail, side, swept_level_kind, swept_level_price, entry_price, "
-            "stop_loss, take_profit, cost_ratio, risk_reward_ratio FROM setup_proposals WHERE event_at >= %s "
-            "ORDER BY event_at DESC",
-            (since,),
+            "SELECT strategy_id, symbol, event_at, status, stage, detail, side, swept_level_kind, swept_level_price, "
+            "entry_price, stop_loss, take_profit, cost_ratio, risk_reward_ratio FROM strategy_evaluations "
+            "WHERE event_at >= %s UNION ALL "
+            "SELECT 'S01' AS strategy_id, symbol, event_at, status, stage, detail, side, swept_level_kind, "
+            "swept_level_price, entry_price, stop_loss, take_profit, cost_ratio, risk_reward_ratio "
+            "FROM setup_proposals WHERE event_at >= %s ORDER BY event_at DESC",
+            (since, since),
         )
         return [StrategyEvaluation.model_validate(dict(r)) for r in rows]

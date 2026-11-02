@@ -42,17 +42,29 @@
 //|    a store per login whose write failure blocks an order, and final|
 //|    reports sent again after a reconnection.                       |
 //|                                                                   |
+//| 1.12 (ADR 0029, 2026-11-01) gives the agent the handlers the core  |
+//| already speaks: LIMIT (a pending order that always expires at the  |
+//| broker), MODIFY (a stop that only tightens), CLOSE, PARTIAL_CLOSE  |
+//| and CANCEL. Every handler builds a TradeCommand and goes through   |
+//| the same chain; ExecuteOrder stays the ONE function that sends, and|
+//| its first statement is unchanged. The mode is still a compiled     |
+//| constant at OBSERVE: all of this answers SIMULATED in this build.  |
+//| 1.13 (ADR 0033, 2026-11-02): the local halt no longer refuses a    |
+//| command that only closes or cancels — it stops new risk, not the   |
+//| way out. Openings and stop moves are still refused while halted.   |
+//|                                                                   |
 //| It still decides NOTHING: no strategy, no signal, no market       |
 //| analysis, no decision parameter. It does not know why it executes.|
 //+------------------------------------------------------------------+
 #property copyright "Trading Operating System — personal use only"
-#property version   "1.11"
-#property description "EA-05 execution agent (I1) — OrderSend exists but is unreachable outside CONFIRM; this build is OBSERVE."
+#property version   "1.13"
+#property description "EA-05 execution agent (ADR 0029) — OrderSend exists once, in ExecuteOrder, unreachable outside CONFIRM; this build is OBSERVE."
 
 #include "Include/JsonLite.mqh"
 #include "Include/CommandStore.mqh"
+#include "Include/TradeRequest.mqh"
 
-#define AGENT_VERSION      "1.11"
+#define AGENT_VERSION      "1.13"
 #define INSTANCE_LOCK      "TradingOsAgent.instance"
 #define HALT_BUTTON        "TradingOsAgent.halt"
 #define HALT_FILE_ALL      "tradingos_halt.flag"
@@ -72,6 +84,7 @@ input int    InpMaxOpenPositions  = 3;           // local barrier — counts ALL
 input string InpMaxSpreadCsv      = "";          // I1: maximum spread per symbol in PRICE units, e.g. "EURUSDm=0.00025,XAUUSDm=0.40" (2.5 pips; 40 cents). A symbol without an entry refuses every order — fail closed
 input string InpAllowedSymbolsCsv = "XAUUSDm,EURUSDm"; // local whitelist — broker-side names (context/domain/symbols-broker.md); XAUUSD + EURUSD since 2026-09-25, GBPUSD set aside
 input int    InpMaxSlippagePoints = 10;          // EA-05 inc. 6: MqlTradeRequest.deviation — a bound on the fill, never a decision
+input int    InpPendingMaxMinutes = 60;          // 1.12: a pending (LIMIT) order always expires at the broker after this many minutes. 1..1440; anything else is read as 60 — it can be shortened or lengthened, never removed
 input int    InpReconciliationLookbackDays = 7;  // EA-06: how far back HistorySelect searches to resolve an UNKNOWN commandId
 input int    InpReportReplayMinutes = 60;        // I1: final reports recorded this recently are sent again after a reconnection
 input int    InpDeadManSeconds    = 30;          // Python-native core: a NEW order is refused (DEAD_MAN) when no control.ping has arrived from the core for this long. 5..600; anything lower is read as 30 — it can be loosened, never switched off. A received order is not proof the core is alive; only the ping is. Stops already at the broker stay.
@@ -677,7 +690,7 @@ void SendHello()
    json += "\"symbol\":\"" + JsonEscape(symbol) + "\",";
    json += "\"broker\":\"" + JsonEscape(AccountInfoString(ACCOUNT_COMPANY)) + "\",";
    json += "\"server\":\"" + JsonEscape(g_server) + "\",";
-   json += "\"orderTypes\":[\"market\"],";
+   json += "\"orderTypes\":[\"market\",\"limit\"],";
    json += "\"minVolume\":" + DoubleToString(minVol, 2) + ",";
    json += "\"maxVolume\":" + DoubleToString(maxVol, 2) + ",";
    json += "\"volumeStep\":" + DoubleToString(volStep, 2) + ",";
@@ -689,7 +702,9 @@ void SendHello()
    // I1 — everything below is new. The token is checked by the core and
    // never stored or logged there.
    json += "\"token\":\"" + JsonEscape(ReadCoreToken()) + "\",";
-   json += "\"capabilities\":[\"ping\",\"halt\",\"dead_man\"],"; // dead_man: refuses new orders when the core stops pinging (1.11)
+   // dead_man: refuses new orders when the core stops pinging (1.11). limit, modify, close, cancel (1.12, ADR 0029): the core sends
+   // those commands only to an agent that says it has a handler for them — they are validated here whatever the mode.
+   json += "\"capabilities\":[\"ping\",\"halt\",\"dead_man\",\"limit\",\"modify\",\"close\",\"cancel\"],";
    json += "\"buildId\":\"" + JsonEscape(BuildId()) + "\",";
    json += "\"modeCeiling\":\"" + ModeToWireString(g_mode_ceiling) + "\",";
    json += "\"identity\":\"" + g_identity + "\",";
@@ -802,6 +817,18 @@ void HandleMessage(const string json)
    {
       HandleOrderCommand(json);
    }
+   else if(type == "execution.modify")
+   {
+      HandleModifyCommand(json);
+   }
+   else if(type == "execution.close")
+   {
+      HandleCloseCommand(json);
+   }
+   else if(type == "execution.cancel")
+   {
+      HandleCancelCommand(json);
+   }
    else if(type == "control.ping")
    {
       // The core's liveness beat (every 5 s). It is the ONLY thing that feeds
@@ -865,53 +892,296 @@ string DeadManReason()
 //| each one. Empty return = no objection. A typed code leads each      |
 //| reason (protocol.md, CommandRejectCode).                            |
 //+------------------------------------------------------------------+
-string ValidateOrderCommand(const string symbol, const string orderType, const double volume, const double sl)
+string ValidateTradeCommand(TradeCommand &cmd)
 {
    string dead = DeadManReason();
    if(dead != "")
    {
       return dead;
    }
-   if(!IsAllowedSymbol(symbol))
+   if(!IsAllowedSymbol(cmd.symbol))
    {
-      return "SYMBOL_MISMATCH: symbol '" + symbol + "' is not in the local whitelist";
+      return "SYMBOL_MISMATCH: symbol '" + cmd.symbol + "' is not in the local whitelist";
    }
-   if(orderType != "MARKET")
+   if(cmd.kind == "OPEN")
    {
-      return "ORDER_TYPE_UNSUPPORTED: orderType '" + orderType + "' is not supported in this build (market only)";
+      return ValidateOpenCommand(cmd);
    }
-   if(volume <= 0 || volume > InpMaxVolumePerOrder)
+   if(cmd.kind == "MODIFY")
    {
-      return "VOLUME_LIMIT: volume " + DoubleToString(volume, 2) + " outside (0, " + DoubleToString(InpMaxVolumePerOrder, 2) + "], the local per-order maximum";
+      return ValidateModifyCommand(cmd);
    }
-   if(sl <= 0)
+   if(cmd.kind == "CLOSE" || cmd.kind == "PARTIAL_CLOSE")
+   {
+      return ValidateCloseCommand(cmd);
+   }
+   if(cmd.kind == "CANCEL")
+   {
+      return ValidateCancelCommand(cmd);
+   }
+   return "INVALID_REQUEST: unknown command kind '" + cmd.kind + "'";
+}
+
+//--- OPEN, at the market or resting (LIMIT). The barriers of 1.11 are all here, in their order and with their codes; 1.12
+//    adds the symbol's own volume rules, the side of the stop and the target, the broker's stops level and, for a LIMIT, the
+//    price and the lifetime. Pending orders count with the positions: a resting order is a position that has not filled yet.
+string ValidateOpenCommand(TradeCommand &cmd)
+{
+   if(cmd.orderType != "MARKET" && cmd.orderType != "LIMIT")
+   {
+      return "ORDER_TYPE_UNSUPPORTED: orderType '" + cmd.orderType + "' is not supported (market and limit only)";
+   }
+   if(cmd.side != "BUY" && cmd.side != "SELL")
+   {
+      return "INVALID_REQUEST: side '" + cmd.side + "' is neither BUY nor SELL";
+   }
+   if(cmd.volume <= 0 || cmd.volume > InpMaxVolumePerOrder)
+   {
+      return "VOLUME_LIMIT: volume " + DoubleToString(cmd.volume, 2) + " outside (0, " + DoubleToString(InpMaxVolumePerOrder, 2) + "], the local per-order maximum";
+   }
+   if(cmd.sl <= 0)
    {
       return "STOP_MISSING: no stop-loss on this command — never executed without an explicit invalidation";
    }
-   if(PositionsTotal() >= InpMaxOpenPositions)
+   int exposure = PositionsTotal() + OrdersTotal();
+   if(exposure >= InpMaxOpenPositions)
    {
-      return "POSITIONS_LIMIT: open positions (" + IntegerToString(PositionsTotal()) + ") already at the local maximum (" + IntegerToString(InpMaxOpenPositions) + ")";
+      return "POSITIONS_LIMIT: open positions and pending orders (" + IntegerToString(exposure) + ") already at the local maximum (" + IntegerToString(InpMaxOpenPositions) + ")";
    }
 
-   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   double point = SymbolInfoDouble(cmd.symbol, SYMBOL_POINT);
    if(point <= 0)
    {
-      return "SYMBOL_UNAVAILABLE: symbol '" + symbol + "' has no valid point size on this terminal (not in Market Watch?)";
+      return "SYMBOL_UNAVAILABLE: symbol '" + cmd.symbol + "' has no valid point size on this terminal (not in Market Watch?)";
    }
-   double maxSpread = MaxSpreadFor(symbol);
-   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   string volumeProblem = TradeVolumeProblem(cmd.symbol, cmd.volume);
+   if(volumeProblem != "")
+   {
+      return "VOLUME_INVALID: " + volumeProblem;
+   }
+   double maxSpread = MaxSpreadFor(cmd.symbol);
+   int digits = (int)SymbolInfoInteger(cmd.symbol, SYMBOL_DIGITS);
    if(maxSpread <= 0)
    {
-      return "SPREAD_LIMIT_MISSING: no maximum spread configured for '" + symbol + "' in InpMaxSpreadCsv — refused, never unlimited";
+      return "SPREAD_LIMIT_MISSING: no maximum spread configured for '" + cmd.symbol + "' in InpMaxSpreadCsv — refused, never unlimited";
    }
-   double spread = SymbolInfoDouble(symbol, SYMBOL_ASK) - SymbolInfoDouble(symbol, SYMBOL_BID);
+   double bid = SymbolInfoDouble(cmd.symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(cmd.symbol, SYMBOL_ASK);
+   if(bid <= 0 || ask <= 0)
+   {
+      return "SYMBOL_UNAVAILABLE: symbol '" + cmd.symbol + "' has no quote on this terminal";
+   }
+   double spread = ask - bid;
    if(spread > maxSpread + point / 2)
    {
       return "SPREAD_TOO_WIDE: spread " + DoubleToString(spread, digits) + " exceeds the local maximum " +
-             DoubleToString(maxSpread, digits) + " for " + symbol;
+             DoubleToString(maxSpread, digits) + " for " + cmd.symbol;
    }
 
+   // Where the stop and the target must sit: behind and beyond the price the position will be measured from — the price it
+   // would be closed at for an order at the market, the order's own price for a resting one — by at least the stops level.
+   bool isBuy = (cmd.side == "BUY");
+   double gap = TradeStopsDistance(cmd.symbol);
+   double reference;
+   if(cmd.orderType == "LIMIT")
+   {
+      if(cmd.price <= 0)
+      {
+         return "LIMIT_PRICE_INVALID: a LIMIT order needs a price";
+      }
+      if(isBuy && cmd.price > ask - gap + point / 2)
+      {
+         return "LIMIT_PRICE_INVALID: a buy limit at " + DoubleToString(cmd.price, digits) + " is not below the ask " + DoubleToString(ask, digits) + " by the stops level";
+      }
+      if(!isBuy && cmd.price < bid + gap - point / 2)
+      {
+         return "LIMIT_PRICE_INVALID: a sell limit at " + DoubleToString(cmd.price, digits) + " is not above the bid " + DoubleToString(bid, digits) + " by the stops level";
+      }
+      if((SymbolInfoInteger(cmd.symbol, SYMBOL_EXPIRATION_MODE) & SYMBOL_EXPIRATION_SPECIFIED) == 0)
+      {
+         return "ORDER_TYPE_UNSUPPORTED: '" + cmd.symbol + "' does not accept a pending order with an expiration, and a resting order is never left without one";
+      }
+      reference = cmd.price;
+   }
+   else
+   {
+      reference = isBuy ? bid : ask;
+   }
+   bool stopWrong = isBuy ? (cmd.sl > reference - gap + point / 2) : (cmd.sl < reference + gap - point / 2);
+   if(stopWrong)
+   {
+      return "STOP_INVALID: stop " + DoubleToString(cmd.sl, digits) + " is not " + (isBuy ? "below " : "above ") +
+             DoubleToString(reference, digits) + " by the broker's stops level (" + DoubleToString(gap, digits) + ")";
+   }
+   if(cmd.tp > 0)
+   {
+      bool targetWrong = isBuy ? (cmd.tp < reference + gap - point / 2) : (cmd.tp > reference - gap + point / 2);
+      if(targetWrong)
+      {
+         return "STOP_INVALID: target " + DoubleToString(cmd.tp, digits) + " is not " + (isBuy ? "above " : "below ") +
+                DoubleToString(reference, digits) + " by the broker's stops level (" + DoubleToString(gap, digits) + ")";
+      }
+   }
    return "";
+}
+
+//--- MODIFY: move the stop and/or the target of one of this agent's own positions. A stop only ever tightens and is never
+//    removed; the core checked the same thing, and this agent has the last word. Fills cmd.side with the position's.
+string ValidateModifyCommand(TradeCommand &cmd)
+{
+   if(!cmd.hasSl && !cmd.hasTp)
+   {
+      return "INVALID_REQUEST: MODIFY names neither a stop nor a target";
+   }
+   if(cmd.hasSl && cmd.sl <= 0)
+   {
+      return "STOP_MISSING: a stop is never removed — no position without an explicit invalidation";
+   }
+   if(cmd.hasTp && cmd.tp <= 0)
+   {
+      return "INVALID_REQUEST: a target must be a price above zero (this command does not remove one)";
+   }
+   ulong ticket = 0;
+   if(!TradeSelectPosition(cmd.positionId, ticket))
+   {
+      return "POSITION_NOT_FOUND: no open position " + IntegerToString(cmd.positionId) + " on this terminal";
+   }
+   string notYours = TargetNotOurs((int)PositionGetInteger(POSITION_MAGIC), PositionGetString(POSITION_SYMBOL), cmd.symbol,
+                                   "position " + IntegerToString(cmd.positionId));
+   if(notYours != "")
+   {
+      return notYours;
+   }
+   bool isBuy = ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+   cmd.side = isBuy ? "BUY" : "SELL";
+   double point = SymbolInfoDouble(cmd.symbol, SYMBOL_POINT);
+   int digits = (int)SymbolInfoInteger(cmd.symbol, SYMBOL_DIGITS);
+   double bid = SymbolInfoDouble(cmd.symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(cmd.symbol, SYMBOL_ASK);
+   if(point <= 0 || bid <= 0 || ask <= 0)
+   {
+      return "SYMBOL_UNAVAILABLE: symbol '" + cmd.symbol + "' has no quote on this terminal";
+   }
+   double gap = TradeStopsDistance(cmd.symbol);
+   double reference = isBuy ? bid : ask; // the price the position would be closed at
+   if(cmd.hasSl)
+   {
+      double current = PositionGetDouble(POSITION_SL);
+      bool looser = (current > 0) && (isBuy ? (cmd.sl < current - point / 2) : (cmd.sl > current + point / 2));
+      if(looser)
+      {
+         return "STOP_LOOSENED: stop " + DoubleToString(cmd.sl, digits) + " lets the position lose more than its current stop " +
+                DoubleToString(current, digits);
+      }
+      bool wrongSide = isBuy ? (cmd.sl > reference - gap + point / 2) : (cmd.sl < reference + gap - point / 2);
+      if(wrongSide)
+      {
+         return "STOP_INVALID: stop " + DoubleToString(cmd.sl, digits) + " is not " + (isBuy ? "below " : "above ") +
+                DoubleToString(reference, digits) + " by the broker's stops level (" + DoubleToString(gap, digits) + ")";
+      }
+   }
+   if(cmd.hasTp)
+   {
+      bool wrongSide = isBuy ? (cmd.tp < reference + gap - point / 2) : (cmd.tp > reference - gap + point / 2);
+      if(wrongSide)
+      {
+         return "STOP_INVALID: target " + DoubleToString(cmd.tp, digits) + " is not " + (isBuy ? "above " : "below ") +
+                DoubleToString(reference, digits) + " by the broker's stops level (" + DoubleToString(gap, digits) + ")";
+      }
+   }
+   return "";
+}
+
+//--- CLOSE (all of one of this agent's positions) and PARTIAL_CLOSE (part of it, strictly less, leaving a volume the symbol can
+//    hold). Closing never adds exposure: no spread, volume-per-order or position-count barrier applies to it, only the
+//    identity of the target. Fills cmd.side (and, for a CLOSE, cmd.volume) from the position.
+string ValidateCloseCommand(TradeCommand &cmd)
+{
+   ulong ticket = 0;
+   if(!TradeSelectPosition(cmd.positionId, ticket))
+   {
+      return "POSITION_NOT_FOUND: no open position " + IntegerToString(cmd.positionId) + " on this terminal";
+   }
+   string notYours = TargetNotOurs((int)PositionGetInteger(POSITION_MAGIC), PositionGetString(POSITION_SYMBOL), cmd.symbol,
+                                   "position " + IntegerToString(cmd.positionId));
+   if(notYours != "")
+   {
+      return notYours;
+   }
+   cmd.side = ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+   double heldVolume = PositionGetDouble(POSITION_VOLUME);
+   if(cmd.kind == "CLOSE")
+   {
+      cmd.volume = heldVolume;
+      return "";
+   }
+   if(cmd.volume <= 0)
+   {
+      return "INVALID_REQUEST: PARTIAL_CLOSE needs a volume";
+   }
+   if(cmd.volume >= heldVolume - 1e-9)
+   {
+      return "VOLUME_INVALID: " + DoubleToString(cmd.volume, 2) + " lot(s) is not less than the " + DoubleToString(heldVolume, 2) + " open — that is a CLOSE";
+   }
+   string volumeProblem = TradeVolumeProblem(cmd.symbol, cmd.volume);
+   if(volumeProblem != "")
+   {
+      return "VOLUME_INVALID: " + volumeProblem;
+   }
+   if(heldVolume - cmd.volume < SymbolInfoDouble(cmd.symbol, SYMBOL_VOLUME_MIN) - 1e-9)
+   {
+      return "VOLUME_INVALID: closing " + DoubleToString(cmd.volume, 2) + " of " + DoubleToString(heldVolume, 2) + " would leave less than the symbol's minimum volume";
+   }
+   return "";
+}
+
+//--- CANCEL: delete one of this agent's own pending orders. Fills cmd.side with the order's.
+string ValidateCancelCommand(TradeCommand &cmd)
+{
+   if(!TradeSelectPendingOrder(cmd.orderId))
+   {
+      return "ORDER_NOT_FOUND: no pending order " + IntegerToString(cmd.orderId) + " on this terminal";
+   }
+   ENUM_ORDER_TYPE type = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+   if(!TradeOrderTypeIsPending(type))
+   {
+      return "ORDER_NOT_FOUND: order " + IntegerToString(cmd.orderId) + " is not a pending order";
+   }
+   string notYours = TargetNotOurs((int)OrderGetInteger(ORDER_MAGIC), OrderGetString(ORDER_SYMBOL), cmd.symbol,
+                                   "order " + IntegerToString(cmd.orderId));
+   if(notYours != "")
+   {
+      return notYours;
+   }
+   cmd.side = TradeOrderTypeIsBuy(type) ? "BUY" : "SELL";
+   return "";
+}
+
+//--- "" when a position or an order belongs to this agent (its magic number) and sits on the symbol the command names; else the
+//    refusal. The agent never touches what the user opened by hand or what another program placed (ADR 0010 isolation).
+string TargetNotOurs(const int magic, const string targetSymbol, const string commandSymbol, const string what)
+{
+   if(magic != InpMagicNumber)
+   {
+      return "TARGET_NOT_OURS: " + what + " carries magic " + IntegerToString(magic) + ", this agent's is " + IntegerToString(InpMagicNumber) +
+             " — it only manages what it placed";
+   }
+   if(targetSymbol != commandSymbol)
+   {
+      return "SYMBOL_MISMATCH: " + what + " is on " + targetSymbol + ", the command says " + commandSymbol;
+   }
+   return "";
+}
+
+//--- 1.12: a pending order lives at most this long at the broker. Never removable: anything outside 1..1440 is read as 60.
+int PendingMaxMinutes()
+{
+   return (InpPendingMaxMinutes >= 1 && InpPendingMaxMinutes <= 1440) ? InpPendingMaxMinutes : 60;
+}
+
+datetime PendingExpiration()
+{
+   return TimeCurrent() + PendingMaxMinutes() * 60; // broker (server) time, as MqlTradeRequest.expiration wants
 }
 
 //+------------------------------------------------------------------+
@@ -948,7 +1218,8 @@ void SendReportRecord(const CommandRecord &rec, const bool replayed)
    json += "\"commandId\":\"" + JsonEscape(rec.commandId) + "\",";
    json += "\"status\":\"" + rec.status + "\",";
    json += "\"symbol\":\"" + JsonEscape(rec.symbol) + "\",";
-   json += "\"side\":\"" + JsonEscape(rec.side) + "\",";
+   // A report without a side says null: the core reads "BUY", "SELL" or nothing, and an empty string would drop the whole frame.
+   json += (rec.side == "" ? "\"side\":null," : "\"side\":\"" + JsonEscape(rec.side) + "\",");
    json += "\"brokerOrderId\":" + JsonIdOrNull(rec.brokerOrderId) + ",";
    json += "\"brokerPositionId\":" + JsonIdOrNull(rec.brokerPositionId) + ",";
    json += "\"filledVolume\":" + (rec.filledVolume == 0.0 ? "null" : DoubleToString(rec.filledVolume, 2)) + ",";
@@ -1019,7 +1290,8 @@ void SendReconciled(const string commandId, const string outcome, const string s
 }
 
 //+------------------------------------------------------------------+
-//| execute — EA-05 increment 6. THE ONLY OrderSend IN THE REPOSITORY. |
+//| execute — EA-05 increment 6, widened by ADR 0029 (1.12).           |
+//| THE ONLY OrderSend IN THE REPOSITORY.                              |
 //|                                                                    |
 //| Structural barrier, not a flag (ADR 0010): the mode test is this   |
 //| function's first statement and its early return leaves the entire  |
@@ -1030,6 +1302,14 @@ void SendReconciled(const string commandId, const string outcome, const string s
 //| in depth, not the barrier. This test is the barrier, and it stays  |
 //| here even if a future caller forgets.                              |
 //|                                                                    |
+//| Since 1.12 this is the single point every kind of command goes     |
+//| through — an order at the market, a resting LIMIT, a stop move, a   |
+//| full or partial close, a cancel. The handlers build a TradeCommand; |
+//| this function validates it again (the same ValidateTradeCommand),   |
+//| builds the request (BuildTradeRequest), has the server check it     |
+//| where that is meaningful (OrderCheck sends nothing), writes the     |
+//| UNKNOWN line, and only then calls OrderSend.                       |
+//|                                                                    |
 //| In this build g_mode is a compile-time const MODE_OBSERVE, so the  |
 //| guard can never pass at all: everything below is provably          |
 //| unreachable until the mode ladder is built (I4 to I6).             |
@@ -1038,167 +1318,238 @@ void SendReconciled(const string commandId, const string outcome, const string s
 //| as UNKNOWN BEFORE the broker call and rewritten with the real      |
 //| outcome after. An agent that dies between the two leaves UNKNOWN   |
 //| behind; replaying that commandId then returns DUPLICATE/UNKNOWN    |
-//| from the store and never reaches the broker a second time. Since   |
-//| I1 an UNKNOWN line that cannot be written stops the order: without |
-//| it, nothing would stop that second one. Resolving an UNKNOWN is    |
-//| EA-06's reconciliation — never a retry from here.                  |
+//| from the store and never reaches the broker a second time. An      |
+//| UNKNOWN line that cannot be written stops the order. Resolving an  |
+//| UNKNOWN is EA-06's reconciliation, which LOOKS at the terminal     |
+//| (orders, deals, the stop now in force) — never a retry from here.  |
 //+------------------------------------------------------------------+
-void ExecuteOrder(const string commandId, const string symbol, const string side,
-                  const double volume, const double sl, const double tp)
+void ExecuteOrder(const TradeCommand &command)
 {
    if(g_mode != MODE_CONFIRM)
    {
       return;
    }
 
-   // I1, defence in depth: the caller checked these too.
-   if(g_identity != "ok" || !g_tradable || IsHalted())
+   // I1, defence in depth: the caller checked these too. Opening and moving a stop need the login to be tradable; closing and
+   // cancelling, to be closable — two lists (InpTradableLogins, InpClosableLogins), both empty by default.
+   bool allowed = TradeCommandReducesRiskOnly(command.kind) ? g_closable : g_tradable;
+   // The halt (ADR 0033) refuses what is not a closing or a cancelling; those two still need the login to be closable.
+   if(g_identity != "ok" || !allowed || (IsHalted() && !TradeCommandReducesRiskOnly(command.kind)))
    {
-      RecordAndReport(commandId, "REJECTED", symbol, side,
-                      "IDENTITY_REFUSED: login not tradable, identity not ok, or halted — no broker call");
+      RecordAndReport(command.commandId, "REJECTED", command.symbol, command.side,
+                      "IDENTITY_REFUSED: login not allowed for this kind of command, identity not ok, or halted — no broker call");
       return;
    }
 
+   // The same local barriers the handler ran, run again here: whatever calls this function, nothing reaches the broker unvalidated.
+   TradeCommand cmd = command;
+   string refusal = ValidateTradeCommand(cmd);
+   if(refusal != "")
+   {
+      RecordAndReport(cmd.commandId, "REJECTED", cmd.symbol, cmd.side, refusal);
+      return;
+   }
+
+   MqlTradeRequest     request;
+   MqlTradeResult      result;
+   MqlTradeCheckResult check;
+   ZeroMemory(result);
+   ZeroMemory(check);
+   string unbuildable = BuildTradeRequest(cmd, InpMagicNumber, InpMaxSlippagePoints, FillingModeFor(cmd.symbol),
+                                          PendingExpiration(), CommandTrace(cmd.commandId), request);
+   if(unbuildable != "")
+   {
+      RecordAndReport(cmd.commandId, "REJECTED", cmd.symbol, cmd.side, unbuildable);
+      return;
+   }
+
+   // OrderCheck sends nothing: it asks the server whether it would take the request (margin, volume, stops, fill mode). It is
+   // applied to the requests that open, close or place — where those can fail; stop moves and removals have no margin to check
+   // and keep their local barriers. A refusal here is a definite outcome, recorded final.
+   bool checkable = (request.action == TRADE_ACTION_DEAL || request.action == TRADE_ACTION_PENDING);
+   if(checkable)
+   {
+      bool checked = OrderCheck(request, check);
+      if(!checked || (check.retcode != 0 && check.retcode != TRADE_RETCODE_DONE))
+      {
+         CommandRecord refused;
+         CommandRecordInit(refused, cmd.commandId, "FAILED",
+                           "OrderCheck refused: retcode " + IntegerToString(check.retcode) +
+                           (check.comment == "" ? "" : " (" + check.comment + ")") + " — nothing was sent",
+                           cmd.symbol, cmd.side, (long)TimeGMT() * 1000);
+         refused.retcode = (int)check.retcode;
+         refused.kind = cmd.kind;
+         CommandStoreRecord(refused);
+         SendReportRecord(refused, false);
+         return;
+      }
+   }
+
    CommandRecord inFlight;
-   CommandRecordInit(inFlight, commandId, "UNKNOWN", "broker call in flight - outcome not yet known",
-                     symbol, side, (long)TimeGMT() * 1000);
+   CommandRecordInit(inFlight, cmd.commandId, "UNKNOWN", "broker call in flight - outcome not yet known",
+                     cmd.symbol, cmd.side, (long)TimeGMT() * 1000);
+   inFlight.kind             = cmd.kind;
+   inFlight.brokerOrderId    = cmd.orderId;
+   inFlight.brokerPositionId = cmd.positionId;
+   inFlight.filledVolume     = cmd.volume;
+   inFlight.averagePrice     = cmd.price;
+   inFlight.sl               = (cmd.kind == "OPEN" || cmd.hasSl) ? cmd.sl : 0.0;
+   inFlight.tp               = (cmd.kind == "OPEN" || cmd.hasTp) ? cmd.tp : 0.0;
    if(!CommandStoreRecord(inFlight))
    {
-      RecordAndReport(commandId, "FAILED", symbol, side,
+      RecordAndReport(cmd.commandId, "FAILED", cmd.symbol, cmd.side,
                       "STORE_UNWRITABLE: the UNKNOWN line could not be written — order NOT sent");
       return;
    }
 
-   bool isBuy = (side == "BUY");
-   MqlTradeRequest request;
-   MqlTradeResult  result;
-   ZeroMemory(request);
-   ZeroMemory(result);
-   request.action       = TRADE_ACTION_DEAL;
-   request.symbol       = symbol;
-   request.volume       = volume;
-   request.type         = isBuy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
-   request.price        = isBuy ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
-   request.sl           = sl;
-   request.tp           = tp;
-   request.deviation    = InpMaxSlippagePoints;
-   request.magic        = InpMagicNumber;
-   request.type_filling = FillingModeFor(symbol);
-   request.comment      = CommandTrace(commandId);
-
    bool sent = OrderSend(request, result);
 
    long nowMs = (long)TimeGMT() * 1000;
-   bool filled = sent && (result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_DONE_PARTIAL);
-   if(!filled)
+   // A stop move to the levels the position already has is a no-op, not a failure: the position is where the command wanted it.
+   bool noChange = sent && cmd.kind == "MODIFY" && result.retcode == TRADE_RETCODE_NO_CHANGES;
+   bool done = sent && (result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_DONE_PARTIAL || noChange);
+   if(!done)
    {
-      // A refusal is a definite outcome, safe to record as final: the broker
-      // rejected it, nothing is open. Only a crash mid-call leaves UNKNOWN.
+      // A refusal is a definite outcome, safe to record as final: the broker rejected it, nothing was done. Only a crash
+      // mid-call leaves UNKNOWN. (Ambiguous returns — timeout, no connection — go to the core as FAILED with their retcode,
+      // which classifies them UNKNOWN there; the agent's line is final, so a replay of the commandId never reaches the broker.)
       string failDetail = "OrderSend refused: retcode " + IntegerToString(result.retcode) +
                           (result.comment == "" ? "" : " (" + result.comment + ")");
       CommandRecord failed;
-      CommandRecordInit(failed, commandId, "FAILED", failDetail, symbol, side, nowMs);
+      CommandRecordInit(failed, cmd.commandId, "FAILED", failDetail, cmd.symbol, cmd.side, nowMs);
       failed.retcode = (int)result.retcode;
+      failed.kind = cmd.kind;
       CommandStoreRecord(failed);
       SendReportRecord(failed, false);
       return;
    }
 
-   // A fresh market entry's position identifier is its opening order ticket
-   // (verified against this account's own history). That equivalence does NOT
-   // hold for a deal that closes or reverses an existing position — this build
-   // only ever sends fresh entries (max-positions barrier above), and the
-   // general case is EA-06's reconciliation, not an assumption made here.
-   string status = (result.retcode == TRADE_RETCODE_DONE_PARTIAL) ? "PARTIALLY_FILLED" : "FILLED";
-   string detail = status + " " + DoubleToString(result.volume, 2) + " lot " + side + " " + symbol +
-                   " @ " + DoubleToString(result.price, 5) + " (order " + IntegerToString((long)result.order) + ")";
+   RecordSuccess(cmd, result, noChange, nowMs);
+}
+
+//--- The final record and report of a command the broker accepted. What each kind reports (ADR 0029):
+//    MARKET -> FILLED | PARTIALLY_FILLED; LIMIT -> SUBMITTED (resting at the broker, nothing filled); MODIFY -> MODIFIED;
+//    CLOSE / PARTIAL_CLOSE -> CLOSED; CANCEL -> CANCELLED. This function sends nothing to the broker.
+void RecordSuccess(const TradeCommand &cmd, const MqlTradeResult &result, const bool noChange, const long nowMs)
+{
+   string status;
+   string detail;
    CommandRecord done;
-   CommandRecordInit(done, commandId, status, detail, symbol, side, nowMs);
-   done.brokerOrderId = (long)result.order;
-   done.brokerPositionId = (long)result.order;
-   done.filledVolume = result.volume;
-   done.averagePrice = result.price;
+   if(cmd.kind == "OPEN" && cmd.orderType == "MARKET")
+   {
+      // A fresh market entry's position identifier is its opening order ticket (verified against this account's own history).
+      // That equivalence does NOT hold for a deal that closes or reverses an existing position — closes below name the
+      // identifier the core gave, and the general case is EA-06's reconciliation, not an assumption made here.
+      status = (result.retcode == TRADE_RETCODE_DONE_PARTIAL) ? "PARTIALLY_FILLED" : "FILLED";
+      detail = status + " " + DoubleToString(result.volume, 2) + " lot " + cmd.side + " " + cmd.symbol +
+               " @ " + DoubleToString(result.price, 5) + " (order " + IntegerToString((long)result.order) + ")";
+      CommandRecordInit(done, cmd.commandId, status, detail, cmd.symbol, cmd.side, nowMs);
+      done.brokerOrderId = (long)result.order;
+      done.brokerPositionId = (long)result.order;
+      done.filledVolume = result.volume;
+      done.averagePrice = result.price;
+   }
+   else if(cmd.kind == "OPEN")
+   {
+      status = "SUBMITTED";
+      detail = status + " " + DoubleToString(cmd.volume, 2) + " lot " + cmd.side + " LIMIT " + cmd.symbol + " @ " +
+               DoubleToString(cmd.price, 5) + " (order " + IntegerToString((long)result.order) + ", expires within " +
+               IntegerToString(PendingMaxMinutes()) + " min at the broker)";
+      CommandRecordInit(done, cmd.commandId, status, detail, cmd.symbol, cmd.side, nowMs);
+      done.brokerOrderId = (long)result.order; // nothing is filled: no position, no volume, no price yet
+   }
+   else if(cmd.kind == "MODIFY")
+   {
+      status = "MODIFIED";
+      detail = status + " position " + IntegerToString(cmd.positionId) + " " + cmd.symbol +
+               (cmd.hasSl ? " stop " + DoubleToString(cmd.sl, 5) : "") + (cmd.hasTp ? " target " + DoubleToString(cmd.tp, 5) : "") +
+               (noChange ? " (already at these levels)" : "");
+      CommandRecordInit(done, cmd.commandId, status, detail, cmd.symbol, cmd.side, nowMs);
+      done.brokerPositionId = cmd.positionId;
+   }
+   else if(cmd.kind == "CANCEL")
+   {
+      status = "CANCELLED";
+      detail = status + " pending order " + IntegerToString(cmd.orderId) + " " + cmd.symbol;
+      CommandRecordInit(done, cmd.commandId, status, detail, cmd.symbol, cmd.side, nowMs);
+      done.brokerOrderId = cmd.orderId;
+   }
+   else
+   {
+      status = "CLOSED";
+      detail = status + " " + DoubleToString(result.volume, 2) + " lot of position " + IntegerToString(cmd.positionId) + " " +
+               cmd.symbol + " @ " + DoubleToString(result.price, 5) + " (order " + IntegerToString((long)result.order) + ")";
+      CommandRecordInit(done, cmd.commandId, status, detail, cmd.symbol, cmd.side, nowMs);
+      done.brokerOrderId = (long)result.order;
+      done.brokerPositionId = cmd.positionId;
+      done.filledVolume = result.volume;
+      done.averagePrice = result.price;
+   }
    done.retcode = (int)result.retcode;
+   done.kind = cmd.kind;
+   done.sl = (cmd.kind == "OPEN" || cmd.hasSl) ? cmd.sl : 0.0;
+   done.tp = (cmd.kind == "OPEN" || cmd.hasTp) ? cmd.tp : 0.0;
    CommandStoreRecord(done);
    SendReportRecord(done, false);
 }
 
 //+------------------------------------------------------------------+
-//| The whole command path: receive -> idempotency -> halt ->          |
-//| identity -> account check -> expiry -> validate -> acknowledge ->  |
-//| execute (CONFIRM only) or report SIMULATED. See ExecuteOrder above |
-//| for the execution gate.                                            |
+//| The whole command path, for every kind of command:                 |
+//|   receive -> idempotency -> halt -> identity -> account check ->   |
+//|   expiry (AdmitCommand) -> validate (ValidateTradeCommand) ->      |
+//|   acknowledge -> ExecuteOrder (CONFIRM only) or report SIMULATED.  |
+//| The handlers below only read their message into a TradeCommand;    |
+//| none of them builds or sends a broker request.                     |
 //+------------------------------------------------------------------+
-void HandleOrderCommand(const string json)
+
+//--- The chain every command goes through before its own checks. True when the command may go on; false when it has been
+//    answered here (a replay, the halt, the identity, the wrong account, an expired command).
+bool AdmitCommand(const string commandId, const string accountId, const long expiresAt, const string symbol, const string side,
+                  const bool exitOnly)
 {
-   string commandId = JsonGetString(json, "id");
-   string accountId = JsonGetString(json, "accountId");
-   long   expiresAt = JsonGetLong(json, "expiresAt");
-   string symbol    = JsonGetString(json, "symbol");
-   string side      = JsonGetString(json, "side");
-   string orderType = JsonGetString(json, "orderType");
-   double volume    = JsonGetDouble(json, "volume");
-   double sl        = JsonGetDouble(json, "sl");
-   double tp        = JsonGetDouble(json, "tp");
-
-   if(commandId == "")
-   {
-      Print("TradingOsAgent: execution.order missing 'id' — dropping (malformed frame, never crash).");
-      return;
-   }
-
    // Idempotency FIRST, before any other check: a replayed commandId
    // returns its prior result, no matter what (ADR 0010).
    CommandRecord prior;
    if(CommandStoreLookup(commandId, prior))
    {
       SendAck(commandId, "DUPLICATE", "replayed commandId — returning the recorded result, never re-executing");
-      CommandRecord again = prior;
-      again.timeMs = (long)TimeGMT() * 1000; // a new report of the old result, as before I1
-      if(again.symbol == "") again.symbol = symbol;
-      if(again.side == "") again.side = side;
-      SendReportRecord(again, false);
-      return;
+      if(CommandStoreIsFinalStatus(prior.status))
+      {
+         CommandRecord again = prior;
+         again.timeMs = (long)TimeGMT() * 1000; // a new report of the old result, as before I1
+         if(again.symbol == "") again.symbol = symbol;
+         if(again.side == "") again.side = side;
+         SendReportRecord(again, false);
+      }
+      // A command still UNKNOWN has no report to give: reconciliation settles it by looking at the terminal, never by sending again.
+      return false;
    }
 
    // I1: the local kill switch. Checked before anything that could lead to
    // the broker, and it needs no link to the core to hold.
-   if(IsHalted())
+   // 1.13 (ADR 0033): the halt stops new risk, not the way out — a command that only closes or cancels (exitOnly) is not refused for it.
+   // Everything else (an opening, a stop move) still is, and the halt is still lifted only on the chart.
+   if(IsHalted() && !exitOnly)
    {
-      string detail = "HALTED: the local kill switch is set on this terminal — lifted only on the chart";
-      CommandRecord rec;
-      CommandRecordInit(rec, commandId, "REJECTED", detail, symbol, side, (long)TimeGMT() * 1000);
-      CommandStoreRecord(rec);
-      SendAck(commandId, "REJECTED", detail);
-      SendReportRecord(rec, false);
-      return;
+      RefuseCommand(commandId, symbol, side, "HALTED: the local kill switch is set on this terminal — lifted only on the chart");
+      return false;
    }
 
    // I1: who this terminal really is. A terminal logged into another login
    // than InpAccountId expects refuses everything, whatever it receives.
    if(g_identity != "ok")
    {
-      string detail = "IDENTITY_REFUSED: terminal login '" + g_account_id + "', expected '" + InpAccountId +
-                      "' (identity " + g_identity + ")";
-      CommandRecord rec;
-      CommandRecordInit(rec, commandId, "REJECTED", detail, symbol, side, (long)TimeGMT() * 1000);
-      CommandStoreRecord(rec);
-      SendAck(commandId, "REJECTED", detail);
-      SendReportRecord(rec, false);
-      return;
+      RefuseCommand(commandId, symbol, side, "IDENTITY_REFUSED: terminal login '" + g_account_id + "', expected '" + InpAccountId +
+                    "' (identity " + g_identity + ")");
+      return false;
    }
 
    // Account isolation (ADR 0010): never executed "at best" on the wrong
    // account. Since I1 this compares with the terminal's real login.
    if(accountId != g_account_id)
    {
-      string detail = "ACCOUNT_MISMATCH: command targets '" + accountId + "', this terminal is on '" + g_account_id + "'";
-      CommandRecord rec;
-      CommandRecordInit(rec, commandId, "REJECTED", detail, symbol, side, (long)TimeGMT() * 1000);
-      CommandStoreRecord(rec);
-      SendAck(commandId, "REJECTED", detail);
-      SendReportRecord(rec, false);
-      return;
+      RefuseCommand(commandId, symbol, side, "ACCOUNT_MISMATCH: command targets '" + accountId + "', this terminal is on '" + g_account_id + "'");
+      return false;
    }
 
    long nowMs = (long)TimeGMT() * 1000;
@@ -1208,41 +1559,127 @@ void HandleOrderCommand(const string json)
       CommandRecordInit(rec, commandId, "EXPIRED", "command received after its expiresAt", symbol, side, nowMs);
       CommandStoreRecord(rec);
       SendAck(commandId, "EXPIRED", "command received after its expiresAt");
-      return; // no execution.report for an expired command — it never reached validation
+      return false; // no execution.report for an expired command — it never reached validation
+   }
+   return true;
+}
+
+//--- A command refused before validation: recorded, acknowledged REJECTED, reported.
+void RefuseCommand(const string commandId, const string symbol, const string side, const string detail)
+{
+   CommandRecord rec;
+   CommandRecordInit(rec, commandId, "REJECTED", detail, symbol, side, (long)TimeGMT() * 1000);
+   CommandStoreRecord(rec);
+   SendAck(commandId, "REJECTED", detail);
+   SendReportRecord(rec, false);
+}
+
+string DescribeCommand(const TradeCommand &cmd)
+{
+   if(cmd.kind == "OPEN")
+   {
+      return cmd.orderType + " " + DoubleToString(cmd.volume, 2) + " lot " + cmd.side + " " + cmd.symbol +
+             (cmd.orderType == "LIMIT" ? " @ " + DoubleToString(cmd.price, 5) : "");
+   }
+   if(cmd.kind == "MODIFY")
+   {
+      return "MODIFY position " + IntegerToString(cmd.positionId) + " " + cmd.symbol +
+             (cmd.hasSl ? " stop " + DoubleToString(cmd.sl, 5) : "") + (cmd.hasTp ? " target " + DoubleToString(cmd.tp, 5) : "");
+   }
+   if(cmd.kind == "CANCEL")
+   {
+      return "CANCEL pending order " + IntegerToString(cmd.orderId) + " " + cmd.symbol;
+   }
+   return cmd.kind + " " + DoubleToString(cmd.volume, 2) + " lot of position " + IntegerToString(cmd.positionId) + " " + cmd.symbol;
+}
+
+//--- From a command read off the wire to its outcome. The mode fork: CONFIRM is the only branch that can reach a broker, and
+//    ExecuteOrder re-checks the mode itself — this test is convenience, that one is the barrier. In this build g_mode is
+//    const MODE_OBSERVE, so the SIMULATED path below is the only one that ever runs.
+void ProcessCommand(const string json, TradeCommand &cmd)
+{
+   if(cmd.commandId == "")
+   {
+      Print("TradingOsAgent: command missing 'id' — dropping (malformed frame, never crash).");
+      return;
+   }
+   if(!AdmitCommand(cmd.commandId, JsonGetString(json, "accountId"), JsonGetLong(json, "expiresAt"), cmd.symbol, cmd.side,
+                    TradeCommandReducesRiskOnly(cmd.kind)))
+   {
+      return;
    }
 
-   string rejectReason = ValidateOrderCommand(symbol, orderType, volume, sl);
+   string rejectReason = ValidateTradeCommand(cmd);
    if(rejectReason != "")
    {
-      CommandRecord rec;
-      CommandRecordInit(rec, commandId, "REJECTED", rejectReason, symbol, side, nowMs);
-      CommandStoreRecord(rec);
-      SendAck(commandId, "REJECTED", rejectReason);
-      SendReportRecord(rec, false);
+      RefuseCommand(cmd.commandId, cmd.symbol, cmd.side, rejectReason);
       return;
    }
 
-   SendAck(commandId, "ACCEPTED", "");
+   SendAck(cmd.commandId, "ACCEPTED", "");
 
-   // The fork. CONFIRM is the only branch that can reach a broker, and
-   // ExecuteOrder re-checks the mode itself — this test is convenience, that
-   // one is the barrier. In this build g_mode is const MODE_OBSERVE, so the
-   // SIMULATED path below is the only one that ever runs.
    if(g_mode == MODE_CONFIRM)
    {
-      if(!g_tradable)
+      bool reduceOnly = TradeCommandReducesRiskOnly(cmd.kind);
+      if(!(reduceOnly ? g_closable : g_tradable))
       {
-         RecordAndReport(commandId, "REJECTED", symbol, side,
-                         "LOGIN_NOT_TRADABLE: login " + g_account_id + " is not in InpTradableLogins");
+         RecordAndReport(cmd.commandId, "REJECTED", cmd.symbol, cmd.side,
+                         (reduceOnly ? "LOGIN_NOT_CLOSABLE: login " + g_account_id + " is not in InpClosableLogins"
+                                     : "LOGIN_NOT_TRADABLE: login " + g_account_id + " is not in InpTradableLogins"));
          return;
       }
-      ExecuteOrder(commandId, symbol, side, volume, sl, tp);
+      ExecuteOrder(cmd);
       return;
    }
 
-   string simDetail = "SIMULATED " + DoubleToString(volume, 2) + " lot " + side + " " + symbol +
-                      " (mode " + ModeToWireString(g_mode) + ", no broker order)";
-   RecordAndReport(commandId, "SIMULATED", symbol, side, simDetail);
+   RecordAndReport(cmd.commandId, "SIMULATED", cmd.symbol, cmd.side,
+                   "SIMULATED " + DescribeCommand(cmd) + " (mode " + ModeToWireString(g_mode) + ", no broker order)");
+}
+
+//--- execution.order: OPEN, at the market or resting (LIMIT).
+void HandleOrderCommand(const string json)
+{
+   TradeCommand cmd;
+   TradeCommandInit(cmd, "OPEN", JsonGetString(json, "id"), JsonGetString(json, "symbol"));
+   cmd.side      = JsonGetString(json, "side");
+   cmd.orderType = JsonGetString(json, "orderType");
+   cmd.volume    = JsonGetDouble(json, "volume");
+   cmd.price     = JsonGetDouble(json, "limitPrice");
+   cmd.sl        = JsonGetDouble(json, "sl");
+   cmd.tp        = JsonGetDouble(json, "tp");
+   ProcessCommand(json, cmd);
+}
+
+//--- execution.modify: move the stop and/or the target of an open position. A null level is left as it is.
+void HandleModifyCommand(const string json)
+{
+   TradeCommand cmd;
+   TradeCommandInit(cmd, "MODIFY", JsonGetString(json, "id"), JsonGetString(json, "symbol"));
+   cmd.positionId = JsonGetLong(json, "positionId");
+   cmd.hasSl      = JsonGetOptionalDouble(json, "sl", cmd.sl);
+   cmd.hasTp      = JsonGetOptionalDouble(json, "tp", cmd.tp);
+   ProcessCommand(json, cmd);
+}
+
+//--- execution.close: all of a position, or — when the message carries a volume — part of it.
+void HandleCloseCommand(const string json)
+{
+   double volume = 0.0;
+   bool partial = JsonGetOptionalDouble(json, "volume", volume);
+   TradeCommand cmd;
+   TradeCommandInit(cmd, partial ? "PARTIAL_CLOSE" : "CLOSE", JsonGetString(json, "id"), JsonGetString(json, "symbol"));
+   cmd.positionId = JsonGetLong(json, "positionId");
+   cmd.volume     = partial ? volume : 0.0;
+   ProcessCommand(json, cmd);
+}
+
+//--- execution.cancel: delete a pending order that has not filled.
+void HandleCancelCommand(const string json)
+{
+   TradeCommand cmd;
+   TradeCommandInit(cmd, "CANCEL", JsonGetString(json, "id"), JsonGetString(json, "symbol"));
+   cmd.orderId = JsonGetLong(json, "orderId");
+   ProcessCommand(json, cmd);
 }
 
 //+------------------------------------------------------------------+
@@ -1365,34 +1802,227 @@ bool SearchHistoryForCommand(const string commandId, string &outcome, string &sy
    return false;
 }
 
+//--- 1.12: a LIMIT order of this command that is still resting at the broker — found by the trace its comment carries.
+//    A pending order that has not filled is in the terminal's ACTIVE orders, not in the history.
+bool SearchActiveOrderForCommand(const string commandId, string &outcome, string &symbol, string &side,
+                                  long &brokerOrderId, double &volume, double &price)
+{
+   string needle = CommandTrace(commandId);
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i); // selects the order by index
+      if(ticket == 0)
+      {
+         continue;
+      }
+      if((int)OrderGetInteger(ORDER_MAGIC) != InpMagicNumber || OrderGetString(ORDER_COMMENT) != needle)
+      {
+         continue;
+      }
+      outcome = "executed";
+      symbol = OrderGetString(ORDER_SYMBOL);
+      side = TradeOrderTypeIsBuy((ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE)) ? "BUY" : "SELL";
+      brokerOrderId = (long)ticket;
+      volume = OrderGetDouble(ORDER_VOLUME_CURRENT);
+      price = OrderGetDouble(ORDER_PRICE_OPEN);
+      return true;
+   }
+   return false;
+}
+
+//--- 1.12: did a MODIFY take effect? Looks at the position NOW: its stop (and target) are the ones the command wanted.
+//    The only answer this can give is « yes » — a stop that is not there yet may still be on its way, and the agent never
+//    concludes « refused » from an absence.
+bool SearchPositionForModify(const CommandRecord &rec, string &outcome, string &symbol, string &side, long &brokerPositionId)
+{
+   ulong ticket = 0;
+   if((rec.sl <= 0 && rec.tp <= 0) || !TradeSelectPosition(rec.brokerPositionId, ticket))
+   {
+      return false;
+   }
+   if((int)PositionGetInteger(POSITION_MAGIC) != InpMagicNumber)
+   {
+      return false;
+   }
+   string positionSymbol = PositionGetString(POSITION_SYMBOL);
+   double point = SymbolInfoDouble(positionSymbol, SYMBOL_POINT);
+   if(point <= 0)
+   {
+      return false;
+   }
+   bool stopThere = rec.sl <= 0 || MathAbs(PositionGetDouble(POSITION_SL) - rec.sl) <= point / 2;
+   bool targetThere = rec.tp <= 0 || MathAbs(PositionGetDouble(POSITION_TP) - rec.tp) <= point / 2;
+   if(!stopThere || !targetThere)
+   {
+      return false;
+   }
+   outcome = "executed";
+   symbol = positionSymbol;
+   side = ((ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+   brokerPositionId = rec.brokerPositionId;
+   return true;
+}
+
+//--- 1.12: did a CLOSE / PARTIAL_CLOSE happen? Scans the ALREADY-SELECTED history for the exit deal that carries this command's
+//    trace on this agent's magic number and the position it named.
+bool SearchHistoryForClose(const CommandRecord &rec, string &outcome, string &symbol, string &side,
+                            long &brokerOrderId, long &brokerPositionId, double &filledVolume, double &averagePrice)
+{
+   string needle = CommandTrace(rec.commandId);
+   int totalDeals = HistoryDealsTotal();
+   for(int i = 0; i < totalDeals; i++)
+   {
+      ulong dealTicket = HistoryDealGetTicket(i);
+      if(dealTicket == 0)
+      {
+         continue;
+      }
+      if((int)HistoryDealGetInteger(dealTicket, DEAL_MAGIC) != InpMagicNumber || HistoryDealGetString(dealTicket, DEAL_COMMENT) != needle)
+      {
+         continue;
+      }
+      ENUM_DEAL_ENTRY entry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(dealTicket, DEAL_ENTRY);
+      if(entry != DEAL_ENTRY_OUT && entry != DEAL_ENTRY_OUT_BY && entry != DEAL_ENTRY_INOUT)
+      {
+         continue; // only a deal that takes volume off a position can be this command's
+      }
+      if(rec.brokerPositionId > 0 && (long)HistoryDealGetInteger(dealTicket, DEAL_POSITION_ID) != rec.brokerPositionId)
+      {
+         continue;
+      }
+      outcome = "executed";
+      symbol = HistoryDealGetString(dealTicket, DEAL_SYMBOL);
+      // the exit deal goes the other way: a SELL deal closed a BUY position
+      side = ((ENUM_DEAL_TYPE)HistoryDealGetInteger(dealTicket, DEAL_TYPE) == DEAL_TYPE_SELL) ? "BUY" : "SELL";
+      brokerOrderId = (long)HistoryDealGetInteger(dealTicket, DEAL_ORDER);
+      brokerPositionId = (long)HistoryDealGetInteger(dealTicket, DEAL_POSITION_ID);
+      filledVolume = HistoryDealGetDouble(dealTicket, DEAL_VOLUME);
+      averagePrice = HistoryDealGetDouble(dealTicket, DEAL_PRICE);
+      return true;
+   }
+   return false;
+}
+
+//--- 1.12: did a CANCEL happen? The order is no longer active and the ALREADY-SELECTED history says how it ended: cancelled or
+//    expired = gone, as the command wanted ("executed"); filled = it filled before the cancel took effect ("rejected" — the
+//    one definite negative this agent will state). An order still active, or absent from the history, is not found.
+bool SearchHistoryForCancel(const CommandRecord &rec, string &outcome, string &status, string &symbol, string &side)
+{
+   if(rec.brokerOrderId <= 0 || TradeSelectPendingOrder(rec.brokerOrderId))
+   {
+      return false; // still resting: the cancel did not (yet) take effect
+   }
+   int totalOrders = HistoryOrdersTotal();
+   for(int i = 0; i < totalOrders; i++)
+   {
+      ulong ticket = HistoryOrderGetTicket(i);
+      if(ticket == 0 || (long)ticket != rec.brokerOrderId)
+      {
+         continue;
+      }
+      ENUM_ORDER_STATE state = (ENUM_ORDER_STATE)HistoryOrderGetInteger(ticket, ORDER_STATE);
+      symbol = HistoryOrderGetString(ticket, ORDER_SYMBOL);
+      side = TradeOrderTypeIsBuy((ENUM_ORDER_TYPE)HistoryOrderGetInteger(ticket, ORDER_TYPE)) ? "BUY" : "SELL";
+      if(state == ORDER_STATE_CANCELED || state == ORDER_STATE_EXPIRED)
+      {
+         outcome = "executed";
+         status = "CANCELLED";
+         return true;
+      }
+      if(state == ORDER_STATE_FILLED || state == ORDER_STATE_PARTIAL)
+      {
+         outcome = "rejected";
+         status = "FAILED";
+         return true;
+      }
+      return false;
+   }
+   return false;
+}
+
+//--- One UNKNOWN command: look at the terminal for what it was about. Returns false — « not_found » — when nothing the command
+//    would have left is there. NEVER sends anything: this is how a command whose outcome is unknown is resolved without being
+//    replayed. `status` is the final status the store will carry.
+bool ResolveUnknownCommand(const CommandRecord &rec, string &outcome, string &status, string &symbol, string &side,
+                            long &brokerOrderId, long &brokerPositionId, double &filledVolume, double &averagePrice)
+{
+   outcome = "";
+   status = "";
+   symbol = rec.symbol;
+   side = rec.side;
+   brokerOrderId = 0;
+   brokerPositionId = 0;
+   filledVolume = 0.0;
+   averagePrice = 0.0;
+
+   string kind = (rec.kind == "") ? "OPEN" : rec.kind; // a line written before 1.12 was always an order at the market
+   if(kind == "OPEN")
+   {
+      double restingVolume = 0.0;
+      double restingPrice = 0.0;
+      if(SearchActiveOrderForCommand(rec.commandId, outcome, symbol, side, brokerOrderId, restingVolume, restingPrice))
+      {
+         status = "SUBMITTED"; // resting: nothing filled, so no volume and no price are reported
+         return true;
+      }
+      if(SearchHistoryForCommand(rec.commandId, outcome, symbol, side, brokerOrderId, brokerPositionId, filledVolume, averagePrice))
+      {
+         // Reuses the terminal vocabulary of ExecuteOrder (FILLED / FAILED): the reconciled-vs-live distinction lives in
+         // execution.reconciled, sent either way, not in this local string. FILLED covers a partial fill too (EA-06 fiche
+         // journal) — history does not carry the originally requested volume to tell the two apart.
+         status = (outcome == "executed") ? "FILLED" : "FAILED";
+         return true;
+      }
+      return false;
+   }
+   if(kind == "MODIFY")
+   {
+      status = "MODIFIED";
+      return SearchPositionForModify(rec, outcome, symbol, side, brokerPositionId);
+   }
+   if(kind == "CLOSE" || kind == "PARTIAL_CLOSE")
+   {
+      status = "CLOSED";
+      return SearchHistoryForClose(rec, outcome, symbol, side, brokerOrderId, brokerPositionId, filledVolume, averagePrice);
+   }
+   if(kind == "CANCEL")
+   {
+      brokerOrderId = rec.brokerOrderId;
+      return SearchHistoryForCancel(rec, outcome, status, symbol, side);
+   }
+   return false;
+}
+
 void ReconcileUnknownCommands()
 {
-   string unknownIds[];
-   int count = CommandStoreFindUnknown(unknownIds);
+   CommandRecord unknown[];
+   int count = CommandStoreFindUnknown(unknown);
    if(count == 0)
    {
       return;
    }
 
    datetime from = TimeCurrent() - InpReconciliationLookbackDays * 86400;
-   if(!HistorySelect(from, TimeCurrent()))
-   {
-      Print("TradingOsAgent: HistorySelect failed for EA-06 reconciliation window, error ", GetLastError());
-      return;
-   }
 
    for(int i = 0; i < count; i++)
    {
-      string commandId = unknownIds[i];
+      string commandId = unknown[i].commandId;
       ReconciliationAttemptsBump(commandId);
       int attempts = ReconciliationAttemptsFor(commandId);
 
-      string outcome, symbol, side;
+      // The history window is selected again for every command: looking at the terminal for one command must not leave the
+      // next one with a history cache that was reloaded for something else.
+      if(!HistorySelect(from, TimeCurrent()))
+      {
+         Print("TradingOsAgent: HistorySelect failed for EA-06 reconciliation window, error ", GetLastError());
+         return;
+      }
+
+      string outcome, status, symbol, side;
       long brokerOrderId, brokerPositionId;
       double filledVolume, averagePrice;
-      bool found = SearchHistoryForCommand(commandId, outcome, symbol, side,
-                                            brokerOrderId, brokerPositionId,
-                                            filledVolume, averagePrice);
+      bool found = ResolveUnknownCommand(unknown[i], outcome, status, symbol, side, brokerOrderId, brokerPositionId,
+                                          filledVolume, averagePrice);
 
       if(!found)
       {
@@ -1403,23 +2033,14 @@ void ReconcileUnknownCommands()
          continue;
       }
 
-      // Reuses ExecuteOrder's own terminal vocabulary (FILLED/FAILED), not a
-      // new one: a replayed commandId still goes through CommandStoreLookup
-      // -> SendReportRecord(prior...), and its status must stay one of
-      // Mt5ReportMessage's valid statuses. The reconciled-vs-live distinction
-      // lives in execution.reconciled below, sent either way, not in this
-      // local string. FILLED covers a partial fill too (see EA-06 fiche
-      // journal) — history does not by itself carry the originally requested
-      // volume to tell the two apart, and nothing downstream currently reads
-      // that distinction for an outcome this build can never yet produce.
       string detail = "EA-06 reconciliation: " + outcome + " (attempt " + IntegerToString(attempts) + ")";
       CommandRecord resolved;
-      CommandRecordInit(resolved, commandId, outcome == "executed" ? "FILLED" : "FAILED", detail,
-                        symbol, side, (long)TimeGMT() * 1000);
+      CommandRecordInit(resolved, commandId, status, detail, symbol, side, (long)TimeGMT() * 1000);
       resolved.brokerOrderId = brokerOrderId;
       resolved.brokerPositionId = brokerPositionId;
       resolved.filledVolume = filledVolume;
       resolved.averagePrice = averagePrice;
+      resolved.kind = unknown[i].kind;
       CommandStoreRecord(resolved);
       SendReconciled(commandId, outcome, symbol, side, brokerOrderId, brokerPositionId,
                       filledVolume, averagePrice, attempts, detail);

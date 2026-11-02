@@ -74,3 +74,5 @@ class RiskToday(DomainModel):
     consecutive_losses: int = 0
     last_loss_at: datetime | None = None
     active_lockout: ActiveLockout | None = None
+    # Realised result of the most recent closed trades, OLDEST first, at most ``MAX_RECENT_CLOSED_TRADES`` (N8 counts its win cycle in it).
+    recent_realized_pnl: tuple[float, ...] = ()

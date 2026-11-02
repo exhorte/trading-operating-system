@@ -14,13 +14,20 @@ The wiring has two knots, both resolved here and nowhere else:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Protocol
 
 from trading_os.app.audit import AuditTrail
-from trading_os.app.config import Settings
+from trading_os.app.config import REPO_ROOT, Settings
 from trading_os.domain.accounts.models import Account
+from trading_os.domain.autonomy.readiness import Fact
 from trading_os.domain.autonomy.state import AutonomyMode, ExecutionRoute
+from trading_os.domain.guardian.rules import GuardianPlan
+from trading_os.domain.market.sessions import parse_trading_windows
+from trading_os.domain.risk.n8 import N8Policy
+from trading_os.domain.strategy.s01.config import S01Config
+from trading_os.domain.strategy.s02 import S02Config, s02_variant
 from trading_os.infrastructure.database.pool import Database
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.client import Mt5Client
@@ -34,18 +41,24 @@ from trading_os.runtime.supervisor import Supervisor
 from trading_os.services.accounts import AccountService, Mt5Factory
 from trading_os.services.autonomy import AutonomyService
 from trading_os.services.execution import AgentLinkPort, ExecutionService
+from trading_os.services.guardian import AccountGuardianService
 from trading_os.services.journal import JournalService
 from trading_os.services.market_data import MarketDataService, TickWriter
 from trading_os.services.news import CalendarClient, NewsService
+from trading_os.services.position_manager import PositionManagerService
 from trading_os.services.positions import PositionService
+from trading_os.services.promotion import PromotionService
 from trading_os.services.readiness import AccountCheck, ReadinessCollector
 from trading_os.services.reconciliation import ReconciliationService
 from trading_os.services.risk import RiskService
 from trading_os.services.senders import AgentSender, ObserveSender, PaperSender
-from trading_os.services.strategy import StrategyService
+from trading_os.services.strategy import StrategyDefinition, StrategyService
+from trading_os.services.why import WhyNoTradeService
 from trading_os.shared.errors import ValidationFailed
 from trading_os.shared.events.dispatcher import EventDispatcher
 from trading_os.shared.time import Clock, SystemClock
+
+logger = logging.getLogger(__name__)
 
 
 class AgentLink(AgentLinkPort, Protocol):
@@ -76,6 +89,11 @@ class Container:
     reconciliation: ReconciliationService
     journal: JournalService
     strategy: StrategyService
+    strategy_s02: StrategyService | None  # None while STRATEGY_S02=off (ADR 0024)
+    position_manager: PositionManagerService
+    guardian: AccountGuardianService
+    promotion: PromotionService
+    why: WhyNoTradeService
     scheduler: Scheduler
     heartbeat: Heartbeat
     supervisor: Supervisor
@@ -159,15 +177,25 @@ def build_container(
             ExecutionRoute.CONFIRM: agent_sender,
             ExecutionRoute.AUTOMATIC: agent_sender,
         },
-        effective_mode=autonomy.effective_mode, halted=autonomy.halted,
+        effective_mode=autonomy.effective_mode, halted=autonomy.halted, positions=positions,
     )  # fmt: skip
     if ea_server is not None:
         ea_server.set_handler(execution)
     accounts.add_guard(execution.guard)
 
+    n8 = N8Policy.from_percent(
+        enabled=settings.risk_n8_enabled, minimum_percent=settings.risk_n8_minimum_percent,
+        reduce_after_loss=settings.risk_n8_reduce_after_loss,
+        wins_before_minimum=settings.risk_n8_wins_before_minimum,
+        reduce_below_starting_equity=settings.risk_n8_reduce_below_starting_equity,
+    )  # fmt: skip
+    if n8.enabled and not n8.active:
+        logger.warning(
+            "N8 is switched on but RISK_N8_MINIMUM_PERCENT is not written: N8 does nothing until the smallest unit is set (ADR 0031)"
+        )
     risk = RiskService(
         accounts=accounts, positions=positions, market=market, repos=repos, events=events, clock=clock,
-        calendar=news, agents=execution,
+        calendar=news, agents=execution, n8=n8,
     )  # fmt: skip
     positions.set_enricher(risk.enrich)
     reconciliation = ReconciliationService(
@@ -177,9 +205,50 @@ def build_container(
         repos=repos, events=events, clock=clock, accounts=accounts, positions=positions, market=market
     )
 
+    s01_config = (
+        S01Config(trading_windows=parse_trading_windows(settings.strategy_s01_windows))
+        if settings.strategy_s01_windows
+        else S01Config()
+    )
+    s02_config = (
+        S02Config(trading_windows=parse_trading_windows(settings.strategy_s02_windows))
+        if settings.strategy_s02_windows
+        else S02Config()
+    )
     strategy = StrategyService(
         accounts=accounts, market=market, news=news, risk=risk, execution=execution, autonomy=autonomy, repos=repos,
-        events=events, clock=clock,
+        events=events, clock=clock, config=s01_config,
+    )  # fmt: skip
+
+    strategy_s02: StrategyService | None = None
+    if settings.strategy_s02 != "off":
+        strategy_s02 = StrategyService(
+            accounts=accounts, market=market, news=news, risk=risk, execution=execution, autonomy=autonomy, repos=repos,
+            events=events, clock=clock, config=s02_config,
+            definition=StrategyDefinition(
+                strategy_id="S02", version="1", variant=s02_variant(s02_config), needs_d1=False,
+                acts=settings.strategy_s02 == "trade",
+            ),
+        )  # fmt: skip
+
+    def strategies_valid(account: Account) -> Fact:
+        """S01 must be valid; S02 too once it is allowed to trade (a measuring S02 never gates the autonomy)."""
+        first = strategy.readiness(account)
+        if not first.ok or strategy_s02 is None or not strategy_s02.definition.acts:
+            return first
+        second = strategy_s02.readiness(account)
+        return second if not second.ok else Fact(ok=True, detail=f"{first.detail}; {second.detail}")
+
+    position_manager = PositionManagerService(
+        accounts=accounts, positions=positions, market=market, execution=execution, autonomy=autonomy, repos=repos,
+        clock=clock,
+        strategy_windows={"S01": s01_config.trading_windows, "S02": s02_config.trading_windows},
+    )  # fmt: skip
+
+    guardian = AccountGuardianService(
+        accounts=accounts, positions=positions, risk=risk, execution=execution, autonomy=autonomy, repos=repos,
+        clock=clock, market=market, reconciliation=reconciliation,
+        plan=GuardianPlan(cancel_orders_on_wide_spread=settings.guardian_cancel_orders_on_wide_spread),
     )  # fmt: skip
 
     scheduler = Scheduler(clock)
@@ -189,10 +258,17 @@ def build_container(
         reconciliation=reconciliation, autonomy=autonomy, db=db, scheduler=scheduler, repos=repos, events=events,
         clock=clock,
     )  # fmt: skip
+    promotion = PromotionService(
+        accounts=accounts, autonomy=autonomy, supervisor=supervisor, repos=repos, clock=clock,
+        validation_dir=REPO_ROOT / "exports" / "validation",
+    )  # fmt: skip
+    why = WhyNoTradeService(
+        accounts=accounts, autonomy=autonomy, risk=risk, guardian=guardian, repos=repos, clock=clock
+    )  # fmt: skip
     readiness = ReadinessCollector(
         accounts=accounts, positions=positions, market=market, risk=risk, execution=execution,
         reconciliation=reconciliation, supervisor=supervisor, scheduler=scheduler, heartbeat=heartbeat, db=db,
-        clock=clock, strategy=strategy_check or strategy.readiness, exits=exits_check,
+        clock=clock, strategy=strategy_check or strategies_valid, exits=exits_check or position_manager.readiness,
     )  # fmt: skip
 
     autonomy.wire(readiness=readiness, halt_agents=execution.halt_agents)
@@ -204,6 +280,6 @@ def build_container(
         settings=settings, clock=clock, db=db, repos=repos, events=events, audit=audit, credentials=credentials,
         accounts=accounts, tick_writer=tick_writer, market=market, positions=positions, news=news, autonomy=autonomy,
         agent_link=agent_link, ea_server=ea_server, execution=execution, risk=risk, reconciliation=reconciliation,
-        journal=journal, strategy=strategy, scheduler=scheduler, heartbeat=heartbeat, supervisor=supervisor,
+        journal=journal, strategy=strategy, strategy_s02=strategy_s02, position_manager=position_manager, guardian=guardian, promotion=promotion, why=why, scheduler=scheduler, heartbeat=heartbeat, supervisor=supervisor,
         readiness=readiness,
     )  # fmt: skip

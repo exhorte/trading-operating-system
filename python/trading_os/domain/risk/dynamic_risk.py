@@ -6,7 +6,8 @@ The allowance is the **minimum** of independent caps, never a value of its own �
 2. the *absolute-loss trigger*: equity at least ``absolute_loss_trigger_amount`` under the initial capital caps the
    risk at ``absolute_loss_risk_cap_percent``. It is a cap: it never raises a risk the grid already made lower;
 3. the profile's per-trade ceiling;
-4. the loss budgets that are *left* (day, week, total): limit − loss already taken − risk still open at the stops.
+4. the loss budgets that are *left* (day, week, total): limit − loss already taken − risk still open at the stops;
+5. N8's reduction, when it is switched on and has its smallest unit (ADR 0031): a cap in whole 0.1 % units, 0 = no new trade.
 
 The grid row is the whole-percent level the performance has **reached**, truncated toward zero (−1.9 % is the −1 %
 row, −2.0 % the −2 % row, +0.9 % the « initial capital » row). Pure functions only: the same numbers give the same
@@ -155,6 +156,7 @@ def resolve_risk_allowance(
     equity: float,
     per_trade_ceiling_percent: float,
     budgets: Sequence[RemainingBudget] = (),
+    extra_caps: Sequence[AppliedCap] = (),
 ) -> RiskAllowance:
     if initial_capital is None or initial_capital <= 0:
         return _refuse(
@@ -208,6 +210,8 @@ def resolve_risk_allowance(
         )
         for budget in budgets
     ]
+    # Caps that only ever LOWER what a trade may risk (N8, ADR 0031): one more entry in the minimum, never a value of its own, never a raise.
+    caps += list(extra_caps)
 
     binding = min(caps, key=lambda cap: cap.limit_percent)  # ties keep the first: the grid is named before the others
     # Floor, never round up — after removing float noise (5.0 − 4.4 is 0.5999999999999996, not a reason to lose 0.0001).

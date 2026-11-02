@@ -6,6 +6,10 @@ Ce n'est pas un Expert Advisor, pas un bot, pas un backtester. **Aucun module ne
 
 Depuis le 2026-09-15, le dépôt contient **un** appel d'exécution — `OrderSend`, dans `tools/mt5-execution-agent/TradingOsAgent.mq5` (EA-05 incrément 6, ADR 0010). Il vit dans une seule fonction dont la première instruction sort si le mode n'est pas `CONFIRM`, et le mode est une constante de compilation figée à `OBSERVE` : dans ce build, ce chemin est prouvablement mort. Le faire vivre demande l'échelle de mode d'EA-07, qui n'existe pas. Aucun ordre n'est envoyé sans qu'un humain l'ait déclenché (charte, principe 6).
 
+Depuis le 2026-11-01 (ADR 0029), cet unique `OrderSend` porte les **cinq natures de commande** que le cœur sait envoyer — ordre au marché, ordre `LIMIT` (toujours avec une expiration chez le courtier), déplacement de stop (qui ne s'éloigne jamais du prix), clôture et clôture partielle, annulation — toutes derrière la même fonction, après la même validation locale. L'agent reste compilé en `OBSERVE` : il valide et répond `SIMULATED`, rien n'atteint un courtier. Il n'a **jamais été éprouvé chez un courtier** ; ce qui reste à vérifier sur un terminal de démonstration est listé dans `tools/mt5-execution-agent/README.md`.
+
+Le projet comprend aussi deux stratégies formalisées (S01, S02 — chacune avec ses propres fenêtres horaires en heure de New York, ADR 0030), un Position Manager, un Account Guardian, un banc de validation d'une configuration figée, et un plafond de risque N8 qui ne fait que baisser le risque et qui est **désactivé** tant que sa plus petite unité n'est pas écrite (ADR 0031). Aucune n'agit sans que l'utilisateur ait monté lui-même le mode d'autonomie ; l'état exact est dans `context/project/state.md`.
+
 Usage strictement personnel — pas de distribution, pas de vente.
 
 ## Ce que ça fait

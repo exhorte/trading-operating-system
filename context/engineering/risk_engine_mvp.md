@@ -27,7 +27,7 @@ TradeIntent
 | Pertes consécutives | série ≥ max (pause temporisée) | verrou de compte |
 | Risque ouvert | somme des risques > limite | entrée |
 | Exposition corrélée | devise commune > limite | entrée |
-| Limite de positions | ouvertes ≥ max (et par symbole) | entrée |
+| Limite de positions | ouvertes ≥ max, tous symboles confondus (pas de limite par symbole, ADR 0022) | entrée |
 | Spread / coût | coût trop grand devant la distance au stop | entrée |
 | Session | hors fenêtre de trading du compte | entrée |
 | Actualité | publication à venir dans la fenêtre de la politique ; calendrier inconnu ⇒ fermé | entrée |

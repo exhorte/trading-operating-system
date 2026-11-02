@@ -21,8 +21,13 @@ def _timeframe_bias(candles: Sequence[Candle], swing_lookback: int) -> Bias:
     return structural_bias(detect_structure_shifts(candles, swings, swing_lookback))
 
 
+def agreed_bias(first: Sequence[Candle], second: Sequence[Candle], swing_lookback: int) -> Bias:
+    """Two timeframes must show the same confirmed direction; anything else is neutral (no trade)."""
+    a = _timeframe_bias(first, swing_lookback)
+    b = _timeframe_bias(second, swing_lookback)
+    return a if a is b and a is not Bias.NEUTRAL else Bias.NEUTRAL
+
+
 def daily_bias(h4_candles: Sequence[Candle], d1_candles: Sequence[Candle], swing_lookback: int) -> Bias:
     """H4 and D1 must agree on a direction; anything else is neutral (no trade)."""
-    h4 = _timeframe_bias(h4_candles, swing_lookback)
-    d1 = _timeframe_bias(d1_candles, swing_lookback)
-    return h4 if h4 is d1 and h4 is not Bias.NEUTRAL else Bias.NEUTRAL
+    return agreed_bias(h4_candles, d1_candles, swing_lookback)

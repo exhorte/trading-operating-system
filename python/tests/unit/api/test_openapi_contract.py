@@ -37,6 +37,7 @@ SURFACE: frozenset[tuple[str, str]] = frozenset(
         # autonomy
         ("GET", "/api/autonomy/state"), ("POST", "/api/autonomy/arm"), ("POST", "/api/autonomy/renew"),
         ("POST", "/api/autonomy/disarm"), ("POST", "/api/autonomy/halt"),
+        ("GET", "/api/autonomy/promotion"), ("GET", "/api/why-no-trade"), ("GET", "/api/guardian"),  # ADR 0025, 0027, 0028
         # risk
         ("GET", "/api/risk/state"), ("GET", "/api/risk/can-i-trade"), ("POST", "/api/risk/evaluate"),
         ("GET", "/api/risk/decisions"), ("GET", "/api/risk/decisions/{decision_id}"),

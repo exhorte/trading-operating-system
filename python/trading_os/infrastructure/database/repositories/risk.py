@@ -96,6 +96,7 @@ class RiskRepository:
             consecutive_losses=losses,
             last_loss_at=last_loss_at,
             active_lockout=await self.active_lockout(account_id, now),
+            recent_realized_pnl=tuple(float(r["realized_pnl"]) for r in reversed(closed)),
         )
 
     # ------------------------------------------------------------------------------------------ lockouts

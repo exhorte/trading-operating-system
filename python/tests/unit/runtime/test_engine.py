@@ -30,8 +30,8 @@ FAST = {
     "supervisor_interval_s": 0.05,
 }
 JOBS = {
-    "heartbeat", "positions", "ticks", "candles", "risk", "strategy", "execution", "reconciliation", "autonomy",
-    "supervisor", "tick_writer", "news",
+    "heartbeat", "positions", "ticks", "candles", "risk", "strategy", "position_manager", "guardian", "execution",
+    "reconciliation", "autonomy", "supervisor", "tick_writer", "news",
 }  # fmt: skip
 
 

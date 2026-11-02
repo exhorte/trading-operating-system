@@ -7,6 +7,7 @@
     list-symbols                the broker symbols behind canonical names (read-only)
     spread-history              the spread per New York window from the broker's tick history (read-only)
     weekly-review               a Markdown review of a week, from the journal
+    validate                    the validation bench: one strategy, one frozen configuration, one past period (ADR 0026)
     mcp                         the read-only MCP server (needs the ``mcp`` extra)
     gen-types                   generate the cockpit's TypeScript types from the core's own schemas
 
@@ -95,6 +96,26 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--to", dest="end", help="UTC date or time; default: now")
     review.add_argument("--out-dir", type=Path, default=Path("weekly-reviews"))
     review.set_defaults(handler=_weekly_review)
+
+    check = commands.add_parser(
+        "validate", help="measure one strategy, as written, on a past period — it never searches (ADR 0026)"
+    )
+    check.add_argument("--strategy", choices=["S01", "S02"], required=True)
+    check.add_argument("--symbol", required=True, help="broker name, e.g. EURUSDm")
+    check.add_argument("--from", dest="start", required=True, help="UTC date or time, inclusive")
+    check.add_argument("--to", dest="end", required=True, help="UTC date or time, exclusive")
+    check.add_argument(
+        "--spread", type=float, required=True, help="price units, constant (the history of the day is not available)"
+    )
+    check.add_argument("--commission", type=float, default=0.0, help="round trip, price units")
+    check.add_argument("--slippage", type=float, default=0.0, help="price units against a stop that is hit")
+    check.add_argument(
+        "--risk-percent", type=float, default=1.0, help="percent of the capital risked per trade, for the Monte Carlo"
+    )
+    check.add_argument("--cost-threshold", type=float, default=0.25)
+    check.add_argument("--digits", type=int, default=5, help="price decimals of the symbol")
+    check.add_argument("--out-dir", type=Path, default=Path("exports/validation"))
+    check.set_defaults(handler=_validate)
 
     commands.add_parser("mcp", help="the read-only MCP server on stdio").set_defaults(handler=_mcp)
 
@@ -234,6 +255,35 @@ def _import_candles(args: argparse.Namespace) -> int:
         )
         print(f"upserted {total} candles; the table now holds {row['n']} rows, {row['oldest']} → {row['newest']}")
         return total
+
+    _with_repositories(work)
+    return 0
+
+
+def _validate(args: argparse.Namespace) -> int:
+    from trading_os.cli.history import parse_utc
+    from trading_os.cli.validate import build_settings, validate
+    from trading_os.domain.validation.simulate import TradeCosts
+    from trading_os.shared.time import SystemClock
+
+    settings, variant = build_settings(
+        strategy_id=args.strategy, symbol=args.symbol, start=parse_utc(args.start), end=parse_utc(args.end),
+        costs=TradeCosts(spread=args.spread, commission=args.commission, stop_slippage=args.slippage),
+        risk_percent=args.risk_percent, cost_threshold=args.cost_threshold, digits=args.digits,
+    )  # fmt: skip
+
+    async def work(repos: Any) -> int:
+        report, paths = await validate(
+            repos, settings=settings, variant=variant, out_dir=args.out_dir, now=SystemClock().now()
+        )  # fmt: skip
+        print(
+            f"{report.metrics.trades} trade(s) on {report.evaluated_candles} evaluated candle(s) — configuration {report.fingerprint}"
+        )
+        for warning in report.warnings:
+            print(f"! {warning}")
+        for path in paths:
+            print(f"wrote {path}")
+        return report.metrics.trades
 
     _with_repositories(work)
     return 0

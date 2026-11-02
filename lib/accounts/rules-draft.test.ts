@@ -34,6 +34,7 @@ describe("draftOf / applyDraft", () => {
       draft({
         referenceBalance: "25000",
         dailyLossLimitPercent: "4",
+        weeklyLossLimitPercent: "7,5",
         maxRiskPerTradePercent: "0.25",
         maxTradesPerDay: "4",
         consecutiveLossPauseMinutes: "45",
@@ -46,7 +47,12 @@ describe("draftOf / applyDraft", () => {
     );
     expect(applied.errors).toEqual([]);
     const next = applied.rules!;
-    expect(next.riskProfile.drawdown).toMatchObject({ referenceBalance: 25_000, dailyLossLimitPercent: 4, maxDrawdownLimitPercent: 10 });
+    expect(next.riskProfile.drawdown).toMatchObject({
+      referenceBalance: 25_000,
+      dailyLossLimitPercent: 4,
+      weeklyLossLimitPercent: 7.5,
+      maxDrawdownLimitPercent: 10,
+    });
     expect(next.riskProfile).toMatchObject({ maxRiskPerTradePercent: 0.25, maxTradesPerDay: 4, consecutiveLossPauseMinutes: 45 });
     expect(next.riskProfile.news).toMatchObject({ blackoutMinutes: 20, calendarMaxAgeHours: 48 });
     expect(next.riskProfile.positions).toMatchObject({ maxOpenPositions: 2, maxVolumePerOrder: 1.5 });
@@ -55,6 +61,18 @@ describe("draftOf / applyDraft", () => {
     expect(next.executionProfile.maxMode).toBe(rules.executionProfile.maxMode);
     expect(next.tradingRules).toEqual(rules.tradingRules);
     expect(rules.riskProfile.drawdown.referenceBalance).toBe(10_000); // the original is not mutated
+  });
+
+  it("offers the weekly loss limit, and no limit per symbol (ADR 0022)", () => {
+    const ids: string[] = FIELDS.map((f) => f.id);
+    expect(ids).toContain("weeklyLossLimitPercent");
+    expect(ids).not.toContain("maxPositionsPerSymbol");
+    expect(applyDraft(rules, draft({ weeklyLossLimitPercent: "0" })).errors.join("\n")).toContain(
+      "Perte hebdomadaire maximale : supérieur à 0 et 100 au plus.",
+    );
+    expect(applyDraft(rules, draft({ weeklyLossLimitPercent: "" })).errors.join("\n")).toContain(
+      "Perte hebdomadaire maximale : une valeur est requise.",
+    );
   });
 
   it("never carries a raised autonomy ceiling in from the form", () => {
@@ -147,6 +165,7 @@ describe("describeChange", () => {
 
   it("formats a value with its unit", () => {
     expect(formatField(FIELDS_BY_ID.dailyLossLimitPercent, 5)).toBe("5 %");
+    expect(formatField(FIELDS_BY_ID.weeklyLossLimitPercent, 7.5)).toBe("7.5 %");
     expect(formatField(FIELDS_BY_ID.maxTradesPerDay, 6)).toBe("6");
     expect(formatField(FIELDS_BY_ID.referenceBalance, null)).toBe("non fixé");
   });

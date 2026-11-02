@@ -40,15 +40,25 @@ export interface SavedNotice {
   deferred: boolean;
 }
 
-/** What saving would make of the two loss limits in money, before it is saved. */
-function Preview({ reference, daily, drawdown }: { reference: number | null; daily: number; drawdown: number }) {
+/** What saving would make of the loss limits in money, before it is saved. */
+function Preview({
+  reference,
+  daily,
+  weekly,
+  drawdown,
+}: {
+  reference: number | null;
+  daily: number;
+  weekly: number;
+  drawdown: number;
+}) {
   if (reference === null) {
     return (
       <div className="rounded-lg border bg-muted/40 px-3.5 py-3 text-sm leading-snug">
         <p>
-          Aucune référence fixe : les deux limites ({daily} % par jour, {drawdown} % au total) se calculent en pourcentage du
-          solde au moment où le compte s&apos;est rattaché — ce solde change à chaque reconnexion, donc les montants et le
-          plancher aussi.
+          Aucune référence fixe : les limites ({daily} % par jour, {weekly} % par semaine, {drawdown} % au total) se calculent
+          en pourcentage du solde au moment où le compte s&apos;est rattaché — ce solde change à chaque reconnexion, donc les
+          montants et le plancher aussi.
         </p>
       </div>
     );
@@ -56,7 +66,8 @@ function Preview({ reference, daily, drawdown }: { reference: number | null; dai
   return (
     <div className="rounded-lg border bg-muted/40 px-3.5 py-3 text-sm leading-snug">
       <p>
-        Perte journalière max <span className="tnum">{formatSignedMoney(-(reference * daily) / 100)}</span> · plancher{" "}
+        Perte journalière max <span className="tnum">{formatSignedMoney(-(reference * daily) / 100)}</span> · hebdomadaire max{" "}
+        <span className="tnum">{formatSignedMoney(-(reference * weekly) / 100)}</span> · plancher{" "}
         <span className="tnum">{formatMoney(reference - (reference * drawdown) / 100)}</span>, fixes quelle que soit l&apos;heure
         de connexion.
       </p>
@@ -215,6 +226,7 @@ export function RulesForm({
         <Preview
           reference={drawdown.referenceBalance}
           daily={drawdown.dailyLossLimitPercent}
+          weekly={drawdown.weeklyLossLimitPercent}
           drawdown={drawdown.maxDrawdownLimitPercent}
         />
 

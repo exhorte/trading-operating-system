@@ -15,6 +15,7 @@ from pydantic import Field
 from trading_os.domain.market.calendar import UpcomingRelease
 from trading_os.domain.primitives import AccountId, DomainModel
 from trading_os.domain.risk.dynamic_risk import (
+    AppliedCap,
     RemainingBudget,
     RiskAllowance,
     performance_percent,
@@ -69,6 +70,9 @@ class RiskInputs(DomainModel):
     window_label: str | None = None
     # None = calendar unknown or stale → the news gate fails closed.
     calendar: tuple[UpcomingRelease, ...] | None = Field(default=None)
+    # N8's reduction for the next trade (ADR 0031), already weighed by the service from the trade history. ``None`` = N8 puts no cap
+    # (off, not configured, or no trigger): it is one more cap in the minimum, and it never raises anything.
+    n8_cap: AppliedCap | None = None
 
 
 def loss_percent(start_equity: float, equity: float, reference: float) -> float:
@@ -113,6 +117,7 @@ def risk_allowance(inputs: RiskInputs) -> RiskAllowance:
         equity=inputs.equity,
         per_trade_ceiling_percent=profile.max_risk_per_trade_percent,
         budgets=budgets,
+        extra_caps=(inputs.n8_cap,) if inputs.n8_cap is not None else (),
     )
 
 

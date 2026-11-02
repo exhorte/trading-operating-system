@@ -3,6 +3,7 @@ import { Layers } from "lucide-react";
 import { CommandCenterMetrics } from "@/components/cockpit/command-center-metrics";
 import { PositionsTable } from "@/components/cockpit/positions-table";
 import { SessionVerdictBanner } from "@/components/cockpit/session-verdict-banner";
+import { WhyNoTradePanel } from "@/components/cockpit/why-no-trade-panel";
 import { PageHeader, SectionHeading } from "@/components/shell/page-header";
 import { screenAt } from "@/components/shell/nav";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export default function CommandCenterPage() {
           <>
             <PageHeader screen={screenAt("/")} />
             <SessionVerdictBanner />
+            <WhyNoTradePanel />
           </>
         }
         aside={<CommandCenterMetrics />}

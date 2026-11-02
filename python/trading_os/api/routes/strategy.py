@@ -35,7 +35,7 @@ def _since(now: datetime, since: datetime | None) -> datetime:
 
 @router.get(
     "/proposals", response_model=list[StrategyEvaluation],
-    summary="Every S01 evaluation since a time, newest first — proposed ones and the stage where the others stopped",
+    summary="Every strategy evaluation (S01, S02) since a time, newest first — proposed ones and the stage where the others stopped",
 )  # fmt: skip
 async def proposals(
     c: Core,
@@ -72,7 +72,9 @@ async def agreement(
     proposed = [
         AgreementProposal(symbol=e.symbol, side=e.side, detected_at=e.event_at)
         for e in await c.repos.strategy.evaluations_since(start)
-        if e.status == "proposed" and e.side is not None
+        if e.status == "proposed"
+        and e.side is not None
+        and e.strategy_id == "S01"  # EA-02 measures S01 against the trader
     ]
     trades = [
         AgreementTrade(broker_position_id=t.broker_position_id, symbol=t.symbol, side=t.side, opened_at=t.opened_at)

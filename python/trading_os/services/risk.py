@@ -48,6 +48,7 @@ from trading_os.domain.risk.decision import (
     can_i_trade,
     decide,
 )
+from trading_os.domain.risk.dynamic_risk import AppliedCap
 from trading_os.domain.risk.evaluate import RiskInputs, evaluate_risk_state
 from trading_os.domain.risk.exposure import currency_exposure, max_correlated_exposure, open_risk
 from trading_os.domain.risk.lockout import (
@@ -60,6 +61,7 @@ from trading_os.domain.risk.lockout import (
     detect_consecutive_loss_pause,
     detect_new_lockout,
 )
+from trading_os.domain.risk.n8 import N8Policy, evaluate_n8
 from trading_os.domain.risk.state import RiskState
 from trading_os.domain.risk.trading_day import RiskToday, resolve_today_start_utc, resolve_week_start_utc
 from trading_os.domain.risk.view import RiskStatus, to_risk_status
@@ -121,6 +123,7 @@ class RiskService:
         autonomy_permits_entries: Callable[[], bool] = lambda: True,
         halted: Callable[[], bool] = lambda: False,
         degraded: Callable[[str], Sequence[str]] = lambda account_id: (),
+        n8: N8Policy | None = None,
     ) -> None:
         self._accounts = accounts
         self._positions = positions
@@ -130,6 +133,7 @@ class RiskService:
         self._clock = clock
         self._calendar = calendar
         self._agents = agents
+        self.n8 = n8 or N8Policy()  # ADR 0031: off unless switched on, inert until its smallest unit is written
         self._autonomy_permits = autonomy_permits_entries
         self._halted = halted
         self._degraded = degraded
@@ -227,6 +231,20 @@ class RiskService:
         else:
             agent_problem = None
 
+        # N8 (ADR 0031): a cap that can only lower the risk. When the history cannot be read it is the minimum that applies.
+        n8 = evaluate_n8(
+            self.n8,
+            pnl_oldest_first=today.recent_realized_pnl,
+            history_known=database_ok,
+            equity=snapshot.equity if snapshot else None,
+            starting_capital=profile.drawdown.reference_balance,
+        )
+        n8_cap = (
+            AppliedCap(code="n8_flatlining", limit_percent=n8.cap_percent, detail=n8.detail)
+            if n8.state == "restricted" and n8.cap_percent is not None
+            else None
+        )
+
         inputs = RiskInputs(
             account_id=account_id,
             now=now,
@@ -251,6 +269,7 @@ class RiskService:
             in_trading_window=in_trading_window(now, account.trading_rules.trading_windows),
             window_label=window_name_at(now, account.trading_rules.trading_windows),
             calendar=tuple(calendar) if calendar is not None else None,
+            n8_cap=n8_cap,
         )
         health = HealthFlags(
             account_healthy=not problems,

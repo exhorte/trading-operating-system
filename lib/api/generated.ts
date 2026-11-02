@@ -263,6 +263,12 @@ export interface CredentialStatus {
   store: string;
   stored: boolean;
 }
+export interface Criterion {
+  criterionId: string;
+  label: string;
+  status: "met" | "not_met" | "not_measured";
+  evidence: string;
+}
 export interface DatabaseView {
   up: boolean;
   lastError: string | null;
@@ -349,6 +355,14 @@ export interface ErrorBody {
   code: string;
   message: string;
   details?: Record<string, unknown>;
+}
+export interface EvaluationLine {
+  strategyId: string;
+  symbol: string;
+  status: "proposed" | "blocked";
+  stage: string | null;
+  detail: string | null;
+  at: string;
 }
 export interface EventRecord {
   eventId: string;
@@ -492,6 +506,55 @@ export interface GuardReason {
   count: number | null;
   detail: string | null;
 }
+export interface GuardianAction {
+  kind: "close" | "cancel";
+  targetId: string;
+  symbol: string;
+  reason: string;
+  status: "shown" | "submitted" | "in_flight" | "waiting" | "gave_up" | "skipped";
+  commandId: string | null;
+  detail: string;
+}
+export interface GuardianReport {
+  accountId: string;
+  ran: boolean;
+  at: string | null;
+  mode: string;
+  verdict: GuardianVerdict;
+  actions: GuardianAction[];
+  recovery: string | null;
+  watch: GuardianWatch | null;
+  reconciliationAsked: string | null;
+  reconciliationAskedAt: string | null;
+}
+export interface GuardianVerdict {
+  flattenAll: boolean;
+  breached: string[];
+  closeWithoutStop: string[];
+  alerts: string[];
+}
+/** The figures and findings of one cycle — read model, never an input of a decision other than the ones named above. */
+export interface GuardianWatch {
+  equity: number | null;
+  balance: number | null;
+  dailyLossUsedPercent: number | null;
+  dailyLossLimitPercent: number | null;
+  weeklyLossUsedPercent: number | null;
+  weeklyLossLimitPercent: number | null;
+  totalLossUsedPercent: number | null;
+  totalLossLimitPercent: number | null;
+  openRiskPercent: number | null;
+  openRiskLimitPercent: number | null;
+  positions: number;
+  tradesToday: number | null;
+  maxTradesPerDay: number | null;
+  entriesAllowed: boolean | null;
+  entriesBlockedBy: string[];
+  exposure: SymbolExposure[];
+  spreads: SpreadReading[];
+  slippage: SlippageReading[];
+  health: HealthFinding[];
+}
 export interface HaltRequest {
   reason?: string;
 }
@@ -505,6 +568,11 @@ export interface HealthDigest {
   status: Severity;
   findings: Finding[];
   checkedAt: string | null;
+}
+export interface HealthFinding {
+  source: "terminal" | "market_data" | "agent" | "broker" | "reconciliation" | "system";
+  ok: boolean;
+  detail: string;
 }
 export interface Incident {
   incidentId: string;
@@ -626,6 +694,16 @@ export interface NewsPolicyOutput {
   blackoutMinutes: number;
   calendarMaxAgeHours: number;
 }
+export interface Opportunity {
+  strategyId: string;
+  symbol: string;
+  side: Side;
+  entryPrice: number | null;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  riskRewardRatio: number | null;
+  at: string;
+}
 /** The last opposing candle range before a displacement move. */
 export interface OrderBlock {
   orderBlockId: string;
@@ -673,13 +751,25 @@ export interface Position {
 }
 export interface PositionLimitsInput {
   maxOpenPositions?: number;
-  maxPositionsPerSymbol?: number;
   maxVolumePerOrder?: number | null;
 }
 export interface PositionLimitsOutput {
   maxOpenPositions: number;
-  maxPositionsPerSymbol: number;
   maxVolumePerOrder: number | null;
+}
+export interface PromotionReport {
+  accountId: string | null;
+  mode: AutonomyMode;
+  advisory: boolean;
+  steps: PromotionStep[];
+  evaluatedAt: string;
+}
+export interface PromotionStep {
+  fromMode: AutonomyMode;
+  toMode: AutonomyMode;
+  criteria: Criterion[];
+  met: boolean;
+  current: boolean;
 }
 export type Provider = "EXNESS" | "FTMO";
 export interface ReadinessCheck {
@@ -695,6 +785,12 @@ export interface ReadinessReport {
   checks: ReadinessCheck[];
   evaluatedAt: string;
 }
+export interface Reason {
+  source: "mode" | "guardian" | "risk" | "readiness" | "strategy";
+  code: string;
+  detail: string;
+  blocking: boolean;
+}
 /** The outcome of one run, kept by the service and read by the supervisor and the readiness report. */
 export interface ReconciliationReport {
   accountId: string;
@@ -707,7 +803,7 @@ export interface ReconciliationReport {
   confirmed: number;
   mismatches: Mismatch[];
 }
-export type RejectCode = "ACCOUNT_MISMATCH" | "ACCOUNT_NOT_CONNECTED" | "NOT_ACTIVE_ACCOUNT" | "TRADING_DISABLED" | "MODE_NOT_PERMITTING" | "HALTED" | "KILL_SWITCH" | "AGENT_UNREACHABLE" | "AGENT_CAPABILITY_MISSING" | "DEAD_MAN" | "STORE_UNAVAILABLE" | "RISK_NOT_APPROVED" | "RISK_DECISION_EXPIRED" | "RISK_DECISION_MISMATCH" | "INVALID_REQUEST" | "STOP_REQUIRED" | "SYMBOL_MISMATCH" | "ORDER_TYPE_UNSUPPORTED" | "COMMAND_EXPIRED" | "DUPLICATE_CONFLICT";
+export type RejectCode = "ACCOUNT_MISMATCH" | "ACCOUNT_NOT_CONNECTED" | "NOT_ACTIVE_ACCOUNT" | "TRADING_DISABLED" | "MODE_NOT_PERMITTING" | "HALTED" | "KILL_SWITCH" | "AGENT_UNREACHABLE" | "AGENT_CAPABILITY_MISSING" | "DEAD_MAN" | "STORE_UNAVAILABLE" | "RISK_NOT_APPROVED" | "RISK_DECISION_EXPIRED" | "RISK_DECISION_MISMATCH" | "INVALID_REQUEST" | "STOP_REQUIRED" | "SYMBOL_MISMATCH" | "ORDER_TYPE_UNSUPPORTED" | "POSITION_NOT_FOUND" | "ORDER_NOT_FOUND" | "STOP_LOOSENED" | "VOLUME_INVALID" | "COMMAND_EXPIRED" | "DUPLICATE_CONFLICT";
 export interface Rejection {
   code: RejectCode;
   detail: string;
@@ -873,7 +969,22 @@ export interface SizingResult {
   /** why the volume was reduced below the raw size, if it was */
   capped: string | null;
 }
+export interface SlippageReading {
+  positionId: string;
+  symbol: string;
+  requestedPrice: number;
+  filledPrice: number;
+  adversePrice: number;
+  shareOfRisk: number | null;
+}
+export interface SpreadReading {
+  symbol: string;
+  spread: number;
+  cap: number | null;
+  exposed: boolean;
+}
 export interface StrategyEvaluation {
+  strategyId: string;
   symbol: string;
   eventAt: string;
   status: "proposed" | "blocked";
@@ -899,6 +1010,13 @@ export interface StructureShift {
   occurredAt: string;
 }
 export type StructureShiftKind = "break_of_structure" | "change_of_character" | "liquidity_sweep_reversal";
+export interface SymbolExposure {
+  symbol: string;
+  positions: number;
+  longLots: number;
+  shortLots: number;
+  restingOrders: number;
+}
 /** Everything needed to price and size an order on one broker symbol, as the broker reports it. ``tick_value`` and ``tick_value_loss`` are expressed in the **account currency** per ``tick_size`` move for 1.0 lot (MT5 converts at the current rate). A spec read from the broker — never a static table. */
 export interface SymbolSpec {
   name: string;
@@ -1057,6 +1175,17 @@ export interface WebSocketView {
   framesSent: number;
   framesDropped: number;
   closedForOverflow: number;
+}
+export interface WhyNoTrade {
+  accountId: string | null;
+  mode: AutonomyMode;
+  ceiling: AutonomyMode;
+  headline: string;
+  realOrdersPossible: boolean;
+  reasons: Reason[];
+  opportunities: Opportunity[];
+  evaluations: EvaluationLine[];
+  evaluatedAt: string;
 }
 export type DrawdownPolicy = DrawdownPolicyOutput;
 export type DynamicRiskPolicy = DynamicRiskPolicyOutput;
@@ -1270,6 +1399,14 @@ export interface Operations {
     body: HaltRequest;
     response: HaltResult;
   };
+  autonomy_promotion: {
+    method: "GET";
+    path: "/api/autonomy/promotion";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: undefined;
+    response: PromotionReport;
+  };
   autonomy_renew: {
     method: "POST";
     path: "/api/autonomy/renew";
@@ -1349,6 +1486,14 @@ export interface Operations {
     query: { accountId?: string | null; };
     body: undefined;
     response: ExecutionState;
+  };
+  guardian_last_report: {
+    method: "GET";
+    path: "/api/guardian";
+    pathParams: Record<string, never>;
+    query: { accountId?: string | null; };
+    body: undefined;
+    response: GuardianReport;
   };
   journal_captures: {
     method: "GET";
@@ -1550,6 +1695,14 @@ export interface Operations {
     body: undefined;
     response: SystemStatus;
   };
+  autonomy_why_no_trade: {
+    method: "GET";
+    path: "/api/why-no-trade";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: undefined;
+    response: WhyNoTrade;
+  };
 }
 
 export type OperationId = keyof Operations;
@@ -1579,8 +1732,10 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   autonomy_arm: { method: "POST", path: "/api/autonomy/arm" },
   autonomy_disarm: { method: "POST", path: "/api/autonomy/disarm" },
   autonomy_halt: { method: "POST", path: "/api/autonomy/halt" },
+  autonomy_promotion: { method: "GET", path: "/api/autonomy/promotion" },
   autonomy_renew: { method: "POST", path: "/api/autonomy/renew" },
   autonomy_state: { method: "GET", path: "/api/autonomy/state" },
+  autonomy_why_no_trade: { method: "GET", path: "/api/why-no-trade" },
   execution_cancel: { method: "POST", path: "/api/execution/commands/{command_id}/cancel" },
   execution_command: { method: "GET", path: "/api/execution/commands/{command_id}" },
   execution_commands: { method: "GET", path: "/api/execution/commands" },
@@ -1589,6 +1744,7 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   execution_run_reconciliation: { method: "POST", path: "/api/execution/reconciliation/run" },
   execution_state: { method: "GET", path: "/api/execution/state" },
   execution_submit: { method: "POST", path: "/api/execution/commands" },
+  guardian_last_report: { method: "GET", path: "/api/guardian" },
   journal_captures: { method: "GET", path: "/api/journal/captures/{broker_position_id}" },
   journal_compliance: { method: "GET", path: "/api/journal/compliance" },
   journal_trade_file: { method: "GET", path: "/api/journal/trades/{broker_position_id}" },

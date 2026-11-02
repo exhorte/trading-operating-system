@@ -39,8 +39,9 @@ class NewsPolicy(DomainModel):
 
 
 class PositionLimits(DomainModel):
-    max_open_positions: int = Field(default=5, ge=1)  # account-wide, never per symbol (ADR 0019)
-    max_positions_per_symbol: int = Field(default=1, ge=1)
+    # Account-wide. There is deliberately no per-symbol limit (ADR 0022): any number of simultaneous positions may sit on
+    # one symbol; open risk, correlated exposure and this total are what bound them.
+    max_open_positions: int = Field(default=5, ge=1)
     max_volume_per_order: float | None = Field(default=None, gt=0)
 
 

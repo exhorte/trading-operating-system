@@ -53,7 +53,7 @@ export function account(overrides: Partial<Account> = {}): Account {
       consecutiveLossPauseMinutes: 30,
       drawdown: { dailyLossLimitPercent: 5, weeklyLossLimitPercent: 10, maxDrawdownLimitPercent: 10, referenceBalance: 10000 },
       news: { blackoutMinutes: 15, calendarMaxAgeHours: 48 },
-      positions: { maxOpenPositions: 2, maxPositionsPerSymbol: 1, maxVolumePerOrder: null },
+      positions: { maxOpenPositions: 2, maxVolumePerOrder: null },
       configured: true,
     },
     tradingRules: {

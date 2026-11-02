@@ -13,6 +13,7 @@ from datetime import timedelta
 
 from pydantic import Field
 
+from trading_os.domain.market.sessions import S01_TRADING_WINDOWS, TradingWindow
 from trading_os.domain.primitives import DomainModel, SymbolCode
 
 
@@ -35,6 +36,7 @@ class S01Config(DomainModel):
     h1_bars: int = Field(default=500, ge=20)  # ~3 weeks
     h4_bars: int = Field(default=300, ge=20)  # ~2 months
     d1_bars: int = Field(default=300, ge=20)  # ~1 year
+    map_bars: int = Field(default=400, ge=20)  # 15-minute bars of the map a variant reads (S02): ~4 days
     # Decimals kept by the equal highs/lows and previous-day levels. 2 is the original's — and gold's: on EURUSD it rounds a level of
     # 1.0830 to 1.08, up to 50 pips away, so the sweep of the true cluster is never seen. Kept at 2 so the port behaves exactly like the
     # strategy the user observed; setting it to the symbol's digits is a one-value correction that is the user's to take.
@@ -45,3 +47,6 @@ class S01Config(DomainModel):
     intent_ttl: timedelta = timedelta(minutes=2)
     # no evaluation more often than this (the same closed candle never evaluates twice anyway)
     min_interval: timedelta = timedelta(seconds=20)
+    # The hours the strategy looks for a setup, New York local time (DST-aware): S01's historical killzones. Posed, not derived. A
+    # variant has its own (S02's are not these); the settings can replace them (``STRATEGY_S01_WINDOWS``).
+    trading_windows: tuple[TradingWindow, ...] = S01_TRADING_WINDOWS

@@ -20,7 +20,7 @@ from fastapi.routing import APIRoute
 
 from trading_os import __version__
 from trading_os.api.errors import document_error_envelope, install_error_handlers
-from trading_os.api.routes import accounts, autonomy, execution, journal, market, risk, strategy, system
+from trading_os.api.routes import accounts, autonomy, execution, guardian, journal, market, risk, strategy, system, why
 from trading_os.api.security import AccessGuardMiddleware
 from trading_os.api.websocket.snapshot import build_snapshot
 from trading_os.api.websocket.stream import CockpitStream
@@ -89,7 +89,7 @@ def create_app(
 
     for router in (
         system.router, accounts.router, accounts.active_router, autonomy.router, risk.router, execution.router,
-        market.router, journal.router, strategy.router,
+        market.router, journal.router, strategy.router, guardian.router, why.router,
     ):  # fmt: skip
         app.include_router(router)
 

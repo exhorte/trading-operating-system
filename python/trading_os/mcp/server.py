@@ -64,7 +64,7 @@ def build_server(tools: ReadOnlyTools) -> MCPServer:
         never a signal or a level. At most 20 000 candles."""
         return await answer(tools.get_candles(symbol, timeframe, start, end))
 
-    @server.tool(name="get_setup_proposals", title="Get S01 evaluations", annotations=READ_ONLY)
+    @server.tool(name="get_setup_proposals", title="Get strategy evaluations of S01 and S02", annotations=READ_ONLY)
     async def get_setup_proposals(since: str) -> str:
         """Strategy S01's evaluations since a time (ISO 8601): 'proposed' (a candidate setup was detected) and 'blocked' (the stage where
         the sequence stopped). The measurement instrument (ADR 0011), never a signal to act on."""

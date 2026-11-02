@@ -76,6 +76,14 @@ class Market:
         self.h1 = [self._fx(c, Timeframe.H1, shift) for c in (h1 or H1_DISCOUNT)]
         self.h4 = [self._fx(c, Timeframe.H4, shift) for c in BULLISH_HTF]
         self.d1 = [self._fx(c, Timeframe.D1, shift) for c in (htf_d1 or BULLISH_HTF)]
+        # the 15-minute map S02 reads: the scenario's context re-timed so every bar closed before the reaction window began
+        reaction_start = self.m1[-8].open_time
+        self.m15 = [
+            self._fx(c, Timeframe.M15, shift).model_copy(
+                update={"open_time": reaction_start - timedelta(minutes=15 * (len(CONTEXT) - i))}
+            )
+            for i, c in enumerate(CONTEXT)
+        ]
         self.fail: Exception | None = None
         self.requests: list[tuple[Timeframe, int]] = []
 
@@ -97,9 +105,10 @@ class Market:
         self.requests.append((timeframe, count))
         if self.fail is not None:
             raise self.fail
-        return {Timeframe.M1: self.m1, Timeframe.H1: self.h1, Timeframe.H4: self.h4, Timeframe.D1: self.d1}[timeframe][
-            -count:
-        ]
+        return {
+            Timeframe.M1: self.m1, Timeframe.M15: self.m15, Timeframe.H1: self.h1, Timeframe.H4: self.h4,
+            Timeframe.D1: self.d1,
+        }[timeframe][-count:]  # fmt: skip
 
 
 async def rig(
@@ -248,7 +257,7 @@ async def test_outside_the_killzone_nothing_is_searched(h: Harness) -> None:
     outcome = await evaluation(core, strategy)
     assert (outcome.stage, outcome.detail) == (
         "precondition_session_window",
-        "outside the London/NY AM killzone (NY time)",
+        "outside the strategy's trading windows (NY time): london 02:00–05:00, new_york_am 07:00–10:00",
     )
 
 
@@ -284,20 +293,20 @@ async def test_in_observe_the_intent_and_the_refusal_are_recorded_and_nothing_is
     assert await commands(core) == [] and core.link.lines == []  # OBSERVE sends nothing, and no command is even created
 
 
-async def test_in_paper_an_approved_proposal_meets_the_engines_refusal_of_a_limit_order_it_cannot_carry(
-    h: Harness,
-) -> None:
+async def test_in_paper_an_approved_proposal_becomes_a_simulated_limit_order(h: Harness) -> None:
     core, _, strategy = await rig(h, AutonomyMode.PAPER)
     await evaluated(core, strategy)
     decisions = await core.c.repos.risk.recent_decisions(core.account.id, 10)  # type: ignore[union-attr]
     assert [d.approved for d in decisions] == [True], decisions[0].reasons
     (command,) = await commands(core)
-    assert command.state is CommandState.REJECTED and command.reject_code == "ORDER_TYPE_UNSUPPORTED"
+    assert (
+        command.state is CommandState.SIMULATED and command.reject_code is None
+    )  # ADR 0023: the limit order is carried
+    assert command.request.order_type.value == "limit" and command.request.price == pytest.approx(price(99.85))
     assert command.request.risk_decision_id == decisions[0].decision_id
     assert command.request.volume == decisions[0].approved_volume
-    (rejected,) = core.recorder.of(TradeRejected)
-    assert rejected.stage == "execution" and "ORDER_TYPE_UNSUPPORTED" in rejected.reasons[0]
-    assert core.link.lines == []  # and nothing reached the agent
+    assert core.recorder.of(TradeRejected) == []
+    assert core.link.lines == []  # paper sends nothing to the agent
 
 
 async def test_a_setup_is_handled_once_whatever_the_mode_does_afterwards(h: Harness) -> None:

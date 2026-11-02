@@ -8,9 +8,9 @@ testé** ; `risk_ftmo.md` reste le contexte d'origine (hypothèses, pas des règ
 | Règle | Valeur | Où |
 |---|---|---|
 | Trades par jour | 15 — une position réellement ouverte compte ; un ordre annulé ou rejeté, non | `RiskProfile.max_trades_per_day`, `gate-max-trades` (compte `position_opens` depuis l'ancre du jour) |
-| Positions simultanées | 5 sur tout le compte | `PositionLimits.max_open_positions`, `gate-position-limit` |
+| Positions simultanées | 5 sur tout le compte ; **aucune limite par symbole** (ADR 0022) | `PositionLimits.max_open_positions`, `gate-position-limit` |
 | Perte du jour | 5 % | `DrawdownPolicy.daily_loss_limit_percent`, `gate-daily-loss` |
-| Perte de la semaine | 10 % | `DrawdownPolicy.weekly_loss_limit_percent`, `gate-weekly-loss` |
+| Perte de la semaine | 10 % par défaut, **réglable dans Settings** (ADR 0022) | `DrawdownPolicy.weekly_loss_limit_percent`, `gate-weekly-loss` |
 | Perte totale | 10 % du capital initial | `max_drawdown_limit_percent`, `gate-total-dd` |
 | Arrêt de performance | −5 % du capital initial | `DynamicRiskPolicy`, `gate-performance-stop` |
 

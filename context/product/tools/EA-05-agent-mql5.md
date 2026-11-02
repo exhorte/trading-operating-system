@@ -624,3 +624,24 @@ explicite.
   image), réattacher l'EA avec `InpMaxSpreadCsv` renseigné, puis les étapes
   2 à 6 du README. MT5 lancé à neuf chargerait le nouvel `.ex5` avec l'ancien
   preset : sans danger (spread non configuré = tout refusé ; mode OBSERVE).
+
+## Journal — 2026-11-01 : build 1.12, les cinq natures de commande (ADR 0029)
+
+Consigne d'Exhorte : « `ExecuteOrder` doit devenir l'unique point d'envoi ; tous les gestionnaires construisent et valident leurs commandes, puis passent par cette fonction ».
+
+- **Ce qui est livré.** `LIMIT` (ordre en attente, toujours avec une expiration chez le courtier : `InpPendingMaxMinutes`, 60 par défaut, borné 1–1440), `MODIFY` (un stop ne s'éloigne jamais du prix, ne se retire jamais), `CLOSE`,
+  `PARTIAL_CLOSE` (strictement dans le volume ouvert, reste viable), `CANCEL`. Un seul `OrderSend`, dans `ExecuteOrder`, dont la première instruction est inchangée. `Include/TradeRequest.mqh` (structure `TradeCommand`, `BuildTradeRequest`)
+  ne peut rien envoyer ; `Scripts/TradingOsRequestCheck.mq5` n'appelle que `OrderCheck`, sur une démo seulement.
+- **Ordre des étapes dans `ExecuteOrder`** (verrouillé par le test) : barrière de mode → validation rejouée → requête construite → `OrderCheck` (deals et ordres en attente) → ligne `UNKNOWN` écrite (échec ⇒ rien n'est envoyé)
+  → `OrderSend`. Les retours ambigus partent au cœur en `FAILED` avec leur retcode (le cœur les classe `UNKNOWN`) ; la ligne de l'agent est finale, un rejeu ne retouche jamais le courtier.
+- **Réconciliation** : par nature, en observant le terminal (ordre actif, stop et cible en vigueur, transaction de sortie portant la trace, historique de l'ordre) ; jamais « refusé » par déduction (sauf un ordre vu rempli avant son annulation).
+- **Barrières conservées, aucune assouplie** : mort-subite (toutes les commandes), halt (refuse tout, fermetures comprises — incrément E du plan de reprise), identité, compte, péremption, liste blanche, volume par ordre, spread par symbole, stop obligatoire,
+  `InpTradableLogins` / `InpClosableLogins`. **Plus strict qu'en 1.11** : les ordres en attente comptent dans `InpMaxOpenPositions`.
+- **Vérifié** : compilation d'une copie (agent et script) 0 erreur 0 avertissement ; test d'architecture (32 tests, 6 mutations détectées) ; tests du cœur (statuts de succès, `LIMIT` sans position attendue).
+- **Non vérifié, à faire par l'utilisateur sur une démo** : liste dans `tools/mt5-execution-agent/README.md`, « What is left to verify on a terminal ». Aucun ordre n'a été envoyé ; le mode reste `OBSERVE` compilé.
+
+## Journal — 2026-11-02 : build 1.13, le halt n'arrête plus la sortie (ADR 0033)
+
+Décision d'Exhorte : « Laisser passer » (fermetures et annulations pendant un arrêt). `AdmitCommand` et `ExecuteOrder` ne refusent plus pour `IsHalted()` une commande qui ne fait que fermer ou annuler (`TradeCommandReducesRiskOnly`) ; ouvertures et `MODIFY` restent refusés.
+Côté cœur : validation (une sortie **humaine** passe sous `HALTED`, l'automatique non), route (une sortie humaine part vers l'agent comme en `CONFIRM`), `AgentStatus.command_refusal(exit_only=True)`. Mort-subite, identité, compte, péremption, `InpClosableLogins`, `OrderCheck`, ligne `UNKNOWN` : inchangés.
+Compilé sur copie : 0 erreur, 0 avertissement ; test d'architecture (deux mutations détectées). **Non vérifié sur un terminal** : voir le README de l'agent, point 6.

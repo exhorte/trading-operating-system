@@ -41,6 +41,19 @@ H1_DISCOUNT = series(
         {"high": 10, "low": 9, "close": 9.5},
     ]
 )
+# A 1H series with a confirmed bullish break of structure whose last close sits in discount of its dealing range (8.5 - 13, equilibrium
+# 10.75, close 10): what S02 needs on H1 (bias read on H4 + H1) and S01 does not.
+H1_BULLISH_DISCOUNT = series(
+    [
+        {"high": 10, "low": 8, "close": 9},
+        {"high": 12, "low": 9, "close": 11},
+        {"high": 11, "low": 9, "close": 10},
+        {"high": 13, "low": 10, "close": 12.5},
+        {"high": 12, "low": 9, "close": 10},
+        {"high": 11, "low": 8.5, "close": 9},
+        {"high": 11.5, "low": 9, "close": 10},
+    ]
+)
 H1_PREMIUM = series(
     [
         {"high": 10, "low": 9, "close": 9.5},

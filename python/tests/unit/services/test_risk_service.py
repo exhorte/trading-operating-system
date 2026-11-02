@@ -26,6 +26,7 @@ from trading_os.domain.market.calendar import CalendarSnapshot, UpcomingRelease
 from trading_os.domain.positions.models import ClosedTrade
 from trading_os.domain.primitives import Side
 from trading_os.domain.risk.lockout import CONSECUTIVE_LOSS_REASON, KILL_SWITCH_REASON
+from trading_os.domain.risk.n8 import N8Policy
 from trading_os.domain.risk.state import RiskMode
 from trading_os.domain.strategy.intent import TradeIntent
 from trading_os.infrastructure.database.pool import Database
@@ -83,7 +84,7 @@ class Rig:
         pass
 
 
-async def make_rig(h: Harness, **account: object) -> Rig:
+async def make_rig(h: Harness, *, n8: N8Policy | None = None, **account: object) -> Rig:
     accounts = service(h)
     created = await accounts.create(exness(**account))
     await accounts.connect(created.id)
@@ -93,7 +94,7 @@ async def make_rig(h: Harness, **account: object) -> Rig:
     calendar = FakeCalendar(CalendarSnapshot(releases=[], synced_at=h.clock.now()))
     risk = RiskService(
         accounts=accounts, positions=positions, market=market, repos=h.repos, events=h.events, clock=h.clock,
-        calendar=calendar, agents=agents,
+        calendar=calendar, agents=agents, n8=n8,
     )  # fmt: skip
     positions.set_enricher(risk.enrich)
     risk.subscribe()
@@ -402,6 +403,43 @@ async def test_a_reviewed_intent_is_sized_from_the_broker_specification_and_pers
     assert await h.repos.risk.get_decision(decision.decision_id) == decision
     assert [e.decision.decision_id for e in h.recorder.of(RiskApproved)] == [decision.decision_id]
     assert h.recorder.of(RiskRejected) == []
+
+
+async def test_n8_lowers_the_next_trades_risk_after_a_loss_and_the_decision_says_so(h: Harness) -> None:
+    """ADR 0031: with N8 on and its smallest unit written (0.3 %), one recorded loss caps the next trade at 0.3 % — the grid's 1 % is the
+    ceiling, not the value. The cap is on the persisted decision; it was not there before the loss."""
+    rig = await make_rig(h, n8=N8Policy.from_percent(enabled=True, minimum_percent=0.3))
+    await rig.warm()
+    before = await rig.risk.review(intent(rig.account_id))
+    assert before.allowance is not None and (before.allowance.risk_percent, before.allowance.binding_cap) == (
+        1.0,
+        "grid",
+    )
+
+    await record_loss(rig, "p-1", -20.0)
+    after = await rig.risk.review(intent(rig.account_id).model_copy(update={"intent_id": "int-2"}))
+    assert after.allowance is not None and after.approved, after.reasons
+    assert (after.allowance.risk_percent, after.allowance.binding_cap) == (0.3, "n8_flatlining")
+    assert "the last trade lost" in after.allowance.detail or any(
+        "the last trade lost" in c.detail for c in after.allowance.caps
+    )
+    assert after.sizing is not None and after.sizing.risk_at_stop < before.sizing.risk_at_stop  # type: ignore[union-attr]
+
+    h.clock.advance(seconds=60)  # the win closes later than the loss: « the most recent trade » is not a tie
+    await record_loss(rig, "p-2", 35.0)  # a winning trade releases it: the grid decides again
+    released = await rig.risk.review(intent(rig.account_id).model_copy(update={"intent_id": "int-3"}))
+    assert released.allowance is not None and released.allowance.binding_cap == "grid"
+
+
+async def test_n8_switched_on_without_its_smallest_unit_changes_nothing(h: Harness) -> None:
+    rig = await make_rig(h, n8=N8Policy.from_percent(enabled=True, minimum_percent=None))
+    await rig.warm()
+    await record_loss(rig, "p-1", -20.0)
+    decision = await rig.risk.review(intent(rig.account_id))
+    assert decision.allowance is not None and (decision.allowance.risk_percent, decision.allowance.binding_cap) == (
+        1.0,
+        "grid",
+    )
 
 
 async def test_a_wrong_side_stop_is_refused_and_the_refusal_is_on_record(h: Harness) -> None:

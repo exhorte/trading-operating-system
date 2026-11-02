@@ -116,10 +116,18 @@ class ExecutionAck(WireMessage):
     reason: str | None = None
 
 
+#: Final reports that mean « the broker did what the command asked » (ADR 0029): a market order filled (FILLED, PARTIALLY_FILLED),
+#: a pending order resting at the broker (SUBMITTED — nothing is filled yet), a stop moved (MODIFIED), a position closed in whole or
+#: in part (CLOSED), a pending order deleted (CANCELLED). Each takes the command to EXECUTED.
+SUCCESS_REPORT_STATUSES = frozenset({"FILLED", "PARTIALLY_FILLED", "SUBMITTED", "MODIFIED", "CLOSED", "CANCELLED"})
+
+
 class ExecutionReport(WireMessage):
     type: Literal["execution.report"] = "execution.report"
     command_id: str
-    status: Literal["SIMULATED", "SUBMITTED", "FILLED", "PARTIALLY_FILLED", "MODIFIED", "CLOSED", "FAILED", "REJECTED"]
+    status: Literal[
+        "SIMULATED", "SUBMITTED", "FILLED", "PARTIALLY_FILLED", "MODIFIED", "CLOSED", "CANCELLED", "FAILED", "REJECTED"
+    ]
     symbol: str = ""
     side: Literal["BUY", "SELL"] | None = None
     broker_order_id: WireText = None
@@ -245,6 +253,77 @@ def order_line(
             "limitPrice": limit_price,
             "sl": stop_loss,
             "tp": take_profit,
+        }
+    )
+
+
+def modify_line(
+    *,
+    login: str,
+    command_id: str,
+    expires_at_ms: int,
+    now_ms: int,
+    symbol: str,
+    position_id: str,
+    stop_loss: float | None,
+    take_profit: float | None,
+) -> bytes:
+    """Move the stop and/or the target of an open position. ``None`` leaves that level as it is. The core has already refused any
+    stop that would be looser than the current one (ADR 0023); the agent checks again and has the last word."""
+    return _line(
+        {
+            "version": WIRE_VERSION,
+            "type": "execution.modify",
+            "accountId": login,
+            "time": now_ms,
+            "id": command_id,
+            "expiresAt": expires_at_ms,
+            "symbol": symbol,
+            "positionId": position_id,
+            "sl": stop_loss,
+            "tp": take_profit,
+        }
+    )
+
+
+def close_line(
+    *,
+    login: str,
+    command_id: str,
+    expires_at_ms: int,
+    now_ms: int,
+    symbol: str,
+    position_id: str,
+    volume: float | None = None,
+) -> bytes:
+    """Close a position — all of it, or ``volume`` lots of it (PARTIAL_CLOSE)."""
+    return _line(
+        {
+            "version": WIRE_VERSION,
+            "type": "execution.close",
+            "accountId": login,
+            "time": now_ms,
+            "id": command_id,
+            "expiresAt": expires_at_ms,
+            "symbol": symbol,
+            "positionId": position_id,
+            "volume": volume,
+        }
+    )
+
+
+def cancel_line(*, login: str, command_id: str, expires_at_ms: int, now_ms: int, symbol: str, order_id: str) -> bytes:
+    """Delete a pending order that has not filled."""
+    return _line(
+        {
+            "version": WIRE_VERSION,
+            "type": "execution.cancel",
+            "accountId": login,
+            "time": now_ms,
+            "id": command_id,
+            "expiresAt": expires_at_ms,
+            "symbol": symbol,
+            "orderId": order_id,
         }
     )
 

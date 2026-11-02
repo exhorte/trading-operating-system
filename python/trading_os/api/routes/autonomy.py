@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from trading_os.api.schemas.autonomy import ArmRequest, DisarmRequest, HaltRequest, HaltResult
 from trading_os.app.dependencies import Core
 from trading_os.domain.autonomy.overview import AutonomyOverview
+from trading_os.domain.autonomy.promotion import PromotionReport
 from trading_os.domain.autonomy.state import AutonomyState
 from trading_os.shared.errors import TradingOsError
 
@@ -20,6 +21,15 @@ router = APIRouter(prefix="/api/autonomy", tags=["autonomy"])
 @router.get("/state", response_model=AutonomyOverview, summary="Mode, ceiling, lease, readiness")
 async def state(c: Core) -> AutonomyOverview:
     return await c.autonomy.overview()
+
+
+@router.get(
+    "/promotion",
+    response_model=PromotionReport,
+    summary="What has been done and measured before asking for more autonomy — advisory, it blocks nothing (ADR 0027)",
+)
+async def promotion(c: Core) -> PromotionReport:
+    return await c.promotion.report(c.accounts.active_account_id)
 
 
 @router.post(
