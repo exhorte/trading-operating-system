@@ -11,9 +11,12 @@ from trading_os import __version__
 from trading_os.api.schemas.system import (
     AccessView,
     AuditView,
+    AuthorizeAutomaticRequest,
+    AuthorizeAutomaticResult,
     DatabaseView,
     EventRecord,
     JobView,
+    StartRequest,
     SystemHealthView,
     SystemStatus,
     TickQueueView,
@@ -24,6 +27,7 @@ from trading_os.app.container import Container
 from trading_os.app.dependencies import Core
 from trading_os.domain.autonomy.readiness import ReadinessReport
 from trading_os.domain.system.incidents import Incident
+from trading_os.domain.system.startup import StartupRun, StartupStatus
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -132,3 +136,31 @@ async def incidents(
     c: Core, limit: Limit = 100, open_only: Annotated[bool, Query(alias="openOnly")] = False
 ) -> list[Incident]:
     return await c.repos.incidents.open_incidents() if open_only else await c.repos.incidents.recent(limit)
+
+
+# ------------------------------------------------------------------------------------------------------ start-up (ADR 0034)
+
+
+@router.get(
+    "/startup", response_model=StartupStatus,
+    summary="The thirteen stages of the start-up, the conditions before a position, the mode in the plan's words",
+)  # fmt: skip
+async def startup_status(c: Core) -> StartupStatus:
+    return await c.startup.status()
+
+
+@router.post(
+    "/startup", response_model=StartupRun, status_code=202,
+    summary="Start the system: verify, reconcile, climb OFF → OBSERVE (PAPER / CONFIRM if asked). Never higher; no order is sent",
+)  # fmt: skip
+async def startup_begin(body: StartRequest, c: Core) -> StartupRun:
+    return await c.startup.begin(body.target, acknowledge_real_account=body.acknowledge_real_account)
+
+
+@router.post(
+    "/startup/authorize-automatic", response_model=AuthorizeAutomaticResult,
+    summary="Authorise automatic trading: one rung (CONFIRM → ARMED → AUTONOMOUS), every condition green now. A gesture of its own",
+)  # fmt: skip
+async def startup_authorize_automatic(body: AuthorizeAutomaticRequest, c: Core) -> AuthorizeAutomaticResult:
+    mode, plan = await c.startup.authorize_automatic(acknowledge_real_account=body.acknowledge_real_account)
+    return AuthorizeAutomaticResult(mode=mode, plan_mode=plan)

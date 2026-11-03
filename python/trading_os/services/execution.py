@@ -221,9 +221,10 @@ class ExecutionService:
 
     @staticmethod
     def _route_for(mode: AutonomyMode, request: ExecutionRequest, *, automatic: bool) -> ExecutionRoute:
-        """The route a command takes. A halt records and sends nothing — except a closing or a cancelling by a human gesture, which goes to
-        the agent like a human exit in CONFIRM: the gesture is the confirmation (ADR 0033). OFF and OBSERVE are unchanged."""
-        if mode is AutonomyMode.HALTED and request.kind.reduces_risk_only and not automatic:
+        """The route a command takes. A closing or a cancelling issued by a human gesture goes to the agent in **every** mode — OFF, OBSERVE,
+        PAPER and HALTED included — like a human exit in CONFIRM: the gesture is the confirmation (ADR 0033, 0034). The way out is never
+        closed by the mode. Everything else, and everything automatic, follows the mode: OBSERVE and OFF record and send nothing."""
+        if request.kind.reduces_risk_only and not automatic:
             return ExecutionRoute.CONFIRM
         return route_for(mode)
 

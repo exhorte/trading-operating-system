@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
  * before it goes away: renders for ANY untimed lockout (until === null), not
  * just the kill switch — daily loss and max trades do not auto-clear at the
  * next day anchor after two real incidents went unacknowledged overnight
- * (state.md, 2026-09-14/15). The kill switch keeps its own copy: no close_all
- * command is ever sent (the EA protocol has none, and a SIMULATED reply that
- * closes nothing real would be actively misleading), so its ack is a
- * manual-closure certification, not just an acknowledgment.
+ * (state.md, 2026-09-14/15). The kill switch keeps its own copy: the kill switch
+ * itself never sends a close (closing is the separate « FERMER TOUTES LES
+ * POSITIONS » button, ADR 0034, and a SIMULATED reply that closes nothing real
+ * would be actively misleading), so its ack stays a manual-closure
+ * certification, not just an acknowledgment.
  *
  * The lock is the one the core reports in the risk status; the reason the kill
  * switch is recorded under comes from the core too (generated.ts), not from a

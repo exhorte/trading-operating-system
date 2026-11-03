@@ -40,6 +40,7 @@ from trading_os.runtime.scheduler import Scheduler
 from trading_os.runtime.supervisor import Supervisor
 from trading_os.services.accounts import AccountService, Mt5Factory
 from trading_os.services.autonomy import AutonomyService
+from trading_os.services.close_all import CloseAllService
 from trading_os.services.execution import AgentLinkPort, ExecutionService
 from trading_os.services.guardian import AccountGuardianService
 from trading_os.services.journal import JournalService
@@ -52,6 +53,7 @@ from trading_os.services.readiness import AccountCheck, ReadinessCollector
 from trading_os.services.reconciliation import ReconciliationService
 from trading_os.services.risk import RiskService
 from trading_os.services.senders import AgentSender, ObserveSender, PaperSender
+from trading_os.services.startup import StartupService
 from trading_os.services.strategy import StrategyDefinition, StrategyService
 from trading_os.services.why import WhyNoTradeService
 from trading_os.shared.errors import ValidationFailed
@@ -94,6 +96,8 @@ class Container:
     guardian: AccountGuardianService
     promotion: PromotionService
     why: WhyNoTradeService
+    close_all: CloseAllService
+    startup: StartupService
     scheduler: Scheduler
     heartbeat: Heartbeat
     supervisor: Supervisor
@@ -271,6 +275,16 @@ def build_container(
         clock=clock, strategy=strategy_check or strategies_valid, exits=exits_check or position_manager.readiness,
     )  # fmt: skip
 
+    close_all = CloseAllService(
+        accounts=accounts, positions=positions, execution=execution, reconciliation=reconciliation,
+        effective_mode=autonomy.effective_mode, repos=repos, events=events, clock=clock,
+    )  # fmt: skip
+    startup = StartupService(
+        accounts=accounts, positions=positions, market=market, risk=risk, execution=execution,
+        reconciliation=reconciliation, autonomy=autonomy, guardian=guardian, strategy=strategy, supervisor=supervisor,
+        heartbeat=heartbeat, db=db, events=events, clock=clock,
+    )  # fmt: skip
+
     autonomy.wire(readiness=readiness, halt_agents=execution.halt_agents)
     risk.wire(
         autonomy_permits_entries=autonomy.permits_entries, halted=autonomy.halted, degraded=supervisor.degraded_for
@@ -280,6 +294,6 @@ def build_container(
         settings=settings, clock=clock, db=db, repos=repos, events=events, audit=audit, credentials=credentials,
         accounts=accounts, tick_writer=tick_writer, market=market, positions=positions, news=news, autonomy=autonomy,
         agent_link=agent_link, ea_server=ea_server, execution=execution, risk=risk, reconciliation=reconciliation,
-        journal=journal, strategy=strategy, strategy_s02=strategy_s02, position_manager=position_manager, guardian=guardian, promotion=promotion, why=why, scheduler=scheduler, heartbeat=heartbeat, supervisor=supervisor,
-        readiness=readiness,
+        journal=journal, strategy=strategy, strategy_s02=strategy_s02, position_manager=position_manager, guardian=guardian, promotion=promotion, why=why, close_all=close_all, startup=startup, scheduler=scheduler, heartbeat=heartbeat,
+        supervisor=supervisor, readiness=readiness,
     )  # fmt: skip

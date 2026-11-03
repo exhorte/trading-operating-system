@@ -164,6 +164,17 @@ class ExecutionRepository:
         )
         return _to_command(row) if row else None
 
+    async def with_id_prefix(self, account_id: str, prefix: str) -> list[ExecutionCommand]:
+        """The commands of one account whose id starts with ``prefix`` (a close-all batch is its commands, ADR 0034), oldest first.
+        ``prefix`` is matched literally: the LIKE wildcards in it are escaped."""
+        escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        rows = await self._db.fetch_all(
+            "SELECT " + _COLUMNS + " FROM execution_commands WHERE account_id = %s AND command_id LIKE %s "
+            "ORDER BY created_at ASC, command_id ASC",
+            (account_id, escaped + "%"),
+        )
+        return [_to_command(r) for r in rows]
+
     async def created_since(self, account_id: str, since: datetime) -> list[ExecutionCommand]:
         """Every command of the account created at or after ``since`` (reconciliation looks at a bounded recent window)."""
         rows = await self._db.fetch_all(

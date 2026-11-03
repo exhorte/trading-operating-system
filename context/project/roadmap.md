@@ -157,6 +157,7 @@ Mission donnée le 2026-11-01 : faire du Trading OS une plateforme de trading al
 | 5 — Backtest et validation | coûts réels, walk-forward, Monte Carlo, analyse par session | **construit le 2026-11-01** (ADR 0026, qui borne l'exception à l'ADR 0002) : `python -m trading_os validate`, une configuration figée, registre des regards. **Jamais lancé sur les vraies bougies** |
 | 6 — Autonomie | critères de passage de chaque mode | **critères écrits et mesurés le 2026-11-01** (ADR 0027), **consultatifs** : `GET /api/autonomy/promotion`. Modes réels toujours bloqués par la préparation |
 | 7 — Cockpit | opportunités, raisons de blocage (« WHY NO TRADE ? »), état de l'autonomie | **panneau « Pourquoi pas de trade ? »** sur le tableau de bord (ADR 0028, `GET /api/why-no-trade`) ; pas de page dédiée au Guardian ni aux critères de passage |
+| — Cockpit opérationnel (ADR 0034) | un bouton pour tout fermer, un bouton pour démarrer, l'échelle du plan | **construit le 2026-11-02** : « FERMER TOUTES LES POSITIONS » (dans tous les modes, `HALTED` compris), « DÉMARRER LE SYSTÈME » (treize étapes, réconciliation, `OBSERVE` au plus), « AUTORISER LE TRADING AUTOMATIQUE » (geste séparé), écran Démarrage, correspondance `DEMO_AUTO`/`LIVE_CONFIRM`/`LIVE_AUTO`. **Jamais éprouvé chez un courtier** (agent compilé `OBSERVE`) |
 
 ## Hors périmètre, volontairement
 

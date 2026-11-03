@@ -28,6 +28,28 @@ export interface Account {
   executionProfile: ExecutionProfileOutput;
   createdAt: string;
 }
+/** The configuration screen's facts about the selected account — never a secret (the terminal keeps the password, ADR 0013). */
+export interface AccountPanel {
+  accountId: string;
+  name: string;
+  provider: string;
+  server: string;
+  accountType: string;
+  environment: Environment;
+  currency: string;
+  loginMasked: string;
+  connected: boolean;
+  status: string;
+  statusDetail: string | null;
+  balance: number | null;
+  equity: number | null;
+  leverage: number | null;
+  terminalTradeAllowed: boolean | null;
+  tradingEnabled: boolean;
+  agentConnected: boolean;
+  agentTradable: boolean | null;
+  ceiling: AutonomyMode;
+}
 /** A gesture on one account. */
 export interface AccountRequest {
   accountId: string;
@@ -139,6 +161,14 @@ export interface AuditView {
   written: number;
   lost: number;
 }
+/** « Autoriser le trading automatique »: a separate gesture from starting, one rung, with every condition green at that instant. */
+export interface AuthorizeAutomaticRequest {
+  acknowledgeRealAccount?: boolean;
+}
+export interface AuthorizeAutomaticResult {
+  mode: AutonomyMode;
+  planMode: PlanMode;
+}
 export type AutonomyMode = "OFF" | "OBSERVE" | "PAPER" | "CONFIRM" | "ARMED" | "AUTONOMOUS" | "HALTED";
 export interface AutonomyOverview {
   state: AutonomyState;
@@ -195,6 +225,131 @@ export interface CheckResult {
   reason: string | null;
   detail: string;
 }
+export interface CloseAllAccount {
+  accountId: string;
+  name: string;
+  provider: string;
+  environment: Environment;
+  loginMasked: string;
+  server: string;
+  currency: string;
+  connected: boolean;
+  mode: AutonomyMode;
+  planMode: PlanMode;
+  agentConnected: boolean;
+  agentMagic: number | null;
+  balance: number | null;
+  equity: number | null;
+}
+/** What the cockpit tells the trader to do next, as a code: the words are the cockpit's. */
+export type CloseAllAction = "WAIT" | "RECONCILE" | "CLOSE_IN_MT5" | "ENABLE_AGENT" | "REVIEW_REJECTIONS" | "CHECK_MT5" | "RERUN";
+export interface CloseAllCounts {
+  detected: number;
+  confirmed: number;
+  inProgress: number;
+  verifying: number;
+  alreadyClosed: number;
+  rejected: number;
+  simulated: number;
+  unknown: number;
+  mismatch: number;
+  notClosable: number;
+  positionsStillOpen: number;
+  ordersStillPending: number;
+}
+/** What the batch decided about a target at the moment it was run (recorded in the audit trail with the batch). */
+export type CloseAllDisposition = "SENT" | "NOT_CLOSABLE" | "ALREADY_CLOSED" | "REFUSED";
+export interface CloseAllFailure {
+  reason: string;
+  count: number;
+  targetIds: string[];
+  detail: string;
+}
+export interface CloseAllItem {
+  target: "position" | "order";
+  targetId: string;
+  symbol: string;
+  side: Side | null;
+  volume: number | null;
+  commandId: string | null;
+  commandState: CommandState | null;
+  status: CloseAllItemStatus;
+  rejectCode: string | null;
+  detail: string;
+  stillOpen: boolean;
+}
+export type CloseAllItemStatus = "IN_PROGRESS" | "VERIFYING" | "CONFIRMED" | "ALREADY_CLOSED" | "REJECTED" | "SIMULATED" | "UNKNOWN" | "MISMATCH" | "NOT_CLOSABLE";
+export interface CloseAllOrder {
+  orderId: string;
+  symbol: string;
+  side: Side;
+  orderType: string;
+  volume: number;
+  price: number;
+  cancellable: boolean;
+  notCancellableReason: string | null;
+}
+export interface CloseAllPosition {
+  positionId: string;
+  symbol: string;
+  side: Side;
+  volume: number;
+  entryPrice: number;
+  currentPrice: number | null;
+  stopLoss: number;
+  takeProfit: number;
+  unrealizedPnl: number;
+  strategyId: string;
+  closable: boolean;
+  notClosableReason: string | null;
+}
+export interface CloseAllPreview {
+  batchId: string;
+  generatedAt: string;
+  account: CloseAllAccount;
+  positions: CloseAllPosition[];
+  pendingOrders: CloseAllOrder[];
+  totalUnrealizedPnl: number;
+  snapshotAgeSeconds: number | null;
+  snapshotFresh: boolean;
+  blockers: CloseAllReason[];
+  warnings: CloseAllReason[];
+  canExecute: boolean;
+}
+/** A stable code the cockpit words in its own language, and the core's sentence as a fallback. */
+export interface CloseAllReason {
+  code: string;
+  detail: string;
+}
+export interface CloseAllReport {
+  batchId: string;
+  accountId: string;
+  status: CloseAllStatus;
+  final: boolean;
+  startedAt: string | null;
+  evaluatedAt: string;
+  includePendingOrders: boolean;
+  items: CloseAllItem[];
+  counts: CloseAllCounts;
+  failures: CloseAllFailure[];
+  actions: CloseAllAction[];
+  reconciled: boolean;
+  reconciliationCritical: number;
+  snapshotFresh: boolean;
+  otherOpenPositions: string[];
+  simulatedOnly: boolean;
+}
+/** The body of ``POST /api/execution/close-all`` (ADR 0034). Closing is a human gesture and the body says so in so many words: ``confirmation`` must be ``CLOSE_ALL`` (opening the dialog sends nothing), ``positionIds`` are the positions the trader saw in the preview — a position opened since is not closed, only reported — and the pending orders are cancelled only if asked for. */
+export interface CloseAllRequest {
+  accountId: string;
+  /** From the preview. Calling again with the same id changes nothing. */
+  batchId: string;
+  positionIds?: string[];
+  includePendingOrders?: boolean;
+  orderIds?: string[];
+  confirmation: string;
+}
+export type CloseAllStatus = "NOTHING_TO_CLOSE" | "IN_PROGRESS" | "AWAITING_RECONCILIATION" | "COMPLETE" | "INCOMPLETE";
 /** A fully closed position with its net result (every deal summed: profit + commission + swap). */
 export interface ClosedTrade {
   accountId: string;
@@ -348,6 +503,14 @@ export interface DynamicRiskPolicyOutput {
   grid: GridTierOutput[];
   absoluteLossTriggerAmount: number;
   absoluteLossRiskCapPercent: number;
+}
+/** One condition that must hold before the system takes a position (mission § 2.2). */
+export interface EntryCheck {
+  checkId: string;
+  label: string;
+  ok: boolean;
+  detail: string;
+  source: "readiness" | "startup";
 }
 export type Environment = "DEMO" | "SIMULATED" | "LIVE";
 /** What every refusal looks like, whatever its status. ``code`` is stable and is what a client switches on; ``details`` carries the structure of the refusal (the reasons a disconnect was refused, the fields a body was refused for — never the values). */
@@ -686,6 +849,14 @@ export interface Mismatch {
 }
 export type MismatchKind = "ACCOUNT_MISMATCH" | "POSITION_MISMATCH" | "ORDER_MISMATCH" | "SYMBOL_MISMATCH" | "UNKNOWN_EXECUTION" | "MISSING_POSITION" | "UNEXPECTED_POSITION";
 export type MismatchSeverity = "info" | "warning" | "critical";
+/** What a mode permits, in words that do not depend on the screen. */
+export interface ModeRights {
+  mode: PlanMode;
+  sendsOrders: boolean;
+  needsHumanConfirmation: boolean;
+  needsGreenReadiness: boolean;
+  realMoney: boolean;
+}
 export interface NewsPolicyInput {
   blackoutMinutes?: number;
   calendarMaxAgeHours?: number;
@@ -729,6 +900,18 @@ export interface PendingOrder {
   magicNumber: number | null;
   comment: string;
   placedAt: string | null;
+}
+export type PlanMode = "OFF" | "OBSERVE" | "PAPER" | "CONFIRM" | "DEMO_AUTO" | "LIVE_CONFIRM" | "LIVE_AUTO" | "HALTED";
+/** One target of the batch as decided at the start: kept in the audit event so a report survives a restart. */
+export interface PlannedItem {
+  target: "position" | "order";
+  targetId: string;
+  symbol: string;
+  side: Side | null;
+  volume: number | null;
+  disposition: CloseAllDisposition;
+  commandId: string | null;
+  reason: string | null;
 }
 export type Platform = "MT5";
 /** One open position. ``position_id`` is MT5's POSITION_IDENTIFIER (stable for the life of the position), **never** the ticket — the two diverge on broker service operations (incident of 2026-09-05). */
@@ -982,6 +1165,56 @@ export interface SpreadReading {
   spread: number;
   cap: number | null;
   exposed: boolean;
+}
+/** « Démarrer le système » (ADR 0034). Starting climbs to ``target`` (OBSERVE by default; PAPER or CONFIRM when asked) and never higher; a real account needs ``acknowledgeRealAccount`` to start up to CONFIRM. */
+export interface StartRequest {
+  target?: AutonomyMode;
+  acknowledgeRealAccount?: boolean;
+}
+export interface StartupRun {
+  runId: string;
+  state: StartupRunState;
+  targetMode: AutonomyMode;
+  startedAt: string;
+  finishedAt: string | null;
+  currentStage: string | null;
+  reachedMode: AutonomyMode | null;
+  message: string;
+  blockedOn: string[];
+}
+export type StartupRunState = "RUNNING" | "DONE" | "PARTIAL" | "BLOCKED";
+export interface StartupStage {
+  stageId: string;
+  order: number;
+  label: string;
+  state: StartupStageState;
+  detail: string;
+  blocking: boolean;
+}
+export type StartupStageState = "STOPPED" | "STARTING" | "READY" | "RUNNING" | "DEGRADED" | "FAILED" | "HALTED";
+export interface StartupStatus {
+  evaluatedAt: string;
+  run: StartupRun | null;
+  stages: StartupStage[];
+  checks: EntryCheck[];
+  checksGreen: boolean;
+  blockers: string[];
+  mode: AutonomyMode;
+  planMode: PlanMode;
+  rights: ModeRights;
+  ladder: ModeRights[];
+  ceiling: AutonomyMode;
+  halted: boolean;
+  haltedReason: string | null;
+  entriesAuthorized: boolean;
+  entriesReason: string;
+  realAccount: boolean;
+  realAccountBanner: string | null;
+  account: AccountPanel | null;
+  canStart: boolean;
+  nextAutomaticMode: AutonomyMode | null;
+  canAuthorizeAutomatic: boolean;
+  authorizeBlockers: string[];
 }
 export interface StrategyEvaluation {
   strategyId: string;
@@ -1423,6 +1656,38 @@ export interface Operations {
     body: undefined;
     response: AutonomyOverview;
   };
+  execution_close_all: {
+    method: "POST";
+    path: "/api/execution/close-all";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: CloseAllRequest;
+    response: CloseAllReport;
+  };
+  execution_close_all_preview: {
+    method: "GET";
+    path: "/api/execution/close-all/preview";
+    pathParams: Record<string, never>;
+    query: { accountId?: string | null; };
+    body: undefined;
+    response: CloseAllPreview;
+  };
+  execution_close_all_report: {
+    method: "GET";
+    path: "/api/execution/close-all/{batch_id}";
+    pathParams: { batch_id: string; };
+    query: { accountId?: string | null; };
+    body: undefined;
+    response: CloseAllReport;
+  };
+  execution_close_all_verify: {
+    method: "POST";
+    path: "/api/execution/close-all/{batch_id}/verify";
+    pathParams: { batch_id: string; };
+    query: { accountId?: string | null; };
+    body: undefined;
+    response: CloseAllReport;
+  };
   execution_commands: {
     method: "GET";
     path: "/api/execution/commands";
@@ -1687,6 +1952,30 @@ export interface Operations {
     body: undefined;
     response: ReadinessReport;
   };
+  system_startup_status: {
+    method: "GET";
+    path: "/api/system/startup";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: undefined;
+    response: StartupStatus;
+  };
+  system_startup_begin: {
+    method: "POST";
+    path: "/api/system/startup";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: StartRequest;
+    response: StartupRun;
+  };
+  system_startup_authorize_automatic: {
+    method: "POST";
+    path: "/api/system/startup/authorize-automatic";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: AuthorizeAutomaticRequest;
+    response: AuthorizeAutomaticResult;
+  };
   system_status: {
     method: "GET";
     path: "/api/system/status";
@@ -1737,6 +2026,10 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   autonomy_state: { method: "GET", path: "/api/autonomy/state" },
   autonomy_why_no_trade: { method: "GET", path: "/api/why-no-trade" },
   execution_cancel: { method: "POST", path: "/api/execution/commands/{command_id}/cancel" },
+  execution_close_all: { method: "POST", path: "/api/execution/close-all" },
+  execution_close_all_preview: { method: "GET", path: "/api/execution/close-all/preview" },
+  execution_close_all_report: { method: "GET", path: "/api/execution/close-all/{batch_id}" },
+  execution_close_all_verify: { method: "POST", path: "/api/execution/close-all/{batch_id}/verify" },
   execution_command: { method: "GET", path: "/api/execution/commands/{command_id}" },
   execution_commands: { method: "GET", path: "/api/execution/commands" },
   execution_confirm: { method: "POST", path: "/api/execution/commands/{command_id}/confirm" },
@@ -1769,6 +2062,9 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   system_health: { method: "GET", path: "/api/system/health" },
   system_incidents: { method: "GET", path: "/api/system/incidents" },
   system_readiness: { method: "GET", path: "/api/system/readiness" },
+  system_startup_authorize_automatic: { method: "POST", path: "/api/system/startup/authorize-automatic" },
+  system_startup_begin: { method: "POST", path: "/api/system/startup" },
+  system_startup_status: { method: "GET", path: "/api/system/startup" },
   system_status: { method: "GET", path: "/api/system/status" },
 };
 
@@ -1795,6 +2091,7 @@ export interface EventPayloads {
   "autonomy.mode_changed": { previous: AutonomyMode; current: AutonomyMode; reason: string; leaseUntil: string | null; };
   "autonomy.readiness_changed": { readiness: ReadinessReport; };
   "execution.acknowledged": { commandId: string; status: "ACCEPTED" | "REJECTED" | "DUPLICATE" | "EXPIRED"; reason: string | null; };
+  "execution.close_all_requested": { batchId: string; includePendingOrders: boolean; items: PlannedItem[]; };
   "execution.command_created": { command: ExecutionCommand; };
   "execution.command_sent": { commandId: string; loginHint: string | null; };
   "execution.failed": { commandId: string; detail: string; brokerRetcode: string | null; };
@@ -1828,6 +2125,8 @@ export interface EventPayloads {
   "system.incident_opened": { incident: Incident; };
   "system.incident_resolved": { incident: Incident; };
   "system.snapshot": { serverTime: string; version: string; activeAccountId: string | null; accounts: Account[]; autonomy: AutonomyOverview; health: HealthDigest; calendar: CalendarSnapshot; accountStates: Record<string, AccountState>; };
+  "system.start_finished": { runId: string; outcome: "done" | "partial" | "blocked"; reachedMode: AutonomyMode | null; message: string; blockedOn: string[]; };
+  "system.start_requested": { runId: string; targetMode: AutonomyMode; };
   "trade.intent_created": { intent: TradeIntent; };
   "trade.rejected": { intentId: string; stage: "risk" | "execution"; reasons: string[]; };
 }

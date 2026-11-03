@@ -14,7 +14,7 @@ Deux notions de version, volontairement séparées : `version` (la forme du mess
 |---|---|
 | `commandId` | Unique (3 à 64 caractères). Clé d'idempotence : un rejeu ne produit jamais une seconde position. |
 | `accountId` | Compte réellement connecté, égal au compte du terminal qui reçoit la commande ; sinon `ACCOUNT_MISMATCH`, jamais une exécution « au mieux ». Pour les commandes automatiques : le compte actif, et lui seul. |
-| `kind` | `OPEN`, `MODIFY`, `CLOSE`, `PARTIAL_CLOSE`, `CANCEL` ; seuls ceux dont l'agent annonce la capacité (`modify`, `close`, `cancel` ; `limit` pour un ordre `LIMIT`) sont envoyés — l'agent 1.11 n'en annonçait aucune (seul `OPEN` au marché partait), l'agent 1.12 les annonce toutes ; sans capacité, la commande est refusée à la soumission (`AGENT_CAPABILITY_MISSING`), pas envoyée dans le vide. OBSERVE et PAPER n'envoient rien et acceptent les cinq. Un `MODIFY` n'éloigne jamais un stop du prix (`STOP_LOOSENED`) et n'en retire jamais (`STOP_REQUIRED` côté cœur, `STOP_MISSING` côté agent). Un `CLOSE`, un `PARTIAL_CLOSE` et un `CANCEL` ne visent que ce que l'agent a lui-même placé (`TARGET_NOT_OURS`). |
+| `kind` | `OPEN`, `MODIFY`, `CLOSE`, `PARTIAL_CLOSE`, `CANCEL` ; seuls ceux dont l'agent annonce la capacité (`modify`, `close`, `cancel` ; `limit` pour un ordre `LIMIT`) sont envoyés — l'agent 1.11 n'en annonçait aucune (seul `OPEN` au marché partait), l'agent 1.12 les annonce toutes ; sans capacité, la commande est refusée à la soumission (`AGENT_CAPABILITY_MISSING`), pas envoyée dans le vide. OBSERVE et PAPER n'envoient rien et acceptent les cinq — **sauf une fermeture ou une annulation émise par un geste humain**, qui part vers l'agent dans tous les modes (ADR 0034). Un `MODIFY` n'éloigne jamais un stop du prix (`STOP_LOOSENED`) et n'en retire jamais (`STOP_REQUIRED` côté cœur, `STOP_MISSING` côté agent). Un `CLOSE`, un `PARTIAL_CLOSE` et un `CANCEL` ne visent que ce que l'agent a lui-même placé (`TARGET_NOT_OURS`). |
 | `riskDecisionId` | Une décision de risque **approuvée**, liée au même compte, non expirée (`RISK_NOT_APPROVED`, `RISK_DECISION_EXPIRED`, `RISK_DECISION_MISMATCH`) — sauf pour une commande qui ne fait que réduire le risque. |
 | `expiresAt` | L'agent refuse toute commande reçue après cet instant (`EXPIRED`). Défaut : maintenant + la durée de vie du profil d'exécution du compte. |
 | `stopLoss` | Obligatoire pour `OPEN` (`STOP_REQUIRED` côté cœur, `STOP_MISSING` côté agent). |
@@ -62,3 +62,22 @@ Ne nommer un code qu'avec le code qui le lève : un code sans porte serait une p
 ## Compatibilité
 
 Un agent construit avant 1.11 envoie `gatewaySilentMs` au lieu de `coreSilentMs` dans son battement : le cœur lit les deux noms. Ce nom de remplacement (`wire.py`, `AgentHeartbeat.core_silent_ms`) s'enlève quand tous les agents sont recompilés.
+
+## Sorties humaines et « fermer toutes les positions » (ADR 0034)
+
+Une commande qui ne fait que réduire le risque (`CLOSE`, `PARTIAL_CLOSE`, `CANCEL`) **émise par un geste humain** prend la route `CONFIRM` dans **tous** les modes — `OFF`, `OBSERVE`, `PAPER`, `CONFIRM`, `HALTED` : le geste est la confirmation, la commande part tout de suite vers l'agent. L'interrupteur « Disable Trading » du compte ne la refuse plus (il refuse toujours les ouvertures, les `MODIFY` et toute commande automatique). Une commande **automatique** (stratégie, Position Manager, Guardian) suit la route de son mode et reste refusée sous `HALTED`. Conséquence : sans agent joignable ou sans la capacité `close`, une sortie humaine en `OFF`/`OBSERVE` est **refusée** (`AGENT_UNREACHABLE`, `AGENT_CAPABILITY_MISSING`) au lieu d'être enregistrée « pour rien ».
+
+« Fermer toutes les positions » n'ajoute **aucun message** au fil : c'est une suite de commandes `CLOSE` ordinaires.
+
+| Élément | Règle |
+|---|---|
+| Identifiant | `ca-<batchId>-<positionId>` (position), `ca-<batchId>-o<orderId>` (ordre en attente, seulement si demandé) : un double clic ou un rejeu retombe sur la même commande. |
+| Émetteur | `ExecutionService.submit(…, automatic=False)`, `strategyId = "manual"` : jamais le Guardian, le Position Manager ni une stratégie. |
+| Périmètre | exactement les positions que l'utilisateur a vues dans la prévisualisation ; une position apparue depuis est signalée, jamais fermée. |
+| Cibles que l'agent refuse (`TARGET_NOT_OURS`) | non envoyées : `NOT_CLOSABLE`, action « fermer dans MT5 ». |
+| Preuve | `CONFIRMED` = commande `EXECUTED`/`RECONCILED` **et** position absente du dernier instantané du courtier ; `COMPLETE` = tout confirmé **et** une réconciliation lisible terminée depuis le dernier règlement, sans divergence critique. |
+| `SIMULATED` | agent compilé `OBSERVE` ou mode `PAPER` : rien n'est fermé, le lot est `INCOMPLETE`. |
+| `UNKNOWN` | jamais renvoyé ; `POST /api/execution/close-all/{batchId}/verify` lance la réconciliation (lecture seule). |
+| Trace | l'événement `execution.close_all_requested` est écrit **avant** le premier envoi ; le rapport est dérivé de lui et des commandes, donc identique après un redémarrage. |
+
+Routes : `GET /api/execution/close-all/preview`, `POST /api/execution/close-all`, `GET /api/execution/close-all/{batchId}`, `POST /api/execution/close-all/{batchId}/verify`. Détail et état de l'autonomie : `autonomy-modes.md`.

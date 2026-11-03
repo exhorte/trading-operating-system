@@ -74,7 +74,8 @@ def validate(request: ExecutionRequest, ctx: ValidationContext) -> list[Rejectio
         problems.append(_reject(RejectCode.NOT_ACTIVE_ACCOUNT, "only the active account receives automatic commands"))
 
     # --- whether
-    if not ctx.account_trading_enabled:
+    human_exit = request.kind.reduces_risk_only and not ctx.automatic
+    if not ctx.account_trading_enabled and not human_exit:  # ADR 0034: « Disable Trading » stops risk, not the way out
         problems.append(_reject(RejectCode.TRADING_DISABLED, "trading is disabled for this account"))
     if ctx.halted:
         # ADR 0033: a halt stops new risk, not the way out. A closing or a cancelling issued by a human gesture goes through; an opening,

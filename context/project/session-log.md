@@ -6,6 +6,17 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-11-02 (suite 9 : **« Fermer toutes les positions » et « Démarrer le système » — ADR 0034**)
+
+Demande d'Exhorte (mission « rendre le Trading OS opérationnel depuis le cockpit ») : un bouton qui ferme toutes les positions du compte MT5 sélectionné, dans tous les modes, et un bouton qui démarre l'application et le système de trading avec une progression contrôlée jusqu'à l'autorisation de prendre des positions ; correspondance de l'échelle d'autonomie avec celle du plan ; ne pas inventer un second chemin d'exécution.
+
+- **Constat avant d'écrire** : `CLOSE` humain, idempotence, `UNKNOWN` et passage sous `HALTED` existaient (ADR 0023, 0033). Manquaient : la route des sorties humaines en `OFF`/`OBSERVE`/`PAPER` (la commande était seulement enregistrée), « Disable Trading » qui refusait aussi une fermeture, l'orchestration d'un lot, et tout l'écran. Le moteur lance déjà tous ses jobs au démarrage du cœur : « démarrer » **vérifie et fait monter l'autonomie**, ce n'est pas un second lanceur.
+- **Construit** : routage des sorties humaines dans tous les modes (`ExecutionService._route_for`, `validate`) ; `CloseAllService` (prévisualisation, lot de `CLOSE`/`CANCEL` à identifiants déterministes, événement `execution.close_all_requested` écrit avant le premier envoi, rapport dérivé des commandes et du courtier — survit à un redémarrage) ; `StartupService` (treize étapes, 22 conditions, `begin`/`authorize_automatic`) ; `domain/autonomy/plan_modes.py` ; 7 routes ; événements `system.start_*` ; écran `/demarrage`, dialogue de fermeture, barre de contrôle du Command Center. Dépôt : requête `with_id_prefix`, aucune migration.
+- **Défaut trouvé par un test et corrigé** : la vérification avant `CONFIRM` lisait un rapport de préparation en cache (2 s) — elle est recalculée à cet instant.
+- **Deux tests de l'ADR 0033 amendés** (ils encodaient « OFF/OBSERVE : enregistré seulement » et « Disable Trading refuse une fermeture sous arrêt »), et la garde `FORBIDDEN_WORDS` du contrat OpenAPI (qui interdisait `close-all`) : exactement les quatre routes de la famille sont autorisées, tout autre raccourci reste interdit.
+- **Pas fait, volontairement** : aucun changement de l'agent MQL5 (toujours `OBSERVE`, donc `SIMULATED`) ; les positions d'un autre numéro magique restent à fermer dans MT5 ; pas d'annulation automatique des ordres sous arrêt ni de liquidation automatique sous arrêt. Claude n'a cliqué aucun des boutons : contrôle visuel en lecture seule sur un cœur jetable (terminal simulé, base éphémère, arrêtés ensuite).
+- **Vérifié** : voir `state.md` (pytest, cockpit, build). **Pas commité.**
+
 ## 2026-11-02 (suite 8 : **sous `HALTED`, les fermetures et annulations passent — ADR 0033, agent 1.13**)
 
 Demande, mot pour mot : « Laisser passer » (réponse à : un arrêt `HALTED` doit-il laisser passer fermetures et annulations ou tout refuser ?).

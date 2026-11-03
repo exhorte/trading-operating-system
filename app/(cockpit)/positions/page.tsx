@@ -1,5 +1,6 @@
 "use client";
 
+import { CloseAllButton } from "@/components/cockpit/close-all-button";
 import type { ReactNode } from "react";
 import { CircleAlert, CircleCheck, GitCompareArrows, Layers, TriangleAlert, TrendingUp, Unplug } from "lucide-react";
 import type { Mismatch, MismatchKind } from "@/lib/api/generated";
@@ -220,7 +221,7 @@ export default function PositionsPage() {
       />
 
       <section className="flex flex-col gap-4">
-        <SectionHeading title="Positions ouvertes" subtitle="suivies en direct" icon={Layers} />
+        <SectionHeading title="Positions ouvertes" subtitle="suivies en direct" icon={Layers} actions={<CloseAllButton size="sm" />} />
         <PositionsTable />
       </section>
 

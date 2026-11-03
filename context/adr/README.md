@@ -39,6 +39,7 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0031 | N8 « Drawdown Flatlining » : un plafond qui ne fait que baisser le risque, par pas de 0,1 % | Accepté le 2026-11-01 — étend 0019 ; désactivé et inerte tant que la plus petite unité n'est pas écrite |
 | 0032 | Account Guardian complet : surveiller spread, glissement et santé ; demander une réconciliation (plan §9) | Accepté le 2026-11-02 — étend 0025 ; l'annulation sur spread large est désactivée par défaut |
 | 0033 | Sous `HALTED`, les fermetures et les annulations passent ; tout le reste reste refusé | Accepté le 2026-11-02 — amende 0025 ; agent 1.13 ; une sortie humaine seulement, jamais l'automatique |
+| 0034 | « Fermer toutes les positions » et « Démarrer le système » depuis le cockpit ; les sorties humaines passent dans tous les modes ; l'échelle du plan lue sur celle du dépôt | Accepté le 2026-11-02 — amende 0023 et 0033 ; aucun changement de l'agent MQL5 |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 

@@ -200,6 +200,11 @@ and recompiled it himself on a **demo** account:
    `UNKNOWN`; that whole path, and the agent-side reconciliation of each kind, has been read and structurally tested but never run.
 6. The halt no longer refuses closes and cancels (ADR 0033, decided by the trader on 2026-11-02). What has not been run: a real close or cancel
    accepted *while halted* by a broker, and the order of the checks on a terminal that is both halted and silent from the core (dead-man).
+7. The close-all gesture of the cockpit (ADR 0034) sends one ordinary `execution.close` per position, in every autonomy mode of the core.
+   What has not been run: that button against this agent compiled in `CONFIRM` on a **demo** — several positions, BUY and SELL, two symbols —
+   and that every position is gone from `positions_get()` before the cockpit says the batch is complete. A position this agent did not place
+   (another magic number, opened by hand) is refused with `TARGET_NOT_OURS`; the core does not even send it and tells the trader to close it
+   in MT5. Lifting that is a separate agreement and a change to the one `OrderSend`: not done.
 
 ## Known limitations of this build
 

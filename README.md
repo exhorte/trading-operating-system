@@ -54,6 +54,8 @@ pwsh -File scripts\start.ps1 -Plan        # dit ce qu'il ferait, ne change rien
 
 Le script n'ouvre jamais MT5, ne demande aucun mot de passe et ne relève jamais le plafond de mode (`TRADING_MODE`, `OBSERVE` par défaut). Le compte se rattache dans le cockpit (Settings).
 
+Depuis le 2026-11-02 (ADR 0034) le cockpit porte deux gestes pour l'usage quotidien : **« DÉMARRER LE SYSTÈME »** (vérifie treize étapes, réconcilie avec MT5, monte à `OBSERVE` — jamais plus haut, jamais d'ordre ; l'autorisation du trading automatique est un geste séparé, écran *Démarrage*) et **« FERMER TOUTES LES POSITIONS »** (prévisualisation, confirmation explicite, un `CLOSE` par position par le chemin d'exécution existant, réconciliation, rapport ; marche dans tous les modes, `HALTED` compris). Détail : `context/execution/autonomy-modes.md`. Tant que l'agent MQL5 est compilé `OBSERVE`, une fermeture répond `SIMULATED` et le cockpit ne dit jamais « fermé ».
+
 ## Vérifier
 
 ```powershell

@@ -137,6 +137,17 @@ docker start tradingos-timescaledb → python -m trading_os db migrate → pytho
 
 **Après un arrêt non propre** (redémarrage de la machine ou de Docker Desktop — les conteneurs sortent en code 255) : `docker start tradingos-timescaledb`, attendre `healthy`, relancer le cœur. Le cœur survit à une panne de base (il refuse alors toute commande : échec fermé) et le superviseur ouvre un incident ; MT5 est à rouvrir à la main, l'agent se reconnecte seul. **Rien ne redémarre le cœur** : sa fenêtre reste ouverte, c'est tout.
 
+## Démarrer et arrêter depuis le cockpit (ADR 0034)
+
+`start.ps1` (ou les commandes à la main ci-dessus) lance l'application : base, cœur, cockpit. Rien d'autre. Depuis le cockpit :
+
+- **Command Center → « DÉMARRER LE SYSTÈME »** (ou l'écran **Démarrage**) : vérifie treize étapes, force une lecture du terminal et une réconciliation, connecte le compte sélectionné **sans mot de passe** s'il ne l'est pas, puis monte `OFF → OBSERVE`. Ne monte jamais au-dessus de `CONFIRM` ; n'envoie aucun ordre. Si une étape bloquante échoue (base, terminal, compte), le système reste `OFF` et dit laquelle.
+- **Écran Démarrage → « AUTORISER LE TRADING AUTOMATIQUE »** : geste séparé, un échelon, vingt-deux conditions vertes à cet instant ; un compte réel exige une case cochée. Un redémarrage du cœur retombe **toujours** à `OFF`.
+- **« FERMER TOUTES LES POSITIONS »** (Command Center, Positions) : prévisualisation, confirmation explicite, un `CLOSE` par position, suivi en direct, réconciliation, rapport. Marche dans tous les modes, `HALTED` compris. Tant que l'agent est compilé `OBSERVE`, il répond `SIMULATED` et rien n'est fermé chez le courtier : le cockpit le dit.
+- **Arrêts** : « Arrêter les nouvelles entrées » (→ `OBSERVE`), « Arrêter les moteurs de stratégie » (→ `OFF`), arrêt d'urgence (barre latérale : `HALTED`, ne ferme rien). Quatre gestes distincts : `autonomy-modes.md`.
+
+Ces boutons ne se cliquent pas pendant le développement par Claude (`.claude/CLAUDE.md`) : l'essai sur la démo est fait par l'utilisateur.
+
 ## Points de fragilité connus
 
 - **Ports 3000, 8000 ou 5433 pris par d'autres projets** (constaté le 2026-11-01 : `jobart-frontend-1`, `jobart-backend-1`, `dossier-db-1`) : `start.ps1` s'arrête sans y toucher. Sans les arrêter, l'application tourne sur des ports libres — la base est recréée sans toucher au volume (`docker rm tradingos-timescaledb`, **jamais** `-v`), puis, depuis `04_code` :

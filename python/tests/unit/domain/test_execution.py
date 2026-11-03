@@ -367,9 +367,18 @@ class TestValidation:
     def test_a_halt_does_not_lift_the_other_refusals_of_an_exit(self) -> None:
         exit_ = request(kind=CommandKind.CLOSE, position_id="1", risk_decision_id=None)
         capable = {"decision": None, "agent_capabilities": frozenset({"close"}), "halted": True}
-        assert RejectCode.TRADING_DISABLED in codes(exit_, ctx(account_trading_enabled=False, **capable))
         assert RejectCode.AGENT_UNREACHABLE in codes(exit_, ctx(agent_registered=False, **capable))
         assert RejectCode.AGENT_CAPABILITY_MISSING in codes(exit_, ctx(decision=None, halted=True))
+
+    def test_the_disable_trading_switch_stops_risk_not_a_human_exit(self) -> None:
+        """ADR 0034: switching trading off for an account refuses an opening, a stop move and any automatic command — never a closing or a
+        cancelling issued by a human gesture, halted or not."""
+        exit_ = request(kind=CommandKind.CLOSE, position_id="1", risk_decision_id=None)
+        capable = {"decision": None, "agent_capabilities": frozenset({"close"}), "account_trading_enabled": False}
+        assert RejectCode.TRADING_DISABLED not in codes(exit_, ctx(**capable))
+        assert RejectCode.TRADING_DISABLED not in codes(exit_, ctx(halted=True, **capable))
+        assert RejectCode.TRADING_DISABLED in codes(exit_, ctx(automatic=True, **capable))
+        assert RejectCode.TRADING_DISABLED in codes(request(), ctx(account_trading_enabled=False))
 
     def test_no_agent_registered(self) -> None:
         assert RejectCode.AGENT_UNREACHABLE in codes(request(), ctx(agent_registered=False))

@@ -9,9 +9,10 @@ import { useCockpit, useTriggerKillSwitch } from "@/lib/realtime/provider";
  * T02a — the manual kill switch, one click from every screen: the bottom of
  * the sidebar (and of its mobile drawer), by the trader's choice.
  *
- * Locks the account for real, in the core's ledger. Never touches the broker:
- * no close_all command exists, so closing positions stays a manual MT5
- * action (LockoutAckBanner says so). A refusal — the core down, no account
+ * Locks the account for real, in the core's ledger, and cuts the entries. It
+ * never closes anything (ADR 0034): stopping the entries and closing every
+ * position are two gestures, and the second has its own button —
+ * « FERMER TOUTES LES POSITIONS » — which stays available while halted. A refusal — the core down, no account
  * attached — is shown under the button, never swallowed: an emergency stop
  * that silently did nothing is the worst failure this button can have.
  */
@@ -43,7 +44,7 @@ export function KillSwitchButton() {
             ? "Déjà verrouillé"
             : nothingToLock
               ? "Aucun compte actif : rien à verrouiller"
-              : "Verrouille le compte immédiatement — les positions restent à fermer dans MT5"
+              : "Verrouille le compte et coupe les entrées. Ne ferme rien : « Fermer toutes les positions » est un geste à part."
         }
         className={cn(
           "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-destructive outline-none",

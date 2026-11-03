@@ -16,6 +16,7 @@ from trading_os.domain.accounts.models import AccountSnapshot, Environment
 from trading_os.domain.autonomy.readiness import ReadinessReport
 from trading_os.domain.autonomy.state import AutonomyMode
 from trading_os.domain.execution.agent import AgentStatus
+from trading_os.domain.execution.close_all import PlannedItem
 from trading_os.domain.execution.commands import ExecutionCommand
 from trading_os.domain.market.calendar import UpcomingRelease
 from trading_os.domain.market.models import Candle, Tick
@@ -268,6 +269,16 @@ class ExecutionRejected(Event):
     detail: str
 
 
+class CloseAllRequested(Event):
+    """A human asked to close every open position of an account (ADR 0034). Recorded **before** the first command is sent: it carries what
+    the batch decided about each target, so the report of a batch survives a restart."""
+
+    wire_type = "execution.close_all_requested"
+    batch_id: str
+    include_pending_orders: bool
+    items: list[PlannedItem]
+
+
 class ExecutionReported(Event):
     """The final result: executed at the broker, or simulated (paper broker / agent compiled OBSERVE)."""
 
@@ -383,6 +394,23 @@ class AutonomyDisarmed(Event):
     wire_type = "autonomy.disarmed"
     mode: AutonomyMode
     reason: str
+
+
+class SystemStartRequested(Event):
+    """A human pressed « Démarrer le système » (ADR 0034). Starting climbs to OBSERVE (or PAPER / CONFIRM when asked), never higher."""
+
+    wire_type = "system.start_requested"
+    run_id: str
+    target_mode: AutonomyMode
+
+
+class SystemStartFinished(Event):
+    wire_type = "system.start_finished"
+    run_id: str
+    outcome: Literal["done", "partial", "blocked"]
+    reached_mode: AutonomyMode | None
+    message: str
+    blocked_on: list[str]
 
 
 class AutonomyHalted(Event):

@@ -398,17 +398,66 @@ async def test_the_agents_local_halt_does_not_stop_a_human_exit_either(h: Harnes
     assert automatic_close.command.state is CommandState.REJECTED
 
 
-@pytest.mark.parametrize("mode", [AutonomyMode.OFF, AutonomyMode.OBSERVE])
-async def test_off_and_observe_are_unchanged_a_closing_is_recorded_and_not_sent(h: Harness, mode: AutonomyMode) -> None:
+@pytest.mark.parametrize("mode", [AutonomyMode.OFF, AutonomyMode.OBSERVE, AutonomyMode.PAPER])
+async def test_a_human_closing_reaches_the_agent_in_off_observe_and_paper_too(h: Harness, mode: AutonomyMode) -> None:
+    """ADR 0034: the way out is never closed by the mode. A closing issued by a human gesture goes to the agent in OFF, OBSERVE and PAPER
+    like in CONFIRM and HALTED; without an agent that can close it is refused for that reason — not silently recorded as if it had worked."""
     rig = await make_rig(h, mode)
+    rig.link.capabilities = ["ping", "halt", "close", "cancel"]
     outcome = await rig.execution.submit(
         make_request(
             f"cmd-{mode.value}-close", account_id=rig.account.id, kind=CommandKind.CLOSE, position_id="777",
             risk_decision_id=None,
         )
     )  # fmt: skip
+    assert outcome.command.route is ExecutionRoute.CONFIRM and outcome.command.state is CommandState.SENT
+    assert len(rig.link.lines) == 1
+
+    rig.link.capabilities = ["ping", "halt"]  # an agent that cannot close: refused, with the reason
+    refused = await rig.execution.submit(
+        make_request(
+            f"cmd-{mode.value}-close-2", account_id=rig.account.id, kind=CommandKind.CLOSE, position_id="778",
+            risk_decision_id=None,
+        )
+    )  # fmt: skip
+    assert refused.command.state is CommandState.REJECTED
+    assert RejectCode.AGENT_CAPABILITY_MISSING in {r.code for r in refused.rejections}
+
+
+@pytest.mark.parametrize("mode", [AutonomyMode.OFF, AutonomyMode.OBSERVE, AutonomyMode.PAPER])
+async def test_an_automatic_closing_still_follows_the_mode_only_the_human_gesture_opens_the_way(
+    h: Harness, mode: AutonomyMode
+) -> None:
+    rig = await make_rig(h, mode)
+    rig.link.capabilities = ["ping", "halt", "close", "cancel"]
+    outcome = await rig.execution.submit(
+        make_request(
+            f"cmd-{mode.value}-auto-close", account_id=rig.account.id, kind=CommandKind.CLOSE, position_id="777",
+            risk_decision_id=None,
+        ),
+        automatic=True,
+    )  # fmt: skip
     assert rig.link.lines == []
-    assert outcome.command.route is ExecutionRoute.NONE
+    assert outcome.command.route in {ExecutionRoute.NONE, ExecutionRoute.PAPER}
+
+
+async def test_the_disable_trading_switch_stops_risk_not_the_way_out(h: Harness) -> None:
+    rig = await make_rig(h, AutonomyMode.CONFIRM)
+    rig.link.capabilities = ["ping", "halt", "close", "cancel", "modify"]
+    await rig.accounts.set_trading_enabled(rig.account.id, False)
+    close = await rig.execution.submit(
+        make_request(
+            "cmd-dis-close", account_id=rig.account.id, kind=CommandKind.CLOSE, position_id="777", risk_decision_id=None
+        )
+    )
+    assert close.command.state is CommandState.SENT  # a human closing goes through
+    modify = await rig.execution.submit(
+        make_request(
+            "cmd-dis-modify", account_id=rig.account.id, kind=CommandKind.MODIFY, position_id="777", stop_loss=1.09,
+            risk_decision_id=None,
+        )
+    )  # fmt: skip
+    assert RejectCode.TRADING_DISABLED in {r.code for r in modify.rejections}  # a stop move is not an exit
 
 
 async def test_only_the_active_account_receives_automatic_commands(h: Harness) -> None:
