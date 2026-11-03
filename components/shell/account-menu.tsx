@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronsUpDown, Settings, UserRound, Wallet } from "lucide-react";
+import { ChevronsUpDown, PlugZap, Settings, UserRound, Wallet } from "lucide-react";
 import { cn } from "cn";
 import { useCockpit } from "@/lib/realtime/provider";
 import type { ConnectionState } from "@/lib/realtime/store";
@@ -124,7 +124,7 @@ export function AccountMenu() {
         >
           <span className="hidden min-w-0 sm:block">
             <span className="block truncate text-sm font-medium leading-tight text-foreground">{name}</span>
-            <span className="block truncate text-[11px] tracking-wide text-muted-foreground uppercase">{subtitle}</span>
+            <span className="block truncate text-[0.6875rem] tracking-wide text-muted-foreground uppercase">{subtitle}</span>
           </span>
           <span className="relative shrink-0">
             <Avatar size="lg" className="ring-1 ring-border">
@@ -152,14 +152,14 @@ export function AccountMenu() {
               ? `${account.label} · ${account.currency}`
               : registered
                 ? `${registered.name} — rattache-le dans Account`
-                : "Enregistre un compte dans Settings, puis rattache-le."}
+                : "Aucun compte connecté : connecte-en un depuis Account."}
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <div className="flex flex-col gap-2 px-2 py-2 text-xs">
           <StatusRow label="Cœur" value={link.label} tone={link.tone} />
           {connectionIssue && connection !== "connected" ? (
-            <p className="text-[11px] leading-snug text-warning">{connectionIssue}</p>
+            <p className="text-[0.6875rem] leading-snug text-warning">{connectionIssue}</p>
           ) : null}
           <StatusRow label="Persistance" value={store.label} tone={store.tone} />
           <StatusRow
@@ -174,6 +174,14 @@ export function AccountMenu() {
           />
         </div>
         <DropdownMenuSeparator />
+        {!account && (
+          <DropdownMenuItem asChild className="gap-2.5 rounded-lg py-2">
+            <Link href="/account#connecter">
+              <PlugZap className="size-4" strokeWidth={1.75} />
+              Connecter un compte
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild className="gap-2.5 rounded-lg py-2">
           <Link href="/account">
             <Wallet className="size-4" strokeWidth={1.75} />

@@ -1,5 +1,7 @@
 # FTMO And Prop Firm Risk Context
 
+> Contexte d'origine (hypothèses). Les règles réellement appliquées par le Risk Engine sont dans `risk_rules.md` (ADR 0019).
+
 ## Business Goal
 
 The platform should support prop firm style constraints such as FTMO, while remaining useful for normal retail accounts.

@@ -66,13 +66,19 @@ class TestCanITrade:
         assert all(c.ok for c in result.checks)
 
     def test_explains_every_reason_in_a_stable_order(self) -> None:
-        # The mission's own example: daily budget gone + news restriction + correlated exposure.
+        # The mission's own example: daily budget gone + news restriction + correlated exposure. At -5.5 % of the
+        # initial capital the grid's stop (ADR 0019) is reached too; the allowance repeats that code, which shows once.
         result = can_i_trade(
             context(equity=945.0, calendar=None, correlated_exposure_percent=2.0, correlated_key=("USD", "short")),
             symbol=SYMBOL,
         )
         assert result.decision == "DENIED"
-        assert result.reasons == ["daily_risk_budget_exceeded", "correlated_exposure_too_high", "news_restriction"]
+        assert result.reasons == [
+            "daily_risk_budget_exceeded",
+            "performance_stop_reached",
+            "correlated_exposure_too_high",
+            "news_restriction",
+        ]
 
     def test_all_seventeen_checks_of_the_mission_are_present(self) -> None:
         ids = {c.check_id for c in can_i_trade(context(), symbol=SYMBOL).checks}
@@ -119,7 +125,8 @@ class TestCanITrade:
         assert can_i_trade(context(profile=limits, open_positions=2), symbol=SYMBOL).reasons == [
             "position_limit_reached"
         ]
-        assert can_i_trade(context(trades_today=6), symbol=SYMBOL).reasons == ["max_trades_reached"]
+        assert can_i_trade(context(trades_today=15), symbol=SYMBOL).reasons == ["max_trades_reached"]
+        assert can_i_trade(context(trades_today=14), symbol=SYMBOL).reasons == []
         assert can_i_trade(context(consecutive_losses=3), symbol=SYMBOL).reasons == ["consecutive_losses_limit"]
 
     def test_kill_switch_and_other_lockouts(self) -> None:
@@ -182,7 +189,11 @@ class TestDecide:
 
     def test_minimum_lot_over_the_budget_is_a_refusal(self) -> None:
         decision = decide(
-            context(balance=100.0, equity=100.0, day_start_equity=100.0, initial_balance=100.0), intent(), review()
+            context(
+                balance=100.0, equity=100.0, day_start_equity=100.0, week_start_equity=100.0, initial_balance=100.0
+            ),
+            intent(),
+            review(),
         )
         assert "min_volume_exceeds_risk" in decision.reasons and not decision.approved
 

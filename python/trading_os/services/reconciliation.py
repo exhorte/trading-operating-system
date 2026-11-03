@@ -48,6 +48,7 @@ from trading_os.domain.positions.reconciliation import (
     reconcile,
 )
 from trading_os.domain.primitives import Side
+from trading_os.domain.strategy.intent import OrderKind
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.client import ORDER_SIDES, Mt5Client
 from trading_os.infrastructure.mt5.mt5_semantics import DEAL_ENTRY_IN, DEAL_ENTRY_OUT, Deal, HistoryOrder, side_of_deal
@@ -363,6 +364,10 @@ class ReconciliationService:
         for command in filled:
             executed_at = when.get(command.command_id) or command.completed_at or command.created_at
             position_id = position_of(command)
+            if command.request.order_type is OrderKind.LIMIT and position_id is None:
+                # A LIMIT order the broker accepted (EXECUTED) rests until the market reaches it: no position yet is the normal
+                # state, not a missing one. It is compared with its position once one carries the command's trace (ADR 0029).
+                continue
             lost = (position_id is None or position_id not in live) and position_id not in closed
             if lost and broker.now - executed_at >= GRACE:
                 # Not open, not recorded closed: the history says whether it closed (stop, target, by hand) or is gone.

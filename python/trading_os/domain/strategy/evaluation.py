@@ -18,6 +18,7 @@ from trading_os.domain.primitives import DomainModel, Side, SymbolCode
 
 
 class StrategyEvaluation(DomainModel):
+    strategy_id: str = "S01"  # ADR 0024: more than one strategy is evaluated, each on its own record
     symbol: SymbolCode
     event_at: datetime
     status: Literal["proposed", "blocked"]

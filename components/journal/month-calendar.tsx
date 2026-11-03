@@ -60,7 +60,7 @@ export function MonthCalendar({
         ) : undefined
       }
     >
-      <div className="grid grid-cols-7 gap-1 text-center text-[11px]">
+      <div className="grid grid-cols-7 gap-1 text-center text-[0.6875rem]">
         {WEEKDAY_HEADERS.map((weekday) => (
           <div key={weekday} className="pb-1 font-medium tracking-wider text-muted-foreground uppercase">
             {weekday}
@@ -85,7 +85,7 @@ export function MonthCalendar({
               {bucket && (
                 <span
                   className={cn(
-                    "text-[10px] leading-none font-medium tabular-nums",
+                    "text-[0.625rem] leading-none font-medium tabular-nums",
                     bucket.pnl >= 0 ? "text-success" : "text-destructive",
                   )}
                 >

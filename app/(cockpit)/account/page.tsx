@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCockpit } from "@/lib/realtime/provider";
 import { useActiveProfile } from "@/lib/accounts/use-rules";
 import { AccountMetrics } from "@/components/accounts/account-metrics";
+import { ConnectAccountForm } from "@/components/accounts/connect-account-form";
 import { ConnectionChain } from "@/components/accounts/connection-chain";
 import { ObjectivesCard } from "@/components/accounts/objectives-card";
 import { RegisteredAccountCard } from "@/components/accounts/registered-account-card";
@@ -27,9 +28,9 @@ const LINK = "text-foreground underline underline-offset-4 hover:no-underline";
  * one the core is attached to and the only one that can receive automatic
  * commands. This screen reports each link of the chain from the cockpit to the
  * terminal, the active account's figures and the rules that govern it, and lets
- * the trader attach, detach or switch. Nothing here logs in to a broker:
- * the terminal is logged in by the trader and the core follows it (ADR 0013).
- * Rules are edited in `/settings`.
+ * the trader connect an account from its broker identifiers, attach or detach.
+ * **One account is connected at a time** (ADR 0021). A password, if given, is
+ * used once by the core and kept nowhere (ADR 0013, 0020). Rules are edited in `/settings`.
  *
  * Composition (ADR 0017): the chain of links on the left, the active account's
  * figures in the dark panel on the right, then the registered accounts, the rules
@@ -57,6 +58,10 @@ export default function AccountPage() {
         aside={<AccountMetrics profile={profile} />}
       />
 
+      <div id="connecter" className="scroll-mt-24">
+        <ConnectAccountForm />
+      </div>
+
       <section className="flex flex-col gap-4">
         <SectionHeading
           title="Comptes enregistrés"
@@ -68,10 +73,10 @@ export default function AccountPage() {
             title={connection === "connected" ? "Aucun compte enregistré" : "Comptes illisibles"}
             description={
               connection === "connected"
-                ? "Le cœur ne connaît encore aucun compte. Enregistre le tien dans Settings : un login, un serveur, le type de compte."
+                ? "Le cœur ne connaît encore aucun compte. Connecte le tien avec le formulaire ci-dessus : Exness ou FTMO, le login, le serveur."
                 : "Le cœur ne répond pas : la liste de tes comptes vient de lui."
             }
-            hint="Aucun mot de passe n'est demandé : MT5 se connecte, le cœur suit."
+            hint="Le mot de passe, s'il est demandé, sert une fois à lire le compte et n'est gardé nulle part."
           />
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -100,8 +105,9 @@ export default function AccountPage() {
       )}
 
       <Callout title="Important">
-        Le Trading OS ne se connecte à aucun broker : il suit le terminal MT5 ouvert, et aucun mot de passe de compte n&apos;est
-        demandé ni stocké. Les limites et le capital de référence de chaque compte se règlent dans{" "}
+        Un seul compte est connecté à la fois. Le formulaire de connexion lit le compte chez le courtier avec ses identifiants ;
+        le mot de passe, facultatif quand MT5 est déjà sur ce compte, sert une fois et n&apos;est ni stocké ni journalisé (ADR 0013,
+        0020, 0021). Les limites et le capital de référence de chaque compte se règlent dans{" "}
         <Link href="/settings" className={LINK}>
           Settings
         </Link>

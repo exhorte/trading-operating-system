@@ -19,7 +19,7 @@ describe("profileOf", () => {
   it("reads an FTMO challenge: its label, its reference, the limits in money", () => {
     const profile = profileOf(ftmo, {
       ...ftmo,
-      riskProfile: { ...ftmo.riskProfile, drawdown: { dailyLossLimitPercent: 5, maxDrawdownLimitPercent: 10, referenceBalance: 10_000 } },
+      riskProfile: { ...ftmo.riskProfile, drawdown: { dailyLossLimitPercent: 5, weeklyLossLimitPercent: 10, maxDrawdownLimitPercent: 10, referenceBalance: 10_000 } },
     });
     expect(profile.label).toBe("FTMO · 2-Step $10,000 · Challenge");
     expect(profile.referenceSource).toContain("taille du challenge");

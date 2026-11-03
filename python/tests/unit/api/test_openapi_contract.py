@@ -30,13 +30,14 @@ SURFACE: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/accounts/{account_id}/snapshot"), ("GET", "/api/accounts/{account_id}/positions"),
         ("GET", "/api/accounts/{account_id}/orders"),
         ("GET", "/api/accounts/{account_id}/rules"), ("POST", "/api/accounts/{account_id}/rules"),
-        ("POST", "/api/accounts/{account_id}/rules/{version_id}/cancel"), ("POST", "/api/accounts/rules-preview"),
+        ("POST", "/api/accounts/{account_id}/rules/{version_id}/cancel"), ("POST", "/api/accounts/rules-preview"), ("POST", "/api/accounts/discover"),
         ("GET", "/api/accounts/{account_id}/credentials"), ("PUT", "/api/accounts/{account_id}/credentials"),
         ("DELETE", "/api/accounts/{account_id}/credentials"),
         ("GET", "/api/active-account"), ("PUT", "/api/active-account"),
         # autonomy
         ("GET", "/api/autonomy/state"), ("POST", "/api/autonomy/arm"), ("POST", "/api/autonomy/renew"),
         ("POST", "/api/autonomy/disarm"), ("POST", "/api/autonomy/halt"),
+        ("GET", "/api/autonomy/promotion"), ("GET", "/api/why-no-trade"), ("GET", "/api/guardian"),  # ADR 0025, 0027, 0028
         # risk
         ("GET", "/api/risk/state"), ("GET", "/api/risk/can-i-trade"), ("POST", "/api/risk/evaluate"),
         ("GET", "/api/risk/decisions"), ("GET", "/api/risk/decisions/{decision_id}"),
@@ -47,6 +48,12 @@ SURFACE: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/execution/commands/{command_id}"), ("POST", "/api/execution/commands/{command_id}/confirm"),
         ("POST", "/api/execution/commands/{command_id}/cancel"),
         ("GET", "/api/execution/reconciliation"), ("POST", "/api/execution/reconciliation/run"),
+        # close all positions (ADR 0034): a preview, one human gesture that submits ordinary CLOSE commands, and the follow-up of the batch
+        ("GET", "/api/execution/close-all/preview"), ("POST", "/api/execution/close-all"),
+        ("GET", "/api/execution/close-all/{batch_id}"), ("POST", "/api/execution/close-all/{batch_id}/verify"),
+        # start-up of the trading system (ADR 0034): the stages, « start » (never above CONFIRM), and the separate automatic-trading gesture
+        ("GET", "/api/system/startup"), ("POST", "/api/system/startup"),
+        ("POST", "/api/system/startup/authorize-automatic"),
         # market
         ("GET", "/api/market/calendar"), ("GET", "/api/market/quotes"), ("GET", "/api/market/{symbol}"),
         ("GET", "/api/market/{symbol}/candles"), ("GET", "/api/market/{symbol}/context"),
@@ -60,6 +67,15 @@ SURFACE: frozenset[tuple[str, str]] = frozenset(
 # (the commands have no "execute" shortcut: an order is a command that went through a risk decision, and only the EA ever sends it.)
 
 FORBIDDEN_WORDS = re.compile(r"order[-_/]?send|place[-_]?order|execute[-_]?trade|close[-_]?all", re.IGNORECASE)
+# The one family that carries a forbidden word on purpose (ADR 0034, EA-08 « fermeture globale »): « close-all » is not a shortcut to an
+# order — it builds ordinary CLOSE commands (a deterministic id each) and submits them to the execution engine as a human exit, so every
+# one is persisted before it is sent, replayed rather than executed twice, and reconciled. Anything else with such a word stays refused.
+CLOSE_ALL_FAMILY = frozenset(
+    {
+        ("GET", "/api/execution/close-all/preview"), ("POST", "/api/execution/close-all"),
+        ("GET", "/api/execution/close-all/{batch_id}"), ("POST", "/api/execution/close-all/{batch_id}/verify"),
+    }
+)  # fmt: skip
 
 
 def make_settings(token: str | None = None) -> Settings:
@@ -95,7 +111,9 @@ def test_the_surface_is_exactly_the_documented_one(document: dict[str, Any]) -> 
 
 
 def test_no_route_offers_a_shortcut_to_an_order(document: dict[str, Any]) -> None:
-    offenders = [f"{m} {p}" for m, p, _ in operations(document) if FORBIDDEN_WORDS.search(p)]
+    offenders = [
+        f"{m} {p}" for m, p, _ in operations(document) if FORBIDDEN_WORDS.search(p) and (m, p) not in CLOSE_ALL_FAMILY
+    ]
     assert not offenders, offenders  # an order exists only as a command that went through a risk decision
 
 

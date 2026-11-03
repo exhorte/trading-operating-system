@@ -57,6 +57,13 @@ def new_account(login: int = 1_000_002, **extra: Any) -> dict[str, Any]:
     }  # fmt: skip
 
 
+async def detach_first(api: Api) -> None:
+    """Only one account is connected at a time (ADR 0021): a test that wants another one detaches the first."""
+    assert api.core.account is not None
+    response = await api.post(f"/api/accounts/{api.core.account.id}/disconnect", force="true")
+    assert response.status_code == 200, response.text
+
+
 async def create_second(api: Api, login: int = 1_000_002) -> dict[str, Any]:
     response = await api.post("/api/accounts", new_account(login))
     assert response.status_code == 201, response.text

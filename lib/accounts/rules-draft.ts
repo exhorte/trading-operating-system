@@ -16,6 +16,7 @@ import type { AccountRules } from "@/lib/api/generated";
 export type FieldId =
   | "referenceBalance"
   | "dailyLossLimitPercent"
+  | "weeklyLossLimitPercent"
   | "maxDrawdownLimitPercent"
   | "maxRiskPerTradePercent"
   | "maxOpenRiskPercent"
@@ -25,7 +26,6 @@ export type FieldId =
   | "consecutiveLossPauseMinutes"
   | "blackoutMinutes"
   | "maxOpenPositions"
-  | "maxPositionsPerSymbol"
   | "maxVolumePerOrder"
   | "costThreshold"
   | "commissionPerLotRoundTrip"
@@ -52,7 +52,7 @@ export interface FieldSpec {
 export const SECTIONS: Record<SectionId, { title: string; description: string }> = {
   capital: {
     title: "Capital et pertes maximales",
-    description: "ce dont les deux limites de perte sont des pourcentages",
+    description: "ce dont les limites de perte sont des pourcentages",
   },
   risk: {
     title: "Risque par trade et exposition",
@@ -77,7 +77,7 @@ export const FIELDS: FieldSpec[] = [
     id: "referenceBalance",
     section: "capital",
     label: "Capital de référence",
-    hint: "Le capital engagé sur ce compte. Les deux limites de perte se calculent en pourcentage de ce montant, et le plancher s'en déduit. Vide : pas de référence fixe (le solde à la connexion fait foi).",
+    hint: "Le capital engagé sur ce compte. Les limites de perte se calculent en pourcentage de ce montant, et le plancher s'en déduit. Vide : pas de référence fixe (le solde à la connexion fait foi).",
     unit: "$",
     integer: false,
     min: 1,
@@ -89,6 +89,17 @@ export const FIELDS: FieldSpec[] = [
     section: "capital",
     label: "Perte journalière maximale",
     hint: "Au-delà, le compte est verrouillé jusqu'à ce que tu l'aies reconnu.",
+    unit: "%",
+    integer: false,
+    min: 0,
+    minExclusive: true,
+    max: 100,
+  },
+  {
+    id: "weeklyLossLimitPercent",
+    section: "capital",
+    label: "Perte hebdomadaire maximale",
+    hint: "Mesurée depuis l'ouverture de la semaine (lundi 00:00, heure du courtier). Au-delà, plus aucune entrée jusqu'à la semaine suivante.",
     unit: "%",
     integer: false,
     min: 0,
@@ -181,16 +192,7 @@ export const FIELDS: FieldSpec[] = [
     id: "maxOpenPositions",
     section: "market",
     label: "Positions ouvertes",
-    hint: "Au total, tous symboles confondus.",
-    integer: true,
-    min: 1,
-    max: 1_000,
-  },
-  {
-    id: "maxPositionsPerSymbol",
-    section: "market",
-    label: "Positions par symbole",
-    hint: "Un seul : pas de moyenne à la baisse, pas de grille.",
+    hint: "Au total, tous symboles confondus. Aucune limite par symbole : un même symbole peut porter autant de positions simultanées que ce total, le risque ouvert et l'exposition corrélée le permettent.",
     integer: true,
     min: 1,
     max: 1_000,
@@ -259,6 +261,7 @@ type Read = (rules: AccountRules) => number | null;
 const READ: Record<FieldId, Read> = {
   referenceBalance: (r) => r.riskProfile.drawdown.referenceBalance,
   dailyLossLimitPercent: (r) => r.riskProfile.drawdown.dailyLossLimitPercent,
+  weeklyLossLimitPercent: (r) => r.riskProfile.drawdown.weeklyLossLimitPercent,
   maxDrawdownLimitPercent: (r) => r.riskProfile.drawdown.maxDrawdownLimitPercent,
   maxRiskPerTradePercent: (r) => r.riskProfile.maxRiskPerTradePercent,
   maxOpenRiskPercent: (r) => r.riskProfile.maxOpenRiskPercent,
@@ -268,7 +271,6 @@ const READ: Record<FieldId, Read> = {
   consecutiveLossPauseMinutes: (r) => r.riskProfile.consecutiveLossPauseMinutes,
   blackoutMinutes: (r) => r.riskProfile.news.blackoutMinutes,
   maxOpenPositions: (r) => r.riskProfile.positions.maxOpenPositions,
-  maxPositionsPerSymbol: (r) => r.riskProfile.positions.maxPositionsPerSymbol,
   maxVolumePerOrder: (r) => r.riskProfile.positions.maxVolumePerOrder,
   costThreshold: (r) => r.executionProfile.limits.costThreshold,
   commissionPerLotRoundTrip: (r) => r.executionProfile.limits.commissionPerLotRoundTrip,
@@ -287,6 +289,10 @@ const WRITE: Record<FieldId, Write> = {
     ...r,
     riskProfile: { ...r.riskProfile, drawdown: { ...r.riskProfile.drawdown, dailyLossLimitPercent: v! } },
   }),
+  weeklyLossLimitPercent: (r, v) => ({
+    ...r,
+    riskProfile: { ...r.riskProfile, drawdown: { ...r.riskProfile.drawdown, weeklyLossLimitPercent: v! } },
+  }),
   maxDrawdownLimitPercent: (r, v) => ({
     ...r,
     riskProfile: { ...r.riskProfile, drawdown: { ...r.riskProfile.drawdown, maxDrawdownLimitPercent: v! } },
@@ -304,10 +310,6 @@ const WRITE: Record<FieldId, Write> = {
   maxOpenPositions: (r, v) => ({
     ...r,
     riskProfile: { ...r.riskProfile, positions: { ...r.riskProfile.positions, maxOpenPositions: v! } },
-  }),
-  maxPositionsPerSymbol: (r, v) => ({
-    ...r,
-    riskProfile: { ...r.riskProfile, positions: { ...r.riskProfile.positions, maxPositionsPerSymbol: v! } },
   }),
   maxVolumePerOrder: (r, v) => ({
     ...r,

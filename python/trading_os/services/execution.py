@@ -56,10 +56,12 @@ from trading_os.domain.execution.records import (
 )
 from trading_os.domain.execution.retcodes import RetcodeClass, classify_failed_report
 from trading_os.domain.execution.state import CommandEvent, is_terminal, next_state
-from trading_os.domain.execution.validation import ValidationContext, validate
+from trading_os.domain.execution.validation import LIMIT_CAPABILITY, ValidationContext, validate
+from trading_os.domain.positions.models import PendingOrder, Position
 from trading_os.domain.primitives import DomainModel
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.wire import (
+    SUCCESS_REPORT_STATUSES,
     AgentHeartbeat,
     ExecutionAck,
     ExecutionReconciled,
@@ -86,6 +88,14 @@ class AgentLinkPort(Protocol):
     def registered_logins(self) -> list[str]: ...
 
 
+class PositionView(Protocol):
+    """What the engine reads of the broker's exposure to check a management command (ADR 0023)."""
+
+    def positions(self, account_id: str) -> list[Position]: ...
+    def orders(self, account_id: str) -> list[PendingOrder]: ...
+    def baselined(self, account_id: str) -> bool: ...
+
+
 class ExecutionOutcome(DomainModel):
     command: ExecutionCommand
     replayed: bool = False
@@ -105,7 +115,9 @@ class ExecutionService:
         senders: dict[ExecutionRoute, OrderSender],
         effective_mode: Callable[[Account], AutonomyMode],
         halted: Callable[[], bool] = lambda: False,
+        positions: PositionView | None = None,
     ) -> None:
+        self._positions = positions
         self._accounts = accounts
         self._repos = repos
         self._events = events
@@ -159,7 +171,7 @@ class ExecutionService:
 
         account = await self._accounts.effective(request.account_id) if await self._known(request.account_id) else None
         mode = self._effective_mode(account) if account else AutonomyMode.OFF
-        route = route_for(mode)
+        route = self._route_for(mode, request, automatic=automatic)
         problems = await self._validate(request, account, route, automatic=automatic, now=now)
         ttl = (
             timedelta(seconds=account.execution_profile.limits.command_ttl_seconds)
@@ -207,6 +219,15 @@ class ExecutionService:
             return ExecutionOutcome(command=base, awaiting_confirmation=True)
         return ExecutionOutcome(command=await self._dispatch(base, account))
 
+    @staticmethod
+    def _route_for(mode: AutonomyMode, request: ExecutionRequest, *, automatic: bool) -> ExecutionRoute:
+        """The route a command takes. A closing or a cancelling issued by a human gesture goes to the agent in **every** mode — OFF, OBSERVE,
+        PAPER and HALTED included — like a human exit in CONFIRM: the gesture is the confirmation (ADR 0033, 0034). The way out is never
+        closed by the mode. Everything else, and everything automatic, follows the mode: OBSERVE and OFF record and send nothing."""
+        if request.kind.reduces_risk_only and not automatic:
+            return ExecutionRoute.CONFIRM
+        return route_for(mode)
+
     async def _known(self, account_id: str) -> bool:
         return await self._repos.accounts.get(account_id) is not None
 
@@ -244,7 +265,18 @@ class ExecutionService:
                 problems.append(Rejection(code=RejectCode.STORE_UNAVAILABLE, detail="the risk decision cannot be read"))
         status = self._link.status(login) if account else None
         sends_to_agent = route in (ExecutionRoute.CONFIRM, ExecutionRoute.AUTOMATIC)
+        known = bool(account and self._positions and self._positions.baselined(account.id))
+        position = None
+        pending = None
+        if known and account is not None and self._positions is not None:
+            position = next(
+                (p for p in self._positions.positions(account.id) if p.position_id == request.position_id), None
+            )
+            pending = next((o for o in self._positions.orders(account.id) if o.order_id == request.order_id), None)
         context = ValidationContext(
+            positions_known=known,
+            position=position,
+            pending_order=pending,
             now=now,
             automatic=automatic,
             account_exists=account is not None,
@@ -257,9 +289,17 @@ class ExecutionService:
             decision=decision,
         )
         if route is ExecutionRoute.NONE or route is ExecutionRoute.PAPER:
-            context = context.model_copy(update={"agent_capabilities": frozenset({"modify", "close", "cancel"})})
+            # nothing is sent in these routes, so the whole protocol can be validated end to end (ADR 0023)
+            context = context.model_copy(
+                update={"agent_capabilities": frozenset({"modify", "close", "cancel", LIMIT_CAPABILITY})}
+            )
         problems += validate(request, context)
-        if status is not None and sends_to_agent and (refusal := status.command_refusal()) is not None:
+        exit_only = request.kind.reduces_risk_only and not automatic
+        if (
+            status is not None
+            and sends_to_agent
+            and (refusal := status.command_refusal(exit_only=exit_only)) is not None
+        ):
             problems.append(Rejection(code=RejectCode.AGENT_UNREACHABLE, detail=refusal))
         return problems
 
@@ -481,7 +521,7 @@ class ExecutionService:
         if command.state in (CommandState.UNKNOWN, CommandState.RECONCILING):
             await self._settle_in_doubt(command, report, fill)
             return
-        if report.status in ("FILLED", "PARTIALLY_FILLED"):
+        if report.status in SUCCESS_REPORT_STATUSES:
             if await self._move(report.command_id, CommandEvent.REPORT_EXECUTED, **fill) is not None:
                 await self._publish_executed(account_id, report, "executed")
         elif report.status == "SIMULATED":
@@ -526,7 +566,7 @@ class ExecutionService:
         RECONCILING → RECONCILED like any other resolution, with what it says recorded."""
         if command.state is CommandState.UNKNOWN:
             await self._move(command.command_id, CommandEvent.RECONCILIATION_STARTED)
-        executed = report.status in ("FILLED", "PARTIALLY_FILLED")
+        executed = report.status in SUCCESS_REPORT_STATUSES
         detail = f"reconciled from the agent's late report: {report.status} — {report.detail}"
         await self._move(command.command_id, CommandEvent.RECONCILED, **{**fill, "detail": detail})
         if executed:

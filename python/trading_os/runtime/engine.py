@@ -59,6 +59,8 @@ class Engine:
         c.risk.subscribe()
         c.journal.subscribe()
         c.strategy.subscribe()
+        if c.strategy_s02 is not None:
+            c.strategy_s02.subscribe()
         c.supervisor.subscribe()
         c.events.subscribe(AccountDisconnected, self._forget_account)
 
@@ -151,6 +153,10 @@ class Engine:
         add("candles", self._each(c.market.poll_candles), interval_s=5.0, timeout_s=30)
         add("risk", self._each(c.risk.evaluate), interval_s=s.positions_poll_interval_s, timeout_s=30, critical=True)
         add("strategy", self._once(c.strategy.run_pending), interval_s=5.0, timeout_s=60)
+        if c.strategy_s02 is not None:
+            add("strategy_s02", self._once(c.strategy_s02.run_pending), interval_s=5.0, timeout_s=60)
+        add("position_manager", self._once(c.position_manager.run), interval_s=2.0, timeout_s=30)
+        add("guardian", self._once(c.guardian.run), interval_s=2.0, timeout_s=30)
         add("execution", self._once(c.execution.sweep), interval_s=2.0, timeout_s=30, critical=True)
         add(
             "reconciliation", self._once(c.reconciliation.reconcile_connected), interval_s=15.0, timeout_s=90,

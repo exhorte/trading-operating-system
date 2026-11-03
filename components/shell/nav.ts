@@ -8,6 +8,7 @@ import {
   FlaskConical,
   Layers,
   LayoutDashboard,
+  Play,
   Settings,
   ShieldCheck,
   Wallet,
@@ -50,6 +51,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: LayoutDashboard,
     section: "operate",
     question: "Où j'en suis, là, maintenant",
+  },
+  {
+    label: "Démarrage",
+    href: "/demarrage",
+    icon: Play,
+    section: "operate",
+    question: "Le système peut-il prendre une position, et sinon qu'est-ce qui bloque",
   },
   {
     label: "Pré-vol",

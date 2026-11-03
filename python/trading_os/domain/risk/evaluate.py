@@ -14,6 +14,13 @@ from pydantic import Field
 
 from trading_os.domain.market.calendar import UpcomingRelease
 from trading_os.domain.primitives import AccountId, DomainModel
+from trading_os.domain.risk.dynamic_risk import (
+    AppliedCap,
+    RemainingBudget,
+    RiskAllowance,
+    performance_percent,
+    resolve_risk_allowance,
+)
 from trading_os.domain.risk.gates import (
     connection_gate,
     consecutive_loss_gate,
@@ -23,9 +30,11 @@ from trading_os.domain.risk.gates import (
     max_trades_gate,
     news_gate,
     open_risk_gate,
+    performance_stop_gate,
     position_limit_gate,
     session_gate,
     spread_gate,
+    weekly_loss_gate,
 )
 from trading_os.domain.risk.policy import WARNING_THRESHOLD, RiskProfile
 from trading_os.domain.risk.state import RiskMode, RiskState, round_half_up
@@ -38,7 +47,11 @@ class RiskInputs(DomainModel):
     now: datetime
     profile: RiskProfile
     initial_balance: float  # denominator of the percent limits (the reference balance)
+    # False = no initial capital recorded: ``initial_balance`` is only today's balance standing in for it. The percent
+    # limits still read it, but the performance grid does not (ADR 0019): fail closed, entries refused.
+    reference_fixed: bool = False
     day_start_equity: float
+    week_start_equity: float
     equity: float
     balance: float
     open_risk_percent: float = 0.0
@@ -57,20 +70,79 @@ class RiskInputs(DomainModel):
     window_label: str | None = None
     # None = calendar unknown or stale → the news gate fails closed.
     calendar: tuple[UpcomingRelease, ...] | None = Field(default=None)
+    # N8's reduction for the next trade (ADR 0031), already weighed by the service from the trade history. ``None`` = N8 puts no cap
+    # (off, not configured, or no trigger): it is one more cap in the minimum, and it never raises anything.
+    n8_cap: AppliedCap | None = None
+
+
+def loss_percent(start_equity: float, equity: float, reference: float) -> float:
+    """Loss since ``start_equity``, in percent of the reference balance (never negative), unrounded."""
+    denominator = reference if reference > 0 else 1.0
+    return max(0.0, (start_equity - equity) / denominator * 100)
+
+
+def risk_allowance(inputs: RiskInputs) -> RiskAllowance:
+    """What one new trade may risk (ADR 0019): the grid, the 200 $ trigger, the profile ceiling and the loss budgets
+    that are left. The budgets use the unrounded usage — a rounded 4.96 % must not buy 0.04 % more than there is."""
+    profile = inputs.profile
+    limits = profile.drawdown
+    reference = inputs.initial_balance
+    open_risk = inputs.open_risk_percent
+    budgets = [
+        RemainingBudget(
+            code="daily_budget",
+            label="daily loss",
+            limit_percent=limits.daily_loss_limit_percent,
+            used_percent=loss_percent(inputs.day_start_equity, inputs.equity, reference),
+            open_risk_percent=open_risk,
+        ),
+        RemainingBudget(
+            code="weekly_budget",
+            label="weekly loss",
+            limit_percent=limits.weekly_loss_limit_percent,
+            used_percent=loss_percent(inputs.week_start_equity, inputs.equity, reference),
+            open_risk_percent=open_risk,
+        ),
+        RemainingBudget(
+            code="overall_budget",
+            label="total loss",
+            limit_percent=limits.max_drawdown_limit_percent,
+            used_percent=loss_percent(reference, inputs.equity, reference),
+            open_risk_percent=open_risk,
+        ),
+    ]
+    return resolve_risk_allowance(
+        profile.dynamic,
+        initial_capital=reference if inputs.reference_fixed else None,
+        equity=inputs.equity,
+        per_trade_ceiling_percent=profile.max_risk_per_trade_percent,
+        budgets=budgets,
+        extra_caps=(inputs.n8_cap,) if inputs.n8_cap is not None else (),
+    )
 
 
 def evaluate_risk_state(inputs: RiskInputs) -> RiskState:
     profile = inputs.profile
     denominator = inputs.initial_balance if inputs.initial_balance > 0 else 1.0
-    daily_used = round_half_up(max(0.0, (inputs.day_start_equity - inputs.equity) / denominator * 100), 1)
-    drawdown_used = round_half_up(max(0.0, (inputs.initial_balance - inputs.equity) / denominator * 100), 1)
+    daily_used = round_half_up(loss_percent(inputs.day_start_equity, inputs.equity, denominator), 1)
+    weekly_used = round_half_up(loss_percent(inputs.week_start_equity, inputs.equity, denominator), 1)
+    drawdown_used = round_half_up(loss_percent(inputs.initial_balance, inputs.equity, denominator), 1)
+    performance = (
+        performance_percent(inputs.initial_balance, inputs.equity)
+        if inputs.reference_fixed and inputs.initial_balance > 0 and inputs.equity > 0
+        else None
+    )
 
     daily = daily_loss_gate(daily_used, profile.drawdown)
+    weekly = weekly_loss_gate(weekly_used, profile.drawdown)
+    performance_stop = performance_stop_gate(performance, profile.dynamic.stop_level_percent)
     drawdown = max_drawdown_gate(drawdown_used, profile.drawdown)
     trades = max_trades_gate(inputs.trades_today, profile)
     consecutive = consecutive_loss_gate(inputs.consecutive_losses, profile)
     gates = [
         daily,
+        weekly,
+        performance_stop,
         drawdown,
         open_risk_gate(
             inputs.open_risk_percent,
@@ -90,11 +162,12 @@ def evaluate_risk_state(inputs: RiskInputs) -> RiskState:
         connection_gate(inputs.agent_connected),
     ]
 
-    hard_breaches = [gate for gate in (daily, drawdown, trades, consecutive) if gate.blocked]
+    hard_breaches = [gate for gate in (daily, weekly, performance_stop, drawdown, trades, consecutive) if gate.blocked]
     locked = bool(hard_breaches)
     limits = profile.drawdown
     warning = not locked and (
         daily_used >= limits.daily_loss_limit_percent * WARNING_THRESHOLD
+        or weekly_used >= limits.weekly_loss_limit_percent * WARNING_THRESHOLD
         or drawdown_used >= limits.max_drawdown_limit_percent * WARNING_THRESHOLD
         or inputs.open_risk_percent >= profile.max_open_risk_percent * WARNING_THRESHOLD
     )
@@ -104,7 +177,10 @@ def evaluate_risk_state(inputs: RiskInputs) -> RiskState:
         account_id=inputs.account_id,
         mode=mode,
         daily_loss_used_percent=daily_used,
+        weekly_loss_used_percent=weekly_used,
         max_drawdown_used_percent=drawdown_used,
+        performance_percent=None if performance is None else round(performance, 4),
+        allowance=risk_allowance(inputs),
         open_risk_percent=inputs.open_risk_percent,
         correlated_exposure_percent=inputs.correlated_exposure_percent,
         trades_today=inputs.trades_today,

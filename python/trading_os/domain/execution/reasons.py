@@ -31,6 +31,11 @@ class RejectCode(StrEnum):
     STOP_REQUIRED = "STOP_REQUIRED"  # no trade without a stop
     SYMBOL_MISMATCH = "SYMBOL_MISMATCH"
     ORDER_TYPE_UNSUPPORTED = "ORDER_TYPE_UNSUPPORTED"
+    # Management commands (ADR 0023)
+    POSITION_NOT_FOUND = "POSITION_NOT_FOUND"  # MODIFY / CLOSE / PARTIAL_CLOSE on a position the core does not see
+    ORDER_NOT_FOUND = "ORDER_NOT_FOUND"  # CANCEL on a pending order the core does not see
+    STOP_LOOSENED = "STOP_LOOSENED"  # a MODIFY that would let the position lose more than it may now
+    VOLUME_INVALID = "VOLUME_INVALID"  # a PARTIAL_CLOSE that is not strictly inside the open volume
     COMMAND_EXPIRED = "COMMAND_EXPIRED"
     DUPLICATE_CONFLICT = "DUPLICATE_CONFLICT"  # same commandId, different content
 

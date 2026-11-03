@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { Layers } from "lucide-react";
+import { CloseAllButton } from "@/components/cockpit/close-all-button";
 import { CommandCenterMetrics } from "@/components/cockpit/command-center-metrics";
 import { PositionsTable } from "@/components/cockpit/positions-table";
 import { SessionVerdictBanner } from "@/components/cockpit/session-verdict-banner";
+import { SystemControls } from "@/components/cockpit/system-controls";
+import { WhyNoTradePanel } from "@/components/cockpit/why-no-trade-panel";
 import { PageHeader, SectionHeading } from "@/components/shell/page-header";
 import { screenAt } from "@/components/shell/nav";
 import { Button } from "@/components/ui/button";
@@ -33,7 +36,9 @@ export default function CommandCenterPage() {
         main={
           <>
             <PageHeader screen={screenAt("/")} />
+            <SystemControls />
             <SessionVerdictBanner />
+            <WhyNoTradePanel />
           </>
         }
         aside={<CommandCenterMetrics />}
@@ -45,9 +50,12 @@ export default function CommandCenterPage() {
           subtitle="suivies en direct"
           icon={Layers}
           actions={
-            <Button asChild variant="secondary" size="sm">
-              <Link href="/positions">Voir tout</Link>
-            </Button>
+            <>
+              <CloseAllButton size="sm" />
+              <Button asChild variant="secondary" size="sm">
+                <Link href="/positions">Voir tout</Link>
+              </Button>
+            </>
           }
         />
         <PositionsTable />

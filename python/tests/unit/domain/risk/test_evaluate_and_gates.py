@@ -17,8 +17,9 @@ from trading_os.domain.risk.gates import (
     position_limit_gate,
     spread_gate,
     symbol_gate,
+    weekly_loss_gate,
 )
-from trading_os.domain.risk.policy import NewsPolicy, PositionLimits, RiskProfile
+from trading_os.domain.risk.policy import DrawdownPolicy, NewsPolicy, PositionLimits, RiskProfile
 from trading_os.domain.risk.state import GateResult, RiskMode, RiskState, round_half_up
 
 
@@ -68,7 +69,7 @@ class TestEvaluateRiskState:
         assert gate(state, "gate-total-dd").blocked
 
     def test_locks_when_max_trades_is_reached(self) -> None:
-        state = evaluate_risk_state(inputs(trades_today=6))
+        state = evaluate_risk_state(inputs(trades_today=15))
         assert state.mode is RiskMode.LOCKED and gate(state, "gate-max-trades").blocked
 
     # T03 — the most important behaviour of the news gate: absent data never reads as « all clear ».
@@ -164,6 +165,24 @@ class TestNewGates:
     def test_position_limit_gate(self) -> None:
         limits = PositionLimits(max_open_positions=2)
         assert not position_limit_gate(1, limits).blocked and position_limit_gate(2, limits).blocked
+
+    def test_position_limit_counts_the_account_never_a_symbol(self) -> None:
+        # ADR 0022: no per-symbol limit. Five positions on one symbol are five positions of the account, nothing more.
+        assert "max_positions_per_symbol" not in PositionLimits.model_fields
+        limits = PositionLimits()
+        assert limits.max_open_positions == 5
+        assert not position_limit_gate(4, limits).blocked and position_limit_gate(5, limits).blocked
+
+    def test_a_profile_saved_before_adr_0022_still_loads(self) -> None:
+        # rows written while the field existed carry it: the core ignores it instead of refusing the whole account
+        stored = {"positions": {"maxOpenPositions": 3, "maxPositionsPerSymbol": 1, "maxVolumePerOrder": None}}
+        assert RiskProfile.model_validate(stored).positions.max_open_positions == 3
+
+    def test_weekly_loss_gate_follows_the_limit_the_user_wrote(self) -> None:
+        policy = DrawdownPolicy(weekly_loss_limit_percent=3.0)
+        assert not weekly_loss_gate(2.9, policy).blocked
+        assert weekly_loss_gate(3.0, policy).blocked
+        assert not weekly_loss_gate(9.0, DrawdownPolicy(weekly_loss_limit_percent=20.0)).blocked
 
     def test_spread_gate_has_no_fixed_cap_by_default(self) -> None:
         assert not spread_gate(0.00080, None).blocked  # ADR 0015: the cost gate decides, not a fixed ceiling

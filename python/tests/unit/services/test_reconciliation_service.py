@@ -140,6 +140,36 @@ async def test_a_report_without_a_position_id_is_matched_through_the_comment_tra
     assert await state_of(env, "cmd-noid-1") is CommandState.RECONCILED
 
 
+async def test_a_limit_order_the_broker_accepted_is_not_a_missing_position(h: Harness) -> None:
+    """ADR 0029: a resting LIMIT order is reported SUBMITTED and the command is EXECUTED, yet there is no position — the market
+    has not reached it. That is the normal state, not a « command executed but no matching position » alarm. When the order
+    fills, the position carries the command's trace and is compared (and the command confirmed) like any other."""
+    env = await make(h)
+    env.rig.link.capabilities = ["ping", "halt", "limit"]
+    decision = await env.rig.approved()
+    outcome = await env.rig.execution.submit(
+        env.rig.request("cmd-lim-1", decision, order_type="limit", price=1.0995), automatic=True
+    )
+    assert outcome.command.state is CommandState.SENT
+    await env.rig.execution.on_ack(LOGIN, ExecutionAck(account_id=LOGIN, command_id="cmd-lim-1", status="ACCEPTED"))
+    await env.rig.execution.on_report(
+        LOGIN, report("cmd-lim-1", "SUBMITTED", broker_order_id=9301, broker_retcode="10009", detail="SUBMITTED")
+    )
+    assert await state_of(env, "cmd-lim-1") is CommandState.EXECUTED
+    settle_time(h)
+
+    resting = await env.recon.reconcile(env.account_id)
+    assert resting.readable and list(resting.mismatches) == [] and resting.confirmed == 0
+    assert (
+        await state_of(env, "cmd-lim-1") is CommandState.EXECUTED
+    )  # still waiting for the market, not reconciled, not lost
+
+    place(env, "cmd-lim-1", 9302)  # the order filled: the position carries the command's trace
+    filled = await env.recon.reconcile(env.account_id)
+    assert list(filled.mismatches) == [] and filled.confirmed == 1
+    assert await state_of(env, "cmd-lim-1") is CommandState.RECONCILED
+
+
 # ------------------------------------------------------------------------------------------------------ divergences
 
 

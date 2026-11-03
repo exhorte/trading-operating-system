@@ -28,6 +28,28 @@ export interface Account {
   executionProfile: ExecutionProfileOutput;
   createdAt: string;
 }
+/** The configuration screen's facts about the selected account — never a secret (the terminal keeps the password, ADR 0013). */
+export interface AccountPanel {
+  accountId: string;
+  name: string;
+  provider: string;
+  server: string;
+  accountType: string;
+  environment: Environment;
+  currency: string;
+  loginMasked: string;
+  connected: boolean;
+  status: string;
+  statusDetail: string | null;
+  balance: number | null;
+  equity: number | null;
+  leverage: number | null;
+  terminalTradeAllowed: boolean | null;
+  tradingEnabled: boolean;
+  agentConnected: boolean;
+  agentTradable: boolean | null;
+  ceiling: AutonomyMode;
+}
 /** A gesture on one account. */
 export interface AccountRequest {
   accountId: string;
@@ -126,6 +148,11 @@ export interface AgreementRow {
   tradeOpenedAt: string | null;
   brokerPositionId: string | null;
 }
+export interface AppliedCap {
+  code: string;
+  limitPercent: number;
+  detail: string;
+}
 /** Climb to ``target`` — exactly one rung above the current mode, never above the ceiling. */
 export interface ArmRequest {
   target: AutonomyMode;
@@ -133,6 +160,14 @@ export interface ArmRequest {
 export interface AuditView {
   written: number;
   lost: number;
+}
+/** « Autoriser le trading automatique »: a separate gesture from starting, one rung, with every condition green at that instant. */
+export interface AuthorizeAutomaticRequest {
+  acknowledgeRealAccount?: boolean;
+}
+export interface AuthorizeAutomaticResult {
+  mode: AutonomyMode;
+  planMode: PlanMode;
 }
 export type AutonomyMode = "OFF" | "OBSERVE" | "PAPER" | "CONFIRM" | "ARMED" | "AUTONOMOUS" | "HALTED";
 export interface AutonomyOverview {
@@ -159,6 +194,7 @@ export interface CanITradeResult {
   decision: "ALLOWED" | "DENIED";
   reasons: string[];
   checks: CheckResult[];
+  allowance: RiskAllowance;
   evaluatedAt: string;
 }
 export type CancelOutcome = "cancelled" | "not_found" | "not_deferred" | "already_cancelled" | "already_in_effect";
@@ -176,6 +212,12 @@ export interface Candle {
   volume: number;
   closed: boolean;
 }
+export interface CapitalProposal {
+  amount: number;
+  source: "first_deposit" | "current_balance";
+  at: string | null;
+  reliable: boolean;
+}
 export interface CheckResult {
   checkId: string;
   label: string;
@@ -183,6 +225,131 @@ export interface CheckResult {
   reason: string | null;
   detail: string;
 }
+export interface CloseAllAccount {
+  accountId: string;
+  name: string;
+  provider: string;
+  environment: Environment;
+  loginMasked: string;
+  server: string;
+  currency: string;
+  connected: boolean;
+  mode: AutonomyMode;
+  planMode: PlanMode;
+  agentConnected: boolean;
+  agentMagic: number | null;
+  balance: number | null;
+  equity: number | null;
+}
+/** What the cockpit tells the trader to do next, as a code: the words are the cockpit's. */
+export type CloseAllAction = "WAIT" | "RECONCILE" | "CLOSE_IN_MT5" | "ENABLE_AGENT" | "REVIEW_REJECTIONS" | "CHECK_MT5" | "RERUN";
+export interface CloseAllCounts {
+  detected: number;
+  confirmed: number;
+  inProgress: number;
+  verifying: number;
+  alreadyClosed: number;
+  rejected: number;
+  simulated: number;
+  unknown: number;
+  mismatch: number;
+  notClosable: number;
+  positionsStillOpen: number;
+  ordersStillPending: number;
+}
+/** What the batch decided about a target at the moment it was run (recorded in the audit trail with the batch). */
+export type CloseAllDisposition = "SENT" | "NOT_CLOSABLE" | "ALREADY_CLOSED" | "REFUSED";
+export interface CloseAllFailure {
+  reason: string;
+  count: number;
+  targetIds: string[];
+  detail: string;
+}
+export interface CloseAllItem {
+  target: "position" | "order";
+  targetId: string;
+  symbol: string;
+  side: Side | null;
+  volume: number | null;
+  commandId: string | null;
+  commandState: CommandState | null;
+  status: CloseAllItemStatus;
+  rejectCode: string | null;
+  detail: string;
+  stillOpen: boolean;
+}
+export type CloseAllItemStatus = "IN_PROGRESS" | "VERIFYING" | "CONFIRMED" | "ALREADY_CLOSED" | "REJECTED" | "SIMULATED" | "UNKNOWN" | "MISMATCH" | "NOT_CLOSABLE";
+export interface CloseAllOrder {
+  orderId: string;
+  symbol: string;
+  side: Side;
+  orderType: string;
+  volume: number;
+  price: number;
+  cancellable: boolean;
+  notCancellableReason: string | null;
+}
+export interface CloseAllPosition {
+  positionId: string;
+  symbol: string;
+  side: Side;
+  volume: number;
+  entryPrice: number;
+  currentPrice: number | null;
+  stopLoss: number;
+  takeProfit: number;
+  unrealizedPnl: number;
+  strategyId: string;
+  closable: boolean;
+  notClosableReason: string | null;
+}
+export interface CloseAllPreview {
+  batchId: string;
+  generatedAt: string;
+  account: CloseAllAccount;
+  positions: CloseAllPosition[];
+  pendingOrders: CloseAllOrder[];
+  totalUnrealizedPnl: number;
+  snapshotAgeSeconds: number | null;
+  snapshotFresh: boolean;
+  blockers: CloseAllReason[];
+  warnings: CloseAllReason[];
+  canExecute: boolean;
+}
+/** A stable code the cockpit words in its own language, and the core's sentence as a fallback. */
+export interface CloseAllReason {
+  code: string;
+  detail: string;
+}
+export interface CloseAllReport {
+  batchId: string;
+  accountId: string;
+  status: CloseAllStatus;
+  final: boolean;
+  startedAt: string | null;
+  evaluatedAt: string;
+  includePendingOrders: boolean;
+  items: CloseAllItem[];
+  counts: CloseAllCounts;
+  failures: CloseAllFailure[];
+  actions: CloseAllAction[];
+  reconciled: boolean;
+  reconciliationCritical: number;
+  snapshotFresh: boolean;
+  otherOpenPositions: string[];
+  simulatedOnly: boolean;
+}
+/** The body of ``POST /api/execution/close-all`` (ADR 0034). Closing is a human gesture and the body says so in so many words: ``confirmation`` must be ``CLOSE_ALL`` (opening the dialog sends nothing), ``positionIds`` are the positions the trader saw in the preview — a position opened since is not closed, only reported — and the pending orders are cancelled only if asked for. */
+export interface CloseAllRequest {
+  accountId: string;
+  /** From the preview. Calling again with the same id changes nothing. */
+  batchId: string;
+  positionIds?: string[];
+  includePendingOrders?: boolean;
+  orderIds?: string[];
+  confirmation: string;
+}
+export type CloseAllStatus = "NOTHING_TO_CLOSE" | "IN_PROGRESS" | "AWAITING_RECONCILIATION" | "COMPLETE" | "INCOMPLETE";
 /** A fully closed position with its net result (every deal summed: profit + commission + swap). */
 export interface ClosedTrade {
   accountId: string;
@@ -241,6 +408,7 @@ export interface CreateAccountRequest {
   symbolSuffix?: string | null;
   referenceBalance?: number | null;
   challenge?: FtmoChallenge | null;
+  rulesProfile?: Provider | null;
 }
 /** Write-only: the vault never gives a password back. */
 export interface CredentialRequest {
@@ -249,6 +417,12 @@ export interface CredentialRequest {
 export interface CredentialStatus {
   store: string;
   stored: boolean;
+}
+export interface Criterion {
+  criterionId: string;
+  label: string;
+  status: "met" | "not_met" | "not_measured";
+  evidence: string;
 }
 export interface DatabaseView {
   up: boolean;
@@ -262,15 +436,81 @@ export interface DisarmRequest {
   acknowledge?: boolean;
   reason?: string | null;
 }
+/** The identifiers to read an account with. The password is optional (without it the core attaches to the terminal as it is, already logged in by the trader), used for this call only, and never part of any answer. Sizes are bounded: nothing here is free text. */
+export interface DiscoverRequest {
+  login: number;
+  server: string;
+  password?: string | null;
+  terminalPath?: string | null;
+}
+export interface DiscoveredAccount {
+  login: number;
+  server: string;
+  company: string;
+  currency: string;
+  leverage: number;
+  balance: number;
+  equity: number;
+  margin: number;
+  marginFree: number;
+  marginLevel: number | null;
+  tradeMode: "demo" | "contest" | "real" | "unknown";
+  marginMode: "netting" | "exchange" | "hedging" | "unknown";
+  fifoClose: boolean;
+  tradeAllowed: boolean;
+  tradeExpert: boolean;
+  openPositions: number;
+  pendingOrders: number;
+  provider: Provider | null;
+  environment: Environment | null;
+  symbolSuffix: string | null;
+  symbols: DiscoveredSymbol[];
+  capital: CapitalProposal;
+  suggestedName: string;
+  terminalPath: string | null;
+  warnings: string[];
+}
+export interface DiscoveredSymbol {
+  canonical: string;
+  brokerName: string;
+  volumeMin: number;
+  volumeStep: number;
+  contractSize: number;
+  tickSize: number;
+  tickValue: number;
+  digits: number;
+  spread: number | null;
+  tradable: boolean;
+}
 export interface DrawdownPolicyInput {
   dailyLossLimitPercent?: number;
+  weeklyLossLimitPercent?: number;
   maxDrawdownLimitPercent?: number;
   referenceBalance?: number | null;
 }
 export interface DrawdownPolicyOutput {
   dailyLossLimitPercent: number;
+  weeklyLossLimitPercent: number;
   maxDrawdownLimitPercent: number;
   referenceBalance: number | null;
+}
+export interface DynamicRiskPolicyInput {
+  grid?: GridTierInput[];
+  absoluteLossTriggerAmount?: number;
+  absoluteLossRiskCapPercent?: number;
+}
+export interface DynamicRiskPolicyOutput {
+  grid: GridTierOutput[];
+  absoluteLossTriggerAmount: number;
+  absoluteLossRiskCapPercent: number;
+}
+/** One condition that must hold before the system takes a position (mission § 2.2). */
+export interface EntryCheck {
+  checkId: string;
+  label: string;
+  ok: boolean;
+  detail: string;
+  source: "readiness" | "startup";
 }
 export type Environment = "DEMO" | "SIMULATED" | "LIVE";
 /** What every refusal looks like, whatever its status. ``code`` is stable and is what a client switches on; ``details`` carries the structure of the refusal (the reasons a disconnect was refused, the fields a body was refused for — never the values). */
@@ -278,6 +518,14 @@ export interface ErrorBody {
   code: string;
   message: string;
   details?: Record<string, unknown>;
+}
+export interface EvaluationLine {
+  strategyId: string;
+  symbol: string;
+  status: "proposed" | "blocked";
+  stage: string | null;
+  detail: string | null;
+  at: string;
 }
 export interface EventRecord {
   eventId: string;
@@ -402,6 +650,14 @@ export interface GateResult {
   state: "open" | "blocked";
   detail: string;
 }
+export interface GridTierInput {
+  levelPercent: number;
+  riskPercent?: number | null;
+}
+export interface GridTierOutput {
+  levelPercent: number;
+  riskPercent: number | null;
+}
 export interface GuardDecision {
   deferred: boolean;
   reasons: GuardReason[];
@@ -412,6 +668,55 @@ export interface GuardReason {
   accountId: string | null;
   count: number | null;
   detail: string | null;
+}
+export interface GuardianAction {
+  kind: "close" | "cancel";
+  targetId: string;
+  symbol: string;
+  reason: string;
+  status: "shown" | "submitted" | "in_flight" | "waiting" | "gave_up" | "skipped";
+  commandId: string | null;
+  detail: string;
+}
+export interface GuardianReport {
+  accountId: string;
+  ran: boolean;
+  at: string | null;
+  mode: string;
+  verdict: GuardianVerdict;
+  actions: GuardianAction[];
+  recovery: string | null;
+  watch: GuardianWatch | null;
+  reconciliationAsked: string | null;
+  reconciliationAskedAt: string | null;
+}
+export interface GuardianVerdict {
+  flattenAll: boolean;
+  breached: string[];
+  closeWithoutStop: string[];
+  alerts: string[];
+}
+/** The figures and findings of one cycle — read model, never an input of a decision other than the ones named above. */
+export interface GuardianWatch {
+  equity: number | null;
+  balance: number | null;
+  dailyLossUsedPercent: number | null;
+  dailyLossLimitPercent: number | null;
+  weeklyLossUsedPercent: number | null;
+  weeklyLossLimitPercent: number | null;
+  totalLossUsedPercent: number | null;
+  totalLossLimitPercent: number | null;
+  openRiskPercent: number | null;
+  openRiskLimitPercent: number | null;
+  positions: number;
+  tradesToday: number | null;
+  maxTradesPerDay: number | null;
+  entriesAllowed: boolean | null;
+  entriesBlockedBy: string[];
+  exposure: SymbolExposure[];
+  spreads: SpreadReading[];
+  slippage: SlippageReading[];
+  health: HealthFinding[];
 }
 export interface HaltRequest {
   reason?: string;
@@ -426,6 +731,11 @@ export interface HealthDigest {
   status: Severity;
   findings: Finding[];
   checkedAt: string | null;
+}
+export interface HealthFinding {
+  source: "terminal" | "market_data" | "agent" | "broker" | "reconciliation" | "system";
+  ok: boolean;
+  detail: string;
 }
 export interface Incident {
   incidentId: string;
@@ -539,6 +849,14 @@ export interface Mismatch {
 }
 export type MismatchKind = "ACCOUNT_MISMATCH" | "POSITION_MISMATCH" | "ORDER_MISMATCH" | "SYMBOL_MISMATCH" | "UNKNOWN_EXECUTION" | "MISSING_POSITION" | "UNEXPECTED_POSITION";
 export type MismatchSeverity = "info" | "warning" | "critical";
+/** What a mode permits, in words that do not depend on the screen. */
+export interface ModeRights {
+  mode: PlanMode;
+  sendsOrders: boolean;
+  needsHumanConfirmation: boolean;
+  needsGreenReadiness: boolean;
+  realMoney: boolean;
+}
 export interface NewsPolicyInput {
   blackoutMinutes?: number;
   calendarMaxAgeHours?: number;
@@ -546,6 +864,16 @@ export interface NewsPolicyInput {
 export interface NewsPolicyOutput {
   blackoutMinutes: number;
   calendarMaxAgeHours: number;
+}
+export interface Opportunity {
+  strategyId: string;
+  symbol: string;
+  side: Side;
+  entryPrice: number | null;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  riskRewardRatio: number | null;
+  at: string;
 }
 /** The last opposing candle range before a displacement move. */
 export interface OrderBlock {
@@ -573,6 +901,18 @@ export interface PendingOrder {
   comment: string;
   placedAt: string | null;
 }
+export type PlanMode = "OFF" | "OBSERVE" | "PAPER" | "CONFIRM" | "DEMO_AUTO" | "LIVE_CONFIRM" | "LIVE_AUTO" | "HALTED";
+/** One target of the batch as decided at the start: kept in the audit event so a report survives a restart. */
+export interface PlannedItem {
+  target: "position" | "order";
+  targetId: string;
+  symbol: string;
+  side: Side | null;
+  volume: number | null;
+  disposition: CloseAllDisposition;
+  commandId: string | null;
+  reason: string | null;
+}
 export type Platform = "MT5";
 /** One open position. ``position_id`` is MT5's POSITION_IDENTIFIER (stable for the life of the position), **never** the ticket — the two diverge on broker service operations (incident of 2026-09-05). */
 export interface Position {
@@ -594,13 +934,25 @@ export interface Position {
 }
 export interface PositionLimitsInput {
   maxOpenPositions?: number;
-  maxPositionsPerSymbol?: number;
   maxVolumePerOrder?: number | null;
 }
 export interface PositionLimitsOutput {
   maxOpenPositions: number;
-  maxPositionsPerSymbol: number;
   maxVolumePerOrder: number | null;
+}
+export interface PromotionReport {
+  accountId: string | null;
+  mode: AutonomyMode;
+  advisory: boolean;
+  steps: PromotionStep[];
+  evaluatedAt: string;
+}
+export interface PromotionStep {
+  fromMode: AutonomyMode;
+  toMode: AutonomyMode;
+  criteria: Criterion[];
+  met: boolean;
+  current: boolean;
 }
 export type Provider = "EXNESS" | "FTMO";
 export interface ReadinessCheck {
@@ -616,6 +968,12 @@ export interface ReadinessReport {
   checks: ReadinessCheck[];
   evaluatedAt: string;
 }
+export interface Reason {
+  source: "mode" | "guardian" | "risk" | "readiness" | "strategy";
+  code: string;
+  detail: string;
+  blocking: boolean;
+}
 /** The outcome of one run, kept by the service and read by the supervisor and the readiness report. */
 export interface ReconciliationReport {
   accountId: string;
@@ -628,7 +986,7 @@ export interface ReconciliationReport {
   confirmed: number;
   mismatches: Mismatch[];
 }
-export type RejectCode = "ACCOUNT_MISMATCH" | "ACCOUNT_NOT_CONNECTED" | "NOT_ACTIVE_ACCOUNT" | "TRADING_DISABLED" | "MODE_NOT_PERMITTING" | "HALTED" | "KILL_SWITCH" | "AGENT_UNREACHABLE" | "AGENT_CAPABILITY_MISSING" | "DEAD_MAN" | "STORE_UNAVAILABLE" | "RISK_NOT_APPROVED" | "RISK_DECISION_EXPIRED" | "RISK_DECISION_MISMATCH" | "INVALID_REQUEST" | "STOP_REQUIRED" | "SYMBOL_MISMATCH" | "ORDER_TYPE_UNSUPPORTED" | "COMMAND_EXPIRED" | "DUPLICATE_CONFLICT";
+export type RejectCode = "ACCOUNT_MISMATCH" | "ACCOUNT_NOT_CONNECTED" | "NOT_ACTIVE_ACCOUNT" | "TRADING_DISABLED" | "MODE_NOT_PERMITTING" | "HALTED" | "KILL_SWITCH" | "AGENT_UNREACHABLE" | "AGENT_CAPABILITY_MISSING" | "DEAD_MAN" | "STORE_UNAVAILABLE" | "RISK_NOT_APPROVED" | "RISK_DECISION_EXPIRED" | "RISK_DECISION_MISMATCH" | "INVALID_REQUEST" | "STOP_REQUIRED" | "SYMBOL_MISMATCH" | "ORDER_TYPE_UNSUPPORTED" | "POSITION_NOT_FOUND" | "ORDER_NOT_FOUND" | "STOP_LOOSENED" | "VOLUME_INVALID" | "COMMAND_EXPIRED" | "DUPLICATE_CONFLICT";
 export interface Rejection {
   code: RejectCode;
   detail: string;
@@ -648,6 +1006,18 @@ export interface ReviewRequest {
   validForSeconds?: number;
   intentId?: string | null;
 }
+/** What a new trade may risk right now, and why — every cap that was weighed, the one that decided, the reason when the answer is no. Persisted with the decision (``RiskDecision.allowance``). */
+export interface RiskAllowance {
+  status: "allowed" | "stopped" | "unavailable";
+  riskPercent: number;
+  performancePercent: number | null;
+  tierLevelPercent: number | null;
+  gridPercent: number | null;
+  bindingCap: string | null;
+  caps: AppliedCap[];
+  reason: string | null;
+  detail: string;
+}
 export interface RiskDecision {
   decisionId: string;
   intentId: string | null;
@@ -662,6 +1032,7 @@ export interface RiskDecision {
   reasons: string[];
   checks: CheckResult[];
   sizing: SizingResult | null;
+  allowance: RiskAllowance | null;
   gates: GateResult[];
   decidedAt: string;
   expiresAt: string;
@@ -669,6 +1040,7 @@ export interface RiskDecision {
 export type RiskMode = "normal" | "warning" | "locked";
 export interface RiskProfileInput {
   maxRiskPerTradePercent?: number;
+  dynamic?: DynamicRiskPolicyInput;
   maxOpenRiskPercent?: number;
   maxCorrelatedRiskPercent?: number;
   maxTradesPerDay?: number;
@@ -681,6 +1053,7 @@ export interface RiskProfileInput {
 }
 export interface RiskProfileOutput {
   maxRiskPerTradePercent: number;
+  dynamic: DynamicRiskPolicyOutput;
   maxOpenRiskPercent: number;
   maxCorrelatedRiskPercent: number;
   maxTradesPerDay: number;
@@ -695,6 +1068,10 @@ export interface RiskStatus {
   state: RiskMode;
   dailyLossLimitPercent: number;
   dailyLossUsedPercent: number;
+  weeklyLossLimitPercent: number;
+  weeklyLossUsedPercent: number;
+  performancePercent: number | null;
+  allowance: RiskAllowance;
   maxDrawdownLimitPercent: number;
   maxDrawdownUsedPercent: number;
   openRiskLimitPercent: number;
@@ -775,7 +1152,72 @@ export interface SizingResult {
   /** why the volume was reduced below the raw size, if it was */
   capped: string | null;
 }
+export interface SlippageReading {
+  positionId: string;
+  symbol: string;
+  requestedPrice: number;
+  filledPrice: number;
+  adversePrice: number;
+  shareOfRisk: number | null;
+}
+export interface SpreadReading {
+  symbol: string;
+  spread: number;
+  cap: number | null;
+  exposed: boolean;
+}
+/** « Démarrer le système » (ADR 0034). Starting climbs to ``target`` (OBSERVE by default; PAPER or CONFIRM when asked) and never higher; a real account needs ``acknowledgeRealAccount`` to start up to CONFIRM. */
+export interface StartRequest {
+  target?: AutonomyMode;
+  acknowledgeRealAccount?: boolean;
+}
+export interface StartupRun {
+  runId: string;
+  state: StartupRunState;
+  targetMode: AutonomyMode;
+  startedAt: string;
+  finishedAt: string | null;
+  currentStage: string | null;
+  reachedMode: AutonomyMode | null;
+  message: string;
+  blockedOn: string[];
+}
+export type StartupRunState = "RUNNING" | "DONE" | "PARTIAL" | "BLOCKED";
+export interface StartupStage {
+  stageId: string;
+  order: number;
+  label: string;
+  state: StartupStageState;
+  detail: string;
+  blocking: boolean;
+}
+export type StartupStageState = "STOPPED" | "STARTING" | "READY" | "RUNNING" | "DEGRADED" | "FAILED" | "HALTED";
+export interface StartupStatus {
+  evaluatedAt: string;
+  run: StartupRun | null;
+  stages: StartupStage[];
+  checks: EntryCheck[];
+  checksGreen: boolean;
+  blockers: string[];
+  mode: AutonomyMode;
+  planMode: PlanMode;
+  rights: ModeRights;
+  ladder: ModeRights[];
+  ceiling: AutonomyMode;
+  halted: boolean;
+  haltedReason: string | null;
+  entriesAuthorized: boolean;
+  entriesReason: string;
+  realAccount: boolean;
+  realAccountBanner: string | null;
+  account: AccountPanel | null;
+  canStart: boolean;
+  nextAutomaticMode: AutonomyMode | null;
+  canAuthorizeAutomatic: boolean;
+  authorizeBlockers: string[];
+}
 export interface StrategyEvaluation {
+  strategyId: string;
   symbol: string;
   eventAt: string;
   status: "proposed" | "blocked";
@@ -801,6 +1243,13 @@ export interface StructureShift {
   occurredAt: string;
 }
 export type StructureShiftKind = "break_of_structure" | "change_of_character" | "liquidity_sweep_reversal";
+export interface SymbolExposure {
+  symbol: string;
+  positions: number;
+  longLots: number;
+  shortLots: number;
+  restingOrders: number;
+}
 /** Everything needed to price and size an order on one broker symbol, as the broker reports it. ``tick_value`` and ``tick_value_loss`` are expressed in the **account currency** per ``tick_size`` move for 1.0 lot (MT5 converts at the current rate). A spec read from the broker — never a static table. */
 export interface SymbolSpec {
   name: string;
@@ -960,9 +1409,22 @@ export interface WebSocketView {
   framesDropped: number;
   closedForOverflow: number;
 }
+export interface WhyNoTrade {
+  accountId: string | null;
+  mode: AutonomyMode;
+  ceiling: AutonomyMode;
+  headline: string;
+  realOrdersPossible: boolean;
+  reasons: Reason[];
+  opportunities: Opportunity[];
+  evaluations: EvaluationLine[];
+  evaluatedAt: string;
+}
 export type DrawdownPolicy = DrawdownPolicyOutput;
+export type DynamicRiskPolicy = DynamicRiskPolicyOutput;
 export type ExecutionLimits = ExecutionLimitsOutput;
 export type ExecutionProfile = ExecutionProfileOutput;
+export type GridTier = GridTierOutput;
 export type NewsPolicy = NewsPolicyOutput;
 export type PositionLimits = PositionLimitsOutput;
 export type RiskProfile = RiskProfileOutput;
@@ -985,6 +1447,14 @@ export interface Operations {
     query: Record<string, never>;
     body: CreateAccountRequest;
     response: Account;
+  };
+  accounts_discover: {
+    method: "POST";
+    path: "/api/accounts/discover";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: DiscoverRequest;
+    response: DiscoveredAccount;
   };
   accounts_preview_rules: {
     method: "POST";
@@ -1162,6 +1632,14 @@ export interface Operations {
     body: HaltRequest;
     response: HaltResult;
   };
+  autonomy_promotion: {
+    method: "GET";
+    path: "/api/autonomy/promotion";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: undefined;
+    response: PromotionReport;
+  };
   autonomy_renew: {
     method: "POST";
     path: "/api/autonomy/renew";
@@ -1177,6 +1655,38 @@ export interface Operations {
     query: Record<string, never>;
     body: undefined;
     response: AutonomyOverview;
+  };
+  execution_close_all: {
+    method: "POST";
+    path: "/api/execution/close-all";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: CloseAllRequest;
+    response: CloseAllReport;
+  };
+  execution_close_all_preview: {
+    method: "GET";
+    path: "/api/execution/close-all/preview";
+    pathParams: Record<string, never>;
+    query: { accountId?: string | null; };
+    body: undefined;
+    response: CloseAllPreview;
+  };
+  execution_close_all_report: {
+    method: "GET";
+    path: "/api/execution/close-all/{batch_id}";
+    pathParams: { batch_id: string; };
+    query: { accountId?: string | null; };
+    body: undefined;
+    response: CloseAllReport;
+  };
+  execution_close_all_verify: {
+    method: "POST";
+    path: "/api/execution/close-all/{batch_id}/verify";
+    pathParams: { batch_id: string; };
+    query: { accountId?: string | null; };
+    body: undefined;
+    response: CloseAllReport;
   };
   execution_commands: {
     method: "GET";
@@ -1241,6 +1751,14 @@ export interface Operations {
     query: { accountId?: string | null; };
     body: undefined;
     response: ExecutionState;
+  };
+  guardian_last_report: {
+    method: "GET";
+    path: "/api/guardian";
+    pathParams: Record<string, never>;
+    query: { accountId?: string | null; };
+    body: undefined;
+    response: GuardianReport;
   };
   journal_captures: {
     method: "GET";
@@ -1434,6 +1952,30 @@ export interface Operations {
     body: undefined;
     response: ReadinessReport;
   };
+  system_startup_status: {
+    method: "GET";
+    path: "/api/system/startup";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: undefined;
+    response: StartupStatus;
+  };
+  system_startup_begin: {
+    method: "POST";
+    path: "/api/system/startup";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: StartRequest;
+    response: StartupRun;
+  };
+  system_startup_authorize_automatic: {
+    method: "POST";
+    path: "/api/system/startup/authorize-automatic";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: AuthorizeAutomaticRequest;
+    response: AuthorizeAutomaticResult;
+  };
   system_status: {
     method: "GET";
     path: "/api/system/status";
@@ -1441,6 +1983,14 @@ export interface Operations {
     query: Record<string, never>;
     body: undefined;
     response: SystemStatus;
+  };
+  autonomy_why_no_trade: {
+    method: "GET";
+    path: "/api/why-no-trade";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: undefined;
+    response: WhyNoTrade;
   };
 }
 
@@ -1453,6 +2003,7 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   accounts_credentials_status: { method: "GET", path: "/api/accounts/{account_id}/credentials" },
   accounts_delete_credentials: { method: "DELETE", path: "/api/accounts/{account_id}/credentials" },
   accounts_disconnect: { method: "POST", path: "/api/accounts/{account_id}/disconnect" },
+  accounts_discover: { method: "POST", path: "/api/accounts/discover" },
   accounts_get: { method: "GET", path: "/api/accounts/{account_id}" },
   accounts_get_active: { method: "GET", path: "/api/active-account" },
   accounts_list: { method: "GET", path: "/api/accounts" },
@@ -1470,9 +2021,15 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   autonomy_arm: { method: "POST", path: "/api/autonomy/arm" },
   autonomy_disarm: { method: "POST", path: "/api/autonomy/disarm" },
   autonomy_halt: { method: "POST", path: "/api/autonomy/halt" },
+  autonomy_promotion: { method: "GET", path: "/api/autonomy/promotion" },
   autonomy_renew: { method: "POST", path: "/api/autonomy/renew" },
   autonomy_state: { method: "GET", path: "/api/autonomy/state" },
+  autonomy_why_no_trade: { method: "GET", path: "/api/why-no-trade" },
   execution_cancel: { method: "POST", path: "/api/execution/commands/{command_id}/cancel" },
+  execution_close_all: { method: "POST", path: "/api/execution/close-all" },
+  execution_close_all_preview: { method: "GET", path: "/api/execution/close-all/preview" },
+  execution_close_all_report: { method: "GET", path: "/api/execution/close-all/{batch_id}" },
+  execution_close_all_verify: { method: "POST", path: "/api/execution/close-all/{batch_id}/verify" },
   execution_command: { method: "GET", path: "/api/execution/commands/{command_id}" },
   execution_commands: { method: "GET", path: "/api/execution/commands" },
   execution_confirm: { method: "POST", path: "/api/execution/commands/{command_id}/confirm" },
@@ -1480,6 +2037,7 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   execution_run_reconciliation: { method: "POST", path: "/api/execution/reconciliation/run" },
   execution_state: { method: "GET", path: "/api/execution/state" },
   execution_submit: { method: "POST", path: "/api/execution/commands" },
+  guardian_last_report: { method: "GET", path: "/api/guardian" },
   journal_captures: { method: "GET", path: "/api/journal/captures/{broker_position_id}" },
   journal_compliance: { method: "GET", path: "/api/journal/compliance" },
   journal_trade_file: { method: "GET", path: "/api/journal/trades/{broker_position_id}" },
@@ -1504,6 +2062,9 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   system_health: { method: "GET", path: "/api/system/health" },
   system_incidents: { method: "GET", path: "/api/system/incidents" },
   system_readiness: { method: "GET", path: "/api/system/readiness" },
+  system_startup_authorize_automatic: { method: "POST", path: "/api/system/startup/authorize-automatic" },
+  system_startup_begin: { method: "POST", path: "/api/system/startup" },
+  system_startup_status: { method: "GET", path: "/api/system/startup" },
   system_status: { method: "GET", path: "/api/system/status" },
 };
 
@@ -1530,6 +2091,7 @@ export interface EventPayloads {
   "autonomy.mode_changed": { previous: AutonomyMode; current: AutonomyMode; reason: string; leaseUntil: string | null; };
   "autonomy.readiness_changed": { readiness: ReadinessReport; };
   "execution.acknowledged": { commandId: string; status: "ACCEPTED" | "REJECTED" | "DUPLICATE" | "EXPIRED"; reason: string | null; };
+  "execution.close_all_requested": { batchId: string; includePendingOrders: boolean; items: PlannedItem[]; };
   "execution.command_created": { command: ExecutionCommand; };
   "execution.command_sent": { commandId: string; loginHint: string | null; };
   "execution.failed": { commandId: string; detail: string; brokerRetcode: string | null; };
@@ -1563,6 +2125,8 @@ export interface EventPayloads {
   "system.incident_opened": { incident: Incident; };
   "system.incident_resolved": { incident: Incident; };
   "system.snapshot": { serverTime: string; version: string; activeAccountId: string | null; accounts: Account[]; autonomy: AutonomyOverview; health: HealthDigest; calendar: CalendarSnapshot; accountStates: Record<string, AccountState>; };
+  "system.start_finished": { runId: string; outcome: "done" | "partial" | "blocked"; reachedMode: AutonomyMode | null; message: string; blockedOn: string[]; };
+  "system.start_requested": { runId: string; targetMode: AutonomyMode; };
   "trade.intent_created": { intent: TradeIntent; };
   "trade.rejected": { intentId: string; stage: "risk" | "execution"; reasons: string[]; };
 }

@@ -31,6 +31,29 @@ def daily_loss_gate(used_percent: float, policy: DrawdownPolicy) -> GateResult:
     )
 
 
+def weekly_loss_gate(used_percent: float, policy: DrawdownPolicy) -> GateResult:
+    return _gate(
+        "gate-weekly-loss",
+        "Weekly loss guard",
+        used_percent >= policy.weekly_loss_limit_percent,
+        f"{_pct(used_percent)} used of {_pct(policy.weekly_loss_limit_percent)}",
+    )
+
+
+def performance_stop_gate(performance_percent: float | None, stop_level_percent: int) -> GateResult:
+    """The grid's last row: at ``stop_level_percent`` of the initial capital (−5 %) no new entry. Evaluated every
+    day against the same initial capital, so a new day never lifts it. Without an initial capital there is no
+    performance to read: the gate says so, and the allowance (not this gate) refuses the entry."""
+    if performance_percent is None:
+        return _gate("gate-performance-stop", "Performance stop", False, "n/a (initial capital not fixed)")
+    return _gate(
+        "gate-performance-stop",
+        "Performance stop",
+        round(performance_percent, 6) <= stop_level_percent,
+        f"{performance_percent:+.2f}% vs initial capital (stop at {stop_level_percent:+d}%)",
+    )
+
+
 def max_drawdown_gate(used_percent: float, policy: DrawdownPolicy) -> GateResult:
     return _gate(
         "gate-total-dd",

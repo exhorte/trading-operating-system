@@ -3,6 +3,8 @@
 import { Landmark } from "lucide-react";
 import type { Account, AccountStatus, Environment } from "@/lib/api/generated";
 import { ACCOUNT_TYPE_LABELS, PROVIDER_NAMES } from "@/lib/accounts/profile";
+import { useCockpit } from "@/lib/realtime/provider";
+import { connectedAccount } from "@/lib/accounts/connected";
 import { Panel } from "@/components/ui/panel";
 import { StatusPill, type PillTone } from "@/components/ui/status-pill";
 import { formatDateTime, primaryButtonClass, secondaryButtonClass } from "./form-controls";
@@ -29,6 +31,9 @@ const ENVIRONMENT: Record<Environment, { tone: PillTone; label: string }> = {
  */
 export function RegisteredAccountCard({ account, active }: { account: Account; active: boolean }) {
   const actions = useAccountActions(account.id);
+  const { accounts } = useCockpit();
+  const holder = connectedAccount(accounts); // one account at a time (ADR 0021)
+  const blockedBy = holder !== null && holder.id !== account.id ? holder : null;
   const busy = actions.state.status === "busy";
   const status = STATUS[account.status];
   const environment = ENVIRONMENT[account.environment];
@@ -84,16 +89,12 @@ export function RegisteredAccountCard({ account, active }: { account: Account; a
         ) : (
           <button
             type="button"
-            disabled={busy || account.status === "CONNECTING"}
+            disabled={busy || account.status === "CONNECTING" || blockedBy !== null}
             onClick={() => void actions.connect()}
             className={primaryButtonClass}
+            title={blockedBy ? `« ${blockedBy.name} » est connecté : détache-le d'abord` : undefined}
           >
             Rattacher
-          </button>
-        )}
-        {account.status === "CONNECTED" && !active && (
-          <button type="button" disabled={busy} onClick={() => void actions.makeActive()} className={secondaryButtonClass}>
-            Rendre actif
           </button>
         )}
         <button
@@ -121,7 +122,13 @@ export function RegisteredAccountCard({ account, active }: { account: Account; a
         </div>
       )}
 
-      {account.status !== "CONNECTED" && (
+      {blockedBy !== null && account.status !== "CONNECTED" && (
+        <p className="mt-4 border-t pt-4 text-sm leading-snug text-warning">
+          Un seul compte est connecté à la fois : « {blockedBy.name} » l&apos;est. Détache-le pour rattacher celui-ci.
+        </p>
+      )}
+
+      {account.status !== "CONNECTED" && blockedBy === null && (
         <p className="mt-4 border-t pt-4 text-sm leading-snug text-muted-foreground">
           Pour le rattacher : ouvre ce compte dans MT5 (Fichier → Connexion à un compte de trading — le mot de passe reste dans
           MT5), puis « Rattacher ». Le cœur vérifie que le terminal est bien sur le login {account.login}.

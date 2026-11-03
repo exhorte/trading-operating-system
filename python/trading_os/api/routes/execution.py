@@ -17,13 +17,14 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Response
 
 from trading_os.api.params import AccountQuery, Limit, resolve_account
-from trading_os.api.schemas.execution import CommandRequest, ExecutionState
+from trading_os.api.schemas.execution import CloseAllRequest, CommandRequest, ExecutionState
 from trading_os.app.dependencies import Core
 from trading_os.domain.autonomy.state import route_for
+from trading_os.domain.execution.close_all import CONFIRMATION, CloseAllPreview, CloseAllReport
 from trading_os.domain.execution.commands import ExecutionCommand, ExecutionRequest
 from trading_os.domain.positions.reconciliation import ReconciliationReport
 from trading_os.services.execution import ExecutionOutcome
-from trading_os.shared.errors import NotFound
+from trading_os.shared.errors import NotFound, ValidationFailed
 
 router = APIRouter(prefix="/api/execution", tags=["execution"])
 
@@ -117,3 +118,49 @@ async def reconciliation(c: Core, account_id: AccountQuery = None) -> Reconcilia
 )  # fmt: skip
 async def run_reconciliation(c: Core, account_id: AccountQuery = None) -> ReconciliationReport:
     return await c.reconciliation.reconcile(await resolve_account(c, account_id))
+
+
+# ------------------------------------------------------------------------------------------------------ close all (ADR 0034)
+# One human gesture, through the path above: each position is an ordinary CLOSE command with a deterministic id, submitted as a
+# human exit — which is what lets it through HALTED, OFF, OBSERVE and PAPER. There is no second mechanism.
+
+
+@router.get(
+    "/close-all/preview", response_model=CloseAllPreview,
+    summary="What « close all positions » would close, read fresh from the terminal. Sends nothing",
+)  # fmt: skip
+async def close_all_preview(c: Core, account_id: AccountQuery = None) -> CloseAllPreview:
+    return await c.close_all.preview(await resolve_account(c, account_id))
+
+
+@router.post(
+    "/close-all", response_model=CloseAllReport,
+    summary="Close the positions the trader confirmed: one CLOSE command each, as a human exit, in any autonomy mode",
+)  # fmt: skip
+async def close_all(body: CloseAllRequest, c: Core) -> CloseAllReport:
+    """Needs ``confirmation: "CLOSE_ALL"``. Returns the report as it stands (the closings are in flight); follow it with
+    ``GET /close-all/{batchId}``. The same ``batchId`` again changes nothing that was already done."""
+    if body.confirmation != CONFIRMATION:
+        raise ValidationFailed(
+            f"confirmation must be {CONFIRMATION!r}: opening the dialog sends nothing", code="confirmation_required"
+        )
+    return await c.close_all.execute(
+        body.account_id, batch_id=body.batch_id, position_ids=body.position_ids,
+        include_pending_orders=body.include_pending_orders, order_ids=body.order_ids,
+    )  # fmt: skip
+
+
+@router.get(
+    "/close-all/{batch_id}", response_model=CloseAllReport,
+    summary="A close-all batch as it stands: derived from its commands and the broker's last picture",
+)  # fmt: skip
+async def close_all_report(batch_id: str, c: Core, account_id: AccountQuery = None) -> CloseAllReport:
+    return await c.close_all.report(await resolve_account(c, account_id), batch_id)
+
+
+@router.post(
+    "/close-all/{batch_id}/verify", response_model=CloseAllReport,
+    summary="Read the terminal now, reconcile with the broker (read-only), then report. UNKNOWN is settled, never resent",
+)  # fmt: skip
+async def close_all_verify(batch_id: str, c: Core, account_id: AccountQuery = None) -> CloseAllReport:
+    return await c.close_all.verify(await resolve_account(c, account_id), batch_id)

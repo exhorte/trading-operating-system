@@ -31,7 +31,7 @@ export function FilterBar({
 export function FilterField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-[13px] text-muted-foreground">{label}</span>
+      <span className="text-[0.8125rem] text-muted-foreground">{label}</span>
       {children}
     </label>
   );

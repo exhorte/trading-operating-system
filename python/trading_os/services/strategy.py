@@ -12,13 +12,15 @@ Engine. It decides neither the risk nor the order (ADR 0007): Strategy → Trade
 * **It never invents.** No spread, no specification, a missing timeframe or a feed that fails: the cycle is skipped and nothing is
   recorded (the original's behaviour), the failure is kept for the readiness check instead of being hidden.
 
-S01's entry is a **limit** at the CE of the point of interest; the execution agent's protocol carries market orders only, so today the
-hand-off ends in a recorded ``ORDER_TYPE_UNSUPPORTED`` rejection. That is the truth about the system and it is shown as such.
+S01's entry is a **limit** at the CE of the point of interest. Since ADR 0023 the core carries limit orders: PAPER simulates them, and a
+real agent receives one only if it announces the ``limit`` capability (agent 1.11 does not — the hand-off then ends in a recorded
+``AGENT_CAPABILITY_MISSING`` rejection, which is the truth about the system and is shown as such).
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from trading_os.domain.accounts.models import Account
@@ -48,6 +50,7 @@ from trading_os.domain.strategy.s01 import (
 )
 from trading_os.domain.strategy.s01.config import S01Config
 from trading_os.domain.strategy.s01.preconditions import blocking_precondition
+from trading_os.domain.strategy.s01.proposal import S01_VARIANT, Variant
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.protocol import WorkerError
 from trading_os.services.accounts import AccountService
@@ -64,6 +67,20 @@ logger = logging.getLogger(__name__)
 
 STRATEGY_ID = "S01"
 STRATEGY_VERSION = "1"
+
+
+@dataclass(frozen=True)
+class StrategyDefinition:
+    """What distinguishes one strategy service from another (ADR 0024): who it is, how it reads the market, how far it may go."""
+
+    strategy_id: str = STRATEGY_ID
+    version: str = STRATEGY_VERSION
+    variant: Variant = S01_VARIANT
+    needs_d1: bool = True  # S01 reads the daily bias on D1; S02 reads it on H1
+    acts: bool = True  # False = measure only: evaluations are recorded, nothing goes to the Risk Engine
+
+
+S01_DEFINITION = StrategyDefinition()
 STALE_AFTER = timedelta(
     minutes=10
 )  # on an open market, a strategy that has not evaluated for this long is not « valid »
@@ -83,7 +100,9 @@ class StrategyService:
         events: EventDispatcher,
         clock: Clock,
         config: S01Config | None = None,
+        definition: StrategyDefinition = S01_DEFINITION,
     ) -> None:
+        self.definition = definition
         self._accounts = accounts
         self._market = market
         self._news = news
@@ -109,22 +128,23 @@ class StrategyService:
         return self._last_evaluation.get(account_id)
 
     def readiness(self, account: Account) -> Fact:
-        """The ``strategy_valid`` fact: S01 is registered, runs for the active account, and is not failing or silent."""
+        """The ``strategy_valid`` fact: the strategy is registered, runs for the active account, and is not failing or silent."""
+        name = self.definition.strategy_id
         if account.id != self._accounts.active_account_id:
-            return Fact(ok=False, detail="S01 runs for the active account only")
+            return Fact(ok=False, detail=f"{name} runs for the active account only")
         if self.last_error is not None:
             return Fact(ok=False, detail=f"the last evaluation failed: {self.last_error}")
         now = self._clock.now()
         last_at = self._last_evaluated_at.get(account.id)
         symbols = ", ".join(to_broker(s, account.symbol_suffix) for s in self.config.symbols)
         if last_at is None:
-            return Fact(ok=False, detail=f"S01 has not evaluated {symbols} since the core started")
+            return Fact(ok=False, detail=f"{name} has not evaluated {symbols} since the core started")
         age = now - last_at
         if age > STALE_AFTER and any(is_market_open(s, now) for s in self.config.symbols):
-            return Fact(ok=False, detail=f"S01 has been silent for {int(age.total_seconds())}s on an open market")
+            return Fact(ok=False, detail=f"{name} has been silent for {int(age.total_seconds())}s on an open market")
         last = self._last_evaluation[account.id]
         what = "proposed" if last.status == "proposed" else f"stopped at {last.stage}"
-        return Fact(ok=True, detail=f"S01 evaluated {symbols} {int(age.total_seconds())}s ago ({what})")
+        return Fact(ok=True, detail=f"{name} evaluated {symbols} {int(age.total_seconds())}s ago ({what})")
 
     # ------------------------------------------------------------------------------------------ scheduling
     def _on_candle_closed(self, event: CandleClosed) -> None:
@@ -169,13 +189,15 @@ class StrategyService:
             result = await self._decide(account, symbol)
         except (WorkerError, Unavailable) as error:
             self.last_error = error.safe_message if isinstance(error, TradingOsError) else f"MT5 worker: {error.code}"
-            logger.warning("strategy: %s on %s could not read its inputs: %s", STRATEGY_ID, symbol, self.last_error)
+            logger.warning(
+                "strategy: %s on %s could not read its inputs: %s", self.definition.strategy_id, symbol, self.last_error
+            )
             return None
         if result is None:
             return None
         candle_at, outcome = result
         self.last_error = None
-        evaluation = self._to_evaluation(symbol, candle_at, outcome)
+        evaluation = self._to_evaluation(self.definition.strategy_id, symbol, candle_at, outcome)
         self._last_evaluation[account_id] = evaluation
         self._last_evaluated_at[account_id] = self._clock.now()
         try:
@@ -184,11 +206,11 @@ class StrategyService:
             logger.warning("strategy: evaluation of %s not recorded: database unavailable", symbol)
         await self._events.publish(
             StrategyEvaluationCompleted(
-                account_id=account_id, strategy_id=STRATEGY_ID, symbol=symbol, outcome=evaluation.status,
+                account_id=account_id, strategy_id=self.definition.strategy_id, symbol=symbol, outcome=evaluation.status,
                 stage=evaluation.stage, detail=evaluation.detail, event_at=evaluation.event_at,
             )
         )  # fmt: skip
-        if isinstance(outcome, ProposedOutcome):
+        if isinstance(outcome, ProposedOutcome) and self.definition.acts:
             await self._hand_over(account, outcome.proposal)
         return evaluation
 
@@ -206,7 +228,7 @@ class StrategyService:
         if self._last_candle.get(key) == candle_at:
             return None  # this closed candle was evaluated already
         await self._events.publish(
-            StrategyEvaluationStarted(account_id=account.id, strategy_id=STRATEGY_ID, symbol=symbol)
+            StrategyEvaluationStarted(account_id=account.id, strategy_id=self.definition.strategy_id, symbol=symbol)
         )
         now = self._clock.now()
 
@@ -220,6 +242,7 @@ class StrategyService:
             lockout_active=await self._repos.risk.active_lockout(account.id, now) is not None,
             trades_today=status.trades_today if status else None,
             max_trades_per_day=policy.max_trades_per_day,
+            windows=cfg.trading_windows,  # the hours of THIS strategy (ADR 0030): S01's are not S02's
         )
         if blocked is not None:
             self._last_candle[key] = candle_at
@@ -231,14 +254,21 @@ class StrategyService:
         h1 = await self._closed(account.id, symbol, Timeframe.H1, cfg.h1_bars)
         h4 = await self._closed(account.id, symbol, Timeframe.H4, cfg.h4_bars)
         d1 = await self._closed(account.id, symbol, Timeframe.D1, cfg.d1_bars)
-        if not (h1 and h4 and d1):
+        if not (h1 and h4 and (d1 or not self.definition.needs_d1)):
             return None  # a timeframe we do not actually have is never evaluated as if we did
         spec = await self._market.require_spec(account.id, symbol)
         limits = account.execution_profile.limits
         cutoff = max(0, len(m1) - cfg.reaction_window_m1_bars)
+        map_candles: list[Candle] = []
+        if self.definition.variant.use_map_timeframe:
+            reaction_start = m1[cutoff].open_time
+            m15 = await self._closed(account.id, symbol, Timeframe.M15, cfg.map_bars)
+            # only bars that had closed before the reaction window: the map is what was known before the sweep
+            map_candles = [c for c in m15 if c.open_time + timedelta(minutes=15) <= reaction_start]
         outcome = evaluate_setup(
             SetupProposalInput(
-                symbol=symbol, h4_candles=h4, d1_candles=d1, h1_candles=h1, context_candles=m1[:cutoff],
+                symbol=symbol, h4_candles=h4, d1_candles=d1, h1_candles=h1, map_candles=map_candles,
+                context_candles=m1[:cutoff],
                 reaction_candles=m1[cutoff:], swing_lookback=cfg.swing_lookback,
                 equal_level_tolerance=cfg.equal_level_tolerance, session_windows=list(DEFAULT_SESSION_WINDOWS),
                 atr_period=cfg.atr_period, min_body_atr_multiple=cfg.min_body_atr_multiple,
@@ -246,23 +276,29 @@ class StrategyService:
                 commission=commission_in_price(limits.commission_per_lot_round_trip, spec) if spec else 0.0,
                 cost_threshold=limits.cost_threshold, min_risk_reward=cfg.min_risk_reward,
                 level_decimals=cfg.level_decimals,
-            )
+            ),
+            self.definition.variant,
         )  # fmt: skip
         self._last_candle[key] = candle_at
         return candle_at, outcome
 
     @staticmethod
-    def _to_evaluation(symbol: str, candle_at: datetime, outcome: SetupOutcome) -> StrategyEvaluation:
+    def _to_evaluation(strategy_id: str, symbol: str, candle_at: datetime, outcome: SetupOutcome) -> StrategyEvaluation:
         if isinstance(outcome, ProposedOutcome):
             p = outcome.proposal
             return StrategyEvaluation(
-                symbol=symbol, event_at=p.detected_at, status="proposed", side=p.side,
+                strategy_id=strategy_id, symbol=symbol, event_at=p.detected_at, status="proposed", side=p.side,
                 swept_level_kind=p.swept_level_kind.value, swept_level_price=p.swept_level_price,
                 entry_price=p.entry_price, stop_loss=p.stop_loss, take_profit=p.take_profit, cost_ratio=p.cost_ratio,
                 risk_reward_ratio=p.risk_reward_ratio,
             )  # fmt: skip
         return StrategyEvaluation(
-            symbol=symbol, event_at=candle_at, status="blocked", stage=outcome.stage.value, detail=outcome.detail
+            strategy_id=strategy_id,
+            symbol=symbol,
+            event_at=candle_at,
+            status="blocked",
+            stage=outcome.stage.value,
+            detail=outcome.detail,
         )
 
     # ------------------------------------------------------------------------------------------ Strategy → Risk → Execution
@@ -274,12 +310,12 @@ class StrategyService:
         if await self._repos.strategy.get_intent(proposal.proposal_id) is not None:
             return  # this setup was handled already
         intent = TradeIntent(
-            intent_id=proposal.proposal_id, account_id=account.id, strategy_id=STRATEGY_ID,
-            strategy_version=STRATEGY_VERSION, symbol=proposal.symbol, side=proposal.side, order_type=OrderKind.LIMIT,
+            intent_id=proposal.proposal_id, account_id=account.id,
+            strategy_id=self.definition.strategy_id, strategy_version=self.definition.version, symbol=proposal.symbol, side=proposal.side, order_type=OrderKind.LIMIT,
             entry_price=proposal.entry_price, stop_loss=proposal.stop_loss, take_profit=proposal.take_profit,
             created_at=now, expires_at=now + self.config.intent_ttl,
             rationale=(
-                f"S01: {proposal.swept_level_kind.value} swept at {proposal.swept_level_price:g}, "
+                f"{self.definition.strategy_id}: {proposal.swept_level_kind.value} swept at {proposal.swept_level_price:g}, "
                 f"displacement at {proposal.detected_at.isoformat()}"
             ),
             details={
@@ -307,7 +343,8 @@ class StrategyService:
                 command_id=f"cmd-{intent.intent_id}"[:64], account_id=account.id, kind=CommandKind.OPEN,
                 symbol=intent.symbol, side=intent.side, order_type=intent.order_type, volume=decision.approved_volume,
                 price=intent.entry_price, stop_loss=intent.stop_loss, take_profit=intent.take_profit,
-                strategy_id=STRATEGY_ID, strategy_version=STRATEGY_VERSION, risk_decision_id=decision.decision_id,
+                strategy_id=self.definition.strategy_id, strategy_version=self.definition.version,
+                risk_decision_id=decision.decision_id,
             ),
             automatic=True,
         )  # fmt: skip

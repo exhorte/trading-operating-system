@@ -6,6 +6,189 @@ dans `git log`. Voir ADR 0008 pour ce que ce fichier est et n'est pas.
 
 ---
 
+## 2026-11-02 (suite 9 : **« Fermer toutes les positions » et « Démarrer le système » — ADR 0034**)
+
+Demande d'Exhorte (mission « rendre le Trading OS opérationnel depuis le cockpit ») : un bouton qui ferme toutes les positions du compte MT5 sélectionné, dans tous les modes, et un bouton qui démarre l'application et le système de trading avec une progression contrôlée jusqu'à l'autorisation de prendre des positions ; correspondance de l'échelle d'autonomie avec celle du plan ; ne pas inventer un second chemin d'exécution.
+
+- **Constat avant d'écrire** : `CLOSE` humain, idempotence, `UNKNOWN` et passage sous `HALTED` existaient (ADR 0023, 0033). Manquaient : la route des sorties humaines en `OFF`/`OBSERVE`/`PAPER` (la commande était seulement enregistrée), « Disable Trading » qui refusait aussi une fermeture, l'orchestration d'un lot, et tout l'écran. Le moteur lance déjà tous ses jobs au démarrage du cœur : « démarrer » **vérifie et fait monter l'autonomie**, ce n'est pas un second lanceur.
+- **Construit** : routage des sorties humaines dans tous les modes (`ExecutionService._route_for`, `validate`) ; `CloseAllService` (prévisualisation, lot de `CLOSE`/`CANCEL` à identifiants déterministes, événement `execution.close_all_requested` écrit avant le premier envoi, rapport dérivé des commandes et du courtier — survit à un redémarrage) ; `StartupService` (treize étapes, 22 conditions, `begin`/`authorize_automatic`) ; `domain/autonomy/plan_modes.py` ; 7 routes ; événements `system.start_*` ; écran `/demarrage`, dialogue de fermeture, barre de contrôle du Command Center. Dépôt : requête `with_id_prefix`, aucune migration.
+- **Défaut trouvé par un test et corrigé** : la vérification avant `CONFIRM` lisait un rapport de préparation en cache (2 s) — elle est recalculée à cet instant.
+- **Deux tests de l'ADR 0033 amendés** (ils encodaient « OFF/OBSERVE : enregistré seulement » et « Disable Trading refuse une fermeture sous arrêt »), et la garde `FORBIDDEN_WORDS` du contrat OpenAPI (qui interdisait `close-all`) : exactement les quatre routes de la famille sont autorisées, tout autre raccourci reste interdit.
+- **Pas fait, volontairement** : aucun changement de l'agent MQL5 (toujours `OBSERVE`, donc `SIMULATED`) ; les positions d'un autre numéro magique restent à fermer dans MT5 ; pas d'annulation automatique des ordres sous arrêt ni de liquidation automatique sous arrêt. Claude n'a cliqué aucun des boutons : contrôle visuel en lecture seule sur un cœur jetable (terminal simulé, base éphémère, arrêtés ensuite).
+- **Vérifié** : voir `state.md` (pytest, cockpit, build). **Pas commité.**
+
+## 2026-11-02 (suite 8 : **sous `HALTED`, les fermetures et annulations passent — ADR 0033, agent 1.13**)
+
+Demande, mot pour mot : « Laisser passer » (réponse à : un arrêt `HALTED` doit-il laisser passer fermetures et annulations ou tout refuser ?).
+
+- **Trois verrous levés ensemble** (en lever un seul laissait l'ordre de fermeture mourir plus loin) : la validation du cœur (`HALTED` ne refuse plus une sortie **humaine**), le routage (`HALTED` = « enregistré seulement », donc une sortie humaine part désormais vers l'agent comme en `CONFIRM`),
+  l'arrêt local de l'agent (`AdmitCommand` et `ExecuteOrder` ne refusent plus une sortie pour `IsHalted()` ; version **1.13**, compilée sur copie, 0 erreur).
+- **Ce qui reste refusé sous arrêt** : ouvertures, `MODIFY` (un resserrement de stop n'est pas une « fermeture »), toute commande **automatique**. Le Guardian et le Position Manager n'agissent toujours pas d'eux-mêmes pendant un arrêt. Mort-subite, identité, compte, péremption, `InpClosableLogins`, mode `OBSERVE` compilé : inchangés.
+- **Vérifié** : tests de validation, de service (arrêt du système et arrêt local de l'agent, OFF/OBSERVE inchangés), d'architecture de l'agent (deux mutations détectées) ; suite complète : voir la note de session. **Pas commité.**
+
+## 2026-11-02 (suite 7 : **Account Guardian complet, ADR 0032 — incrément E du plan de reprise**)
+
+Demande, mot pour mot : « Oui, le Guardian ». Plan §9 : le Guardian surveille aussi spread, glissement, connexion MT5, santé de l'agent et du courtier, exposition par symbole, et peut demander une réconciliation.
+
+- **Construit** : `domain/guardian/watch.py` (pur) et `GuardianReport.watch` — équité, solde, usage des limites, exposition par symbole (rapportée, pas limitée : ADR 0022), spread contre **le plafond de l'utilisateur**, glissement des fills `LIMIT` contre
+  **le seuil de coût du compte**, six constats de santé, « une entrée serait-elle autorisée ? » lu sur le Risk Engine. Alertes (spread, glissement, santé seulement tant que le cœur est exposé). **Demande de réconciliation** (commande en doute, passes
+  illisibles, agent reconnecté, sortie refusée pour de bon), au plus une fois par minute. Option **désactivée par défaut** : annuler les ordres du cœur dont le symbole a un spread au-dessus du plafond (`GUARDIAN_CANCEL_ORDERS_ON_WIDE_SPREAD`).
+- **Non modifié, à trancher par Exhorte** : un système `HALTED` refuse toujours toute commande, fermetures comprises. Aucune position n'est jamais fermée pour un spread.
+- **Vérifié** : tests du Guardian (23 purs + 19 de service), ruff, mypy, `gen-types` régénéré, cockpit (vitest 231, tsc, eslint) ; suite Python complète : voir la note de session. **Pas commité.**
+
+## 2026-11-02 (suite 6 : **agent MQL5 1.12, fenêtres par stratégie, N8 — après les trois décisions d'Exhorte**)
+
+Demande, mot pour mot : « Je valide les décisions suivantes. Tu peux poursuivre directement l'implémentation » — (1) agent MQL5 : « `ExecuteOrder` doit devenir l'unique point d'envoi » ;
+(2) « New York AM : 08:30–11:00 » pour S02, Londres inchangée, la fenêtre 07:00–10:00 de S01 conservée, tout configurable en `America/New_York` ; (3) N8 : « 0,1 % unité minimale de granularité »,
+« réduire, jamais augmenter », ne rien inventer. « Ne passe pas en trading réel automatique. »
+
+- **Agent 1.12 (ADR 0029).** `LIMIT`, `MODIFY`, `CLOSE`, `PARTIAL_CLOSE`, `CANCEL` derrière un seul `ExecuteOrder` ; `TradeCommand` + `BuildTradeRequest` (sans envoi) ; validation locale à cinq natures, rejouée dans
+  `ExecuteOrder` ; `OrderCheck` avant `OrderSend` pour les deals et les ordres en attente ; ligne `UNKNOWN` enrichie (nature, stop, cible) et réconciliation qui **observe** (ordre actif, stop en vigueur, transaction de sortie,
+  historique d'ordre) sans jamais renvoyer. Compilé sur une copie (agent et script) : 0 erreur, 0 avertissement. Test d'architecture réécrit, 6 mutations détectées. Cœur : statuts `SUBMITTED/MODIFIED/CLOSED/CANCELLED`
+  → `EXECUTED` ; un `LIMIT` posé n'attend pas de position. **Aucun ordre envoyé, mode toujours `OBSERVE` compilé.**
+- **Fenêtres (ADR 0030).** Trois copies des heures de S01 trouvées (précondition de S01 dont S02 héritait, enveloppe du compte, tests) ; chaque stratégie a maintenant les siennes ; S02 = 02–05 / 08:30–11:00 NY.
+  Le compte démo enregistré garde 07–10 (geste d'Exhorte dans Settings).
+- **N8 (ADR 0031).** La note chiffre ses déclencheurs de réduction (perte, 5 gains, équité sous le départ) mais pas « la plus petite unité » : mécanisme construit, **désactivé et inerte** jusqu'à `RISK_N8_MINIMUM_PERCENT`.
+- **Vérifié** : suites ciblées vertes, ruff, mypy, `gen-types --check` à jour, cockpit (vitest 231, tsc, eslint) ; suite Python complète : voir la note de session. **Pas commité.**
+
+## 2026-11-01 (suite 5 : **audit contre le plan de mission, corrections, mise à jour pour /clear**)
+
+Demandes, mot pour mot : « assure toi d'avoir respecer ce plan : …\01_context\plan trading operating system.md » ; puis « avant de continuer met ajour les fichier de suivi, memoire ainsi que
+les plan du projet afin que /clear le context et qu'on continue ». Le plan est la mission du 2026-11-01 (principes, risque, stratégie ICT, exécution, Guardian, phases 0 à 7).
+
+**Constat** : le plan n'était **pas** entièrement respecté. Le défaut principal : S02 (phase 2) avait été écrite **sans lire** les notes N1–N8 de `07_trading_strategy/` que le §5 du plan rend
+prioritaires, et plusieurs de ses choix les contredisaient (entrée au CE au lieu du bord du FVG, dealing range 1H au lieu de la carte M15, prix et non zone en Discount/Premium, cible sans la
+condition des 50 %).
+
+**Corrigé** (rien de commité) : S02 suit N5/N6 (`Variant` : `use_map_timeframe`, `poi_location`, `target_beyond_equilibrium`, `entry_spread_offset`, `entry_fraction = 0` ; S01 inchangée à l'octet) et
+`StrategyService`/le banc de validation lisent la carte M15 ; fiche `S02-strategie-ict-2022.md` (explicite / déduit / interprété / non spécifié) ; ADR 0024 amendé ; le Guardian retire les ordres en attente
+**même sans position** (plan §6.5) et passe le système en `HALTED` **en dernier recours** (§9) ; le Position Manager annule un ordre dont l'objectif est atteint avant le remplissage (N6, §5.3).
+Mesuré : pytest 2 417 passés / 15 ignorés, ruff, mypy, `gen-types --check` propres.
+
+**Écarts restants** (consignés dans `02_plan/plan-reprise-2026-11-01.md`, nouveau) : agent MQL5 (§8.3), détection en M5 (§4), horaires New York 07:00–10:00 contre 08:30–11:00, N8, Guardian incomplet (§9),
+spread historique (§12), nettoyage/phase 0 (§17), correspondance de l'échelle d'autonomie (§18), README, projets de référence (§14-16).
+
+**Mise à jour pour /clear** : `HANDOFF.md` réécrit à neuf ; `Suivi.md`, `state.md`, `roadmap.md`, la note de session `06_session_memory/2026-11-01-phases-2-a-7.md`, `02_plan/README.md` et la mémoire de l'assistant mis à jour.
+
+---
+
+## 2026-11-01 (suite 4 : **limites corrigées, puis phases 2 à 7 de la mission côté cœur**)
+
+Demandes, mot pour mot : « Corriger maintenant ces deux écarts (limite par symbole, limite hebdomadaire) ? pour le symbole j'aimerais
+qu'il y ai aucune limite un symbole peut etre prise dans autant de position simultaner que possible je laisse definir la limite
+hebdomadaire » ; « ensuite continue la suite des phases restante jusqu'a la fin ». Les phases 2 à 7 étaient nommées par l'accord de la
+mission (chacune « après son ADR ») : un ADR précède chaque lot.
+
+**Fait** — rien de commité, aucun ordre, `OBSERVE`, aucune connexion au courtier :
+- **ADR 0022** : plus de limite de positions par symbole (le champ n'était appliqué nulle part, il est retiré ; les profils déjà
+  enregistrés qui le portent se relisent) ; la **perte hebdomadaire** est un champ de Settings (aperçu en montant). Types régénérés.
+- **ADR 0023, phase 3 (côté cœur)** : validation de `LIMIT` / `MODIFY` / `CLOSE` / `PARTIAL_CLOSE` / `CANCEL` (un stop ne s'éloigne
+  jamais du prix), lignes du fil, expéditeurs agent et papier, **Position Manager** (break-even à +1 R sur le stop initial, partiel et
+  suivi désactivés, fin de séance, ordres périmés annulés, stop remis), contrôle d'autonomie « gestion des positions » branché sur lui.
+  **L'agent MQL5 n'est pas modifié** : il n'annonce aucune de ces capacités, donc rien de nouveau n'atteint un courtier.
+- **ADR 0024, phase 2** : S02 = le pipeline de S01 avec un biais H4 + H1 et une entrée `LIMIT` (`Variant`, S01 inchangée
+  à l'octet — golden vectors verts) ; *corrigé ensuite, voir « suite 5 » : elle suit N5/N6* ; `STRATEGY_S02=off|measure|trade`, `off` par défaut ; table `strategy_evaluations` (migration 0005).
+- **ADR 0025, phase 4** : Account Guardian (limite atteinte → positions du cœur fermées ; position du cœur sans stop 30 s → fermée ;
+  positions externes jamais touchées ; constat de reprise) ; `GET /api/guardian`.
+- **ADR 0026, phase 5** : banc de validation `python -m trading_os validate` (une configuration figée, coûts et plan de sortie réels,
+  métriques en R, fenêtres glissantes, Monte Carlo par blocs de jours, registre des regards) — **amende l'ADR 0002 de façon bornée**.
+- **ADR 0027, phase 6** : critères de passage de chaque mode, mesurés, **consultatifs** (`GET /api/autonomy/promotion`).
+- **ADR 0028, phase 7** : « Pourquoi pas de trade ? » (`GET /api/why-no-trade`) et son panneau sur le tableau de bord.
+
+**Écarts relevés en route** : un système `HALTED` refuse toute commande, fermetures comprises (règle antérieure, non modifiée — ADR 0025) ;
+un stop retiré chez le courtier sous un mode automatique arrête déjà le système (réconciliation) ; la migration 0005 sera appliquée à la
+vraie base au prochain `serve` (additive : une table).
+
+**Pas fait** : gestionnaires MQL5 (`modify`, `close`, `cancel`, `limit`) ; mesure de S01/S02 sur de vraies bougies ; arrêts 20 R / 50 trades
+(ADR 0015) ; page dédiée au Guardian et aux critères de passage ; retrait de `set_active`.
+
+---
+
+## 2026-11-01 (suite 3 : **échelle de l'interface, diagnostic de la prise de position, limites expliquées**)
+
+Demandes, mot pour mot : « peut tu augmenter legerement la taille du text et des icons de la plateform » ; « pourquoi le system de
+prise de position n'est il pas operationnel » ; « Peux-tu me donner plus de détails concernant les limites que je dois rédiger ? ».
+
+**Fait** : `html { font-size: 106.25 % }` (17 px), tailles en pixels fixes converties en `rem` (commit `d433f7b`, mesuré sans débordement
+à 375 px). Diagnostic lu sur le cœur : mode `OFF`, plafond `OBSERVE`, **5 contrôles d'autonomie sur 16 échouent** (pas d'agent
+connecté : kill switch et battement ; S01 sans évaluation ; S01 sans sortie, TD-09 ; limites non écrites). Le `.ex5` de l'agent
+(2026-09-26) est plus ancien que sa source 1.11 ; le protocole ne porte que `OPEN` au marché. Limites expliquées avec les valeurs
+en vigueur. **Trouvé en relisant** : `max_positions_per_symbol` n'est appliqué nulle part ; la limite hebdomadaire et la grille ne
+sont pas dans le formulaire de Settings ; les arrêts 20 R / 50 trades de l'ADR 0015 ne sont pas construits.
+
+**Mesuré** : pytest 2 238 passés, 15 ignorés (passage complet de fin de journée) ; vitest 223 ; tsc, eslint, ruff, mypy propres. PR n°2 : 5 commits, fusionnable. Suivi, HANDOFF et notes
+de session du vault remis à jour.
+
+---
+
+## 2026-11-01 (suite 2 : **un seul compte connecté, formulaire sur Account, plus d'écrans muets**)
+
+Demande, mot pour mot : « pourquoi les donner ne s'afiche pas et pourquoi j'ai pas de formulaire pour entree mes identifiant du
+coutier et me connecter a un compte et le formulaire de connexion doit menssioner un choix de compte a ajouter entre exness et
+FTMO et uniquement un compte doit etre connecter a la fois » (ADR 0021).
+
+**Cause** : aucun compte n'était enregistré (0 ligne en base) ; chaque écran montrait des squelettes qui ne se remplissent jamais, et
+le formulaire était en bas de Settings. **Fait** : le cœur refuse un second compte connecté (`another_account_connected`) ; le
+formulaire (choix Exness / FTMO en deux cartes) est sur Account et remplace tout écran qui lit un compte quand aucun n'est
+connecté ; entrée « Connecter un compte » dans le menu ; « Rendre actif » supprimé. La démo Exness est enregistrée et rattachée
+depuis le formulaire (sans mot de passe) : les données s'affichent. Mesuré : pytest (tous dossiers relancés) vert, 223 tests vitest,
+tsc, eslint, ruff, mypy ; les 11 écrans répondent 200. **Reste** : retirer `set_active` (route, schéma, types) dans un lot à part.
+
+---
+
+## 2026-11-01 (suite : **connexion par identifiants, lecture chez le courtier, application lancée**)
+
+Demandes, mot pour mot : « Arrete tout autre processsus et lance l'application », « Construi le formulaire de connexion
+demandant les identifiant reel soit FTM ou exness », « Extraire tout les informations liers compte (le capital, l'effet de
+levier, ..., ) directement chez le courtier une fois que nous avons les identifiants », « Etant donner que les regle sont les
+meme pour les deux courtier on peut utilise exness pour tester le profil FTMO pour l'instant ». Réalise l'incrément **I3** de
+l'ADR 0013 (accord nommé du 2026-09-25), ADR 0020.
+
+**Fait** — rien de commité, aucun ordre, `OBSERVE` :
+- Formulaire « Connecter un compte » (Settings) → `POST /api/accounts/discover` : lit société, levier, solde, équité, marge, mode,
+  symboles (suffixe, lot min, contrat, tick, spread) ; capital initial **proposé puis confirmé** par l'utilisateur ; fournisseur
+  reconnu depuis les noms du courtier ; profil FTMO répétable sur une démo (`rules_profile`, démo seulement).
+- Migrateur : l'ancienne table `schema_migrations` de l'ère .NET est **renommée, pas vidée** (remplace la modification non
+  commitée destructive). Schéma 0001 à 0004 appliqué à la vraie base **après sauvegarde `pg_dump -Fc` relue** (30,7 Mo,
+  `exports/backups/`) ; données intactes.
+- Application lancée sur **3001 / 8001 / 5434** : l'arrêt des conteneurs d'autres projets qui tiennent 3000, 8000 et 5433 a été
+  **refusé par la couche de permissions** et n'a pas été contourné ; la base du projet (conteneur recréé, volume intact) lit
+  `TRADINGOS_DB_PORT`.
+- Vérifié dans le navigateur intégré, sans mot de passe, sur la démo Exness : toutes les valeurs lues sont les vraies.
+
+**Pas fait** : le chemin avec mot de passe n'est éprouvé que contre le terminal simulé (ADR 0013 : l'essai réel est à
+l'utilisateur) ; « Enregistrer et rattacher » non cliqué ; `scripts/start.ps1` inchangé (ports par défaut).
+
+---
+
+## 2026-11-01 (**phase 0 et phase 1 de la mission « Trading OS autonome » : Risk Engine, ADR 0019**)
+
+Demande, mot pour mot (extraits de la mission) : « Faire évoluer Trading Operating System vers une plateforme de trading
+algorithmique autonome, fiable et entièrement pilotée par Python », « Remplace les anciennes valeurs de risque par les
+nouvelles règles » (§6), « Les modifications doivent être appliquées directement dans le projet » (§17). La mission nomme
+aussi une stratégie S02 (ICT 2022), des ordres LIMIT/MODIFY/CLOSE/PARTIAL_CLOSE, un banc de backtest et un compte FTMO :
+**c'est l'accord explicite demandé par `.claude/CLAUDE.md` pour ces élargissements, mais chacun se construit dans son
+incrément, après son ADR** — seul le risque (ADR 0019) est construit ici.
+
+**Fait** — branche `refactor/python-native-architecture`, **rien de commité, rien de déployé, aucun ordre** :
+- Constat Git vérifié : `origin/main` **contient** la migration (PR #1, `44e797c`) ; seul le `main` local est en retard.
+- ADR 0019 + `domain/risk/dynamic_risk.py` : grille de risque (+1 % → 1,5 % … −5 % arrêt), déclencheur 200 $, plafonds
+  (profil, budgets jour / semaine / total restants) ; le risque d'un trade est le **minimum**, avec tous les plafonds pesés
+  et enregistrés dans `RiskDecision.allowance`. Nouvelles portes `gate-weekly-loss` et `gate-performance-stop` (verrous
+  persistants). Défauts : 15 trades/jour, 5 positions, perte hebdomadaire 10 %. Ancre de semaine persistée (migration 0004).
+- Plafonds contractuels du fournisseur (FTMO 2-Step Challenge) appliqués aux règles effectives.
+- Cockpit : types générés + fixtures mis à jour (le front n'affiche pas encore la semaine ni l'allocation).
+
+**Défaut trouvé en vérifiant, corrigé** : la reconstruction d'historique au démarrage ne remontait qu'au début de la
+*journée* ; un cœur lancé en milieu de semaine aurait sous-estimé la perte hebdomadaire. Elle remonte au début de la semaine.
+
+**Mesuré** : pytest 2197 passés / 10 ignorés (`live_mt5`) ; ruff, mypy strict propres ; vitest 171/171, tsc, eslint propres.
+
+**Ouvert** : voir « Points ouverts » de `context/domain/risk_rules.md` (déclencheur 200 $ sans effet tel qu'écrit, grille non
+monotone, plafond de risque ouvert à 2 %). `migrate.py` non commité : non touché.
+
+---
+
 ## 2026-10-09 (**fin de la migration Python : API, cockpit, capture graphique supprimée, agent 1.11, suppression du Gateway .NET**)
 
 Demandes, mot pour mot : « reprends la migration python », « continu », puis en cours de route

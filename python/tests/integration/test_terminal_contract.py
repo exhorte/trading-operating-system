@@ -16,12 +16,13 @@ from dataclasses import dataclass
 
 import pytest
 
-from trading_os.domain.primitives import Timeframe
+from trading_os.domain.primitives import Side, Timeframe
+from trading_os.domain.risk.sizing import size_position
 from trading_os.infrastructure.mt5.client import ConnectFailed, Mt5Client
 from trading_os.infrastructure.mt5.fake import FakeMt5
 from trading_os.infrastructure.mt5.protocol import WorkerError
 from trading_os.infrastructure.mt5.transport import InProcessTransport, Mt5Transport, SubprocessTransport
-from trading_os.shared.errors import AccountMismatch
+from trading_os.shared.errors import AccountMismatch, SizingError
 
 LIVE = os.environ.get("MT5_LIVE_TESTS") == "1"
 CANDIDATE_SYMBOLS = ("EURUSD", "EURUSDm", "XAUUSD", "XAUUSDm", "GBPUSD", "GBPUSDm")
@@ -150,3 +151,36 @@ async def test_no_order_function_can_be_reached_through_the_core(terminal: Termi
         with pytest.raises(WorkerError) as caught:
             await terminal.transport.call(name, {"action": 1})
         assert caught.value.code == "not_allowed", name
+
+
+@pytest.mark.parametrize("risk_percent", [1.5, 1.0, 0.3, 0.2, 0.1])  # the rows of the dynamic grid (ADR 0019)
+async def test_sizing_from_this_terminals_own_figures_never_exceeds_the_risk(
+    terminal: Terminal, risk_percent: float
+) -> None:
+    """The lot is computed from what *this* broker reports — its balance, tick value, step, minimum — and never from a table:
+    on the real terminal this is the check that the arithmetic holds with the real numbers. Nothing is sent."""
+    info = await terminal.client.account_info()
+    spec = await terminal.client.symbol_spec(terminal.symbol)
+    tick = await terminal.client.tick(terminal.symbol)
+    assert spec is not None and tick is not None
+    base = min(info.balance, info.equity)
+    stop = round(tick.ask * 0.001, spec.digits)  # a stop 0.1 % away, whatever the instrument
+    try:
+        sized = size_position(
+            balance=base,
+            risk_percent=risk_percent,
+            side=Side.BUY,
+            entry_price=tick.ask,
+            stop_loss=round(tick.ask - stop, spec.digits),
+            spec=spec,
+            spread=tick.spread,
+        )
+    except SizingError as refusal:
+        assert refusal.code in {
+            "min_volume_exceeds_risk",
+            "stop_too_close",
+        }  # a refusal is allowed, an overshoot is not
+        return
+    assert sized.risk_at_stop <= base * risk_percent / 100 + 1e-6
+    assert spec.volume_min <= sized.volume <= spec.volume_max
+    assert round(sized.volume / spec.volume_step, 6) == round(sized.volume / spec.volume_step)  # a multiple of the step

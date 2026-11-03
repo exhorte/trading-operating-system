@@ -73,10 +73,11 @@ class AgentStatus(DomainModel):
     def healthy_for_orders(self) -> bool:
         return self.identity == "ok" and self.tradable is True and self.halted is not True and self.permissions_ok
 
-    def command_refusal(self) -> str | None:
+    def command_refusal(self, *, exit_only: bool = False) -> str | None:
         """Why no command may go to this agent right now, or None. Only what the agent itself reported: an absent field
-        (an older agent) is not a refusal here — the agent's own barriers still apply."""
-        if self.halted is True:
+        (an older agent) is not a refusal here — the agent's own barriers still apply. ``exit_only``: the command only closes or
+        cancels (ADR 0033), which the agent's local kill switch no longer stops; its identity check still does."""
+        if self.halted is True and not exit_only:
             return "HALTED: the agent's local kill switch is set — lifted only on the MT5 chart"
         if self.identity is not None and self.identity != "ok":
             return f"IDENTITY_REFUSED: the agent reports identity {self.identity!r} for login {self.account_login}"

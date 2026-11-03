@@ -12,6 +12,6 @@ Avant de coder, lire `.claude/CLAUDE.md`, puis `context/project/charter.md` et `
 
 Trois règles qui coupent court à la plupart des mauvaises pistes :
 
-- La recherche d'edge est close (`context/adr/0002-fin-de-la-recherche-d-edge.md`). Pas de backtester, pas d'optimiseur, pas de générateur de signaux.
+- La recherche d'edge est close (`context/adr/0002-fin-de-la-recherche-d-edge.md`). Pas d'optimiseur, pas de générateur de signaux. Seule exception, bornée : le banc de validation d'une configuration figée (ADR 0026).
 - Toute règle de trading passe par une gate du Risk Engine, jamais par l'interface (ADR 0007).
 - L'IA reste en lecture : classer, résumer, expliquer. Jamais décider (ADR 0005).

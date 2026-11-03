@@ -16,6 +16,7 @@ export function RulesCard({ profile }: { profile: AccountProfile }) {
 
   const rows: Array<[string, string, string]> = [
     ["Perte journalière max", `${p.drawdown.dailyLossLimitPercent} %`, percentOf(ref, p.drawdown.dailyLossLimitPercent)],
+    ["Perte hebdomadaire max", `${p.drawdown.weeklyLossLimitPercent} %`, percentOf(ref, p.drawdown.weeklyLossLimitPercent)],
     [
       "Perte max",
       `${p.drawdown.maxDrawdownLimitPercent} %`,
@@ -29,7 +30,7 @@ export function RulesCard({ profile }: { profile: AccountProfile }) {
     [
       "Positions ouvertes",
       String(p.positions.maxOpenPositions),
-      `${p.positions.maxPositionsPerSymbol} par symbole${p.positions.maxVolumePerOrder === null ? "" : ` · ${p.positions.maxVolumePerOrder} lot max`}`,
+      `sans limite par symbole${p.positions.maxVolumePerOrder === null ? "" : ` · ${p.positions.maxVolumePerOrder} lot max`}`,
     ],
     ["Blackout publications", `±${p.news.blackoutMinutes} min`, "calendrier FRED"],
     ["Porte de coût S01", `c ≤ ${limits.costThreshold}`, "le spread se juge sur le coût, pas sur un plafond"],

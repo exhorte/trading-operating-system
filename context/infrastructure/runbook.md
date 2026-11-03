@@ -137,8 +137,31 @@ docker start tradingos-timescaledb → python -m trading_os db migrate → pytho
 
 **Après un arrêt non propre** (redémarrage de la machine ou de Docker Desktop — les conteneurs sortent en code 255) : `docker start tradingos-timescaledb`, attendre `healthy`, relancer le cœur. Le cœur survit à une panne de base (il refuse alors toute commande : échec fermé) et le superviseur ouvre un incident ; MT5 est à rouvrir à la main, l'agent se reconnecte seul. **Rien ne redémarre le cœur** : sa fenêtre reste ouverte, c'est tout.
 
+## Démarrer et arrêter depuis le cockpit (ADR 0034)
+
+`start.ps1` (ou les commandes à la main ci-dessus) lance l'application : base, cœur, cockpit. Rien d'autre. Depuis le cockpit :
+
+- **Command Center → « DÉMARRER LE SYSTÈME »** (ou l'écran **Démarrage**) : vérifie treize étapes, force une lecture du terminal et une réconciliation, connecte le compte sélectionné **sans mot de passe** s'il ne l'est pas, puis monte `OFF → OBSERVE`. Ne monte jamais au-dessus de `CONFIRM` ; n'envoie aucun ordre. Si une étape bloquante échoue (base, terminal, compte), le système reste `OFF` et dit laquelle.
+- **Écran Démarrage → « AUTORISER LE TRADING AUTOMATIQUE »** : geste séparé, un échelon, vingt-deux conditions vertes à cet instant ; un compte réel exige une case cochée. Un redémarrage du cœur retombe **toujours** à `OFF`.
+- **« FERMER TOUTES LES POSITIONS »** (Command Center, Positions) : prévisualisation, confirmation explicite, un `CLOSE` par position, suivi en direct, réconciliation, rapport. Marche dans tous les modes, `HALTED` compris. Tant que l'agent est compilé `OBSERVE`, il répond `SIMULATED` et rien n'est fermé chez le courtier : le cockpit le dit.
+- **Arrêts** : « Arrêter les nouvelles entrées » (→ `OBSERVE`), « Arrêter les moteurs de stratégie » (→ `OFF`), arrêt d'urgence (barre latérale : `HALTED`, ne ferme rien). Quatre gestes distincts : `autonomy-modes.md`.
+
+Ces boutons ne se cliquent pas pendant le développement par Claude (`.claude/CLAUDE.md`) : l'essai sur la démo est fait par l'utilisateur.
+
 ## Points de fragilité connus
 
+- **Ports 3000, 8000 ou 5433 pris par d'autres projets** (constaté le 2026-11-01 : `jobart-frontend-1`, `jobart-backend-1`, `dossier-db-1`) : `start.ps1` s'arrête sans y toucher. Sans les arrêter, l'application tourne sur des ports libres — la base est recréée sans toucher au volume (`docker rm tradingos-timescaledb`, **jamais** `-v`), puis, depuis `04_code` :
+  ```powershell
+  $env:TRADINGOS_DB_PORT = "5434"; docker compose up -d timescaledb
+  # depuis python\ — le cœur (lit .env pour les jetons) et le schéma :
+  $env:DATABASE_URL = "postgresql://tradingos:tradingos_dev@127.0.0.1:5434/tradingos"
+  $env:ALLOWED_ORIGINS = "http://localhost:3001,http://127.0.0.1:3001"
+  .venv\Scripts\python.exe -m trading_os db migrate
+  .venv\Scripts\python.exe -m trading_os serve --port 8001
+  # depuis 04_code — le cockpit :
+  $env:NEXT_PUBLIC_CORE_URL = "http://127.0.0.1:8001"; npm run dev -- -p 3001
+  ```
+  Sauvegarde avant la première migration : `docker exec tradingos-timescaledb pg_dump -Fc -U tradingos -f /tmp/tradingos.dump tradingos`, puis `docker cp` vers `exports/backups/` (le dump est logique : une restauration passe par la procédure TimescaleDB `timescaledb_pre_restore()`). `start.ps1` attend 5433 : pour revenir aux ports par défaut, libérer les trois ports puis recréer la base sans `TRADINGOS_DB_PORT`.
 - **Port 5433 partagé avec un autre projet** (constaté le 2026-09-23) : le conteneur `e-commerce-db-1` publiait aussi `5433`. Il a été déplacé sur `127.0.0.1:55432` ; si l'autre projet revient sur 5433, `start.ps1` le détecte et s'arrête sans y toucher — c'est au trader de choisir lequel tourne.
 - **Un seul `next dev` par dossier** (Next 16) : le second s'arrête sur « Another next dev server is already running ».
 - **404 partout sauf `/` après l'ajout de `proxy.ts`** (vu une fois, cache `.next/dev` d'avant) : arrêter `next dev`, supprimer `.next/dev`, relancer. Idem si `tsc`/`next build` échouent sur `.next/dev/types/validator.ts` (fichier généré corrompu par deux régénérations concurrentes) : `rm -rf .next/dev/types`.

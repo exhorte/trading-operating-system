@@ -105,7 +105,7 @@ export function MetricPanelItem({
         <p className="text-sm text-panel-muted">{label}</p>
         <p
           className={cn(
-            "mt-2 text-2xl font-semibold tracking-tight tabular-nums sm:text-[28px] sm:leading-9",
+            "mt-2 text-2xl font-semibold tracking-tight tabular-nums sm:text-[1.75rem] sm:leading-9",
             tone && TONE_CLASS[tone]
           )}
         >

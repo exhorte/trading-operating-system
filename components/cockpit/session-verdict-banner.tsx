@@ -35,7 +35,7 @@ export function SessionVerdictBanner({
   const untrusted = useIsDataUntrusted();
 
   if (!risk) {
-    return <Skeleton className={cn("h-[260px] rounded-xl", className)} />;
+    return <Skeleton className={cn("h-[16.25rem] rounded-xl", className)} />;
   }
 
   const { armed, blocking, lockoutReason } = sessionVerdict(risk);

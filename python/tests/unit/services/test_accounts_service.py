@@ -10,6 +10,7 @@ import pytest
 from pydantic import SecretStr
 
 from tests.support.harness import Harness
+from trading_os.domain.accounts.discovery import DEAL_TYPE_BALANCE
 from trading_os.domain.accounts.models import AccountStatus, AccountType, Environment, FtmoChallenge, Provider
 from trading_os.domain.events import (
     AccountArchived,
@@ -23,6 +24,7 @@ from trading_os.domain.events import (
 )
 from trading_os.infrastructure.database.pool import Database
 from trading_os.infrastructure.mt5.client import ConnectFailed
+from trading_os.infrastructure.mt5.fake import FakeAccount, FakeMt5
 from trading_os.infrastructure.security.credentials import EnvCredentialStore
 from trading_os.services.accounts import AccountCreate, AccountService
 from trading_os.shared.errors import AccountMismatch, Conflict, ValidationFailed
@@ -91,32 +93,33 @@ async def test_an_account_type_that_does_not_fit_the_provider_is_refused(h: Harn
         await accounts.create(exness(name="same login again"))
 
 
-async def test_the_first_connected_account_becomes_active_and_the_choice_is_remembered(h: Harness) -> None:
+async def test_the_connected_account_is_the_active_one_and_it_is_remembered(h: Harness) -> None:
     accounts = service(h)
     first = await accounts.create(exness())
-    second = await accounts.create(ftmo())
+    await accounts.create(ftmo())
     connected = await accounts.connect(first.id)
-    await accounts.connect(second.id)
     assert connected.status is AccountStatus.CONNECTED
     assert accounts.active_account_id == first.id
     assert [e.current for e in h.recorder.of(ActiveAccountChanged)] == [first.id]
-    assert {e.account_id for e in h.recorder.of(AccountConnected)} == {first.id, second.id}
+    assert {e.account_id for e in h.recorder.of(AccountConnected)} == {first.id}
 
     restarted = service(h)  # a new process: the active account comes back from the database
     await restarted.start()
     assert restarted.active_account_id == first.id
 
 
-async def test_connecting_twice_is_idempotent_and_two_accounts_cannot_share_a_terminal(h: Harness) -> None:
+async def test_connecting_twice_is_idempotent_and_only_one_account_is_connected_at_a_time(h: Harness) -> None:
     accounts = service(h)
     first = await accounts.create(exness(terminal_path=None))
-    other = await accounts.create(exness(login=3_000_003, terminal_path=None))
+    other = await accounts.create(exness(login=3_000_003, terminal_path="C:/MT5/other"))  # even on its own terminal
     await accounts.connect(first.id)
     await accounts.connect(first.id)
     assert len(h.recorder.of(AccountConnected)) == 1
     with pytest.raises(Conflict) as caught:
         await accounts.connect(other.id)
-    assert caught.value.code == "terminal_in_use"
+    assert caught.value.code == "another_account_connected"
+    assert caught.value.details["connectedAccountId"] == first.id
+    assert not accounts.is_connected(other.id) and accounts.active_account_id == first.id
 
 
 async def test_a_wrong_server_is_refused_and_remembered_as_an_error_until_fixed(h: Harness) -> None:
@@ -156,12 +159,11 @@ async def test_a_password_comes_from_the_store_or_the_call_and_never_leaks(
     assert password not in repr(rows)
 
 
-async def test_disconnecting_and_switching_are_refused_while_a_guard_sees_risk(h: Harness) -> None:
+async def test_detaching_is_refused_while_a_guard_sees_risk_and_so_is_taking_another_account(h: Harness) -> None:
     accounts = service(h)
     a = await accounts.create(exness())
     b = await accounts.create(ftmo())
     await accounts.connect(a.id)
-    await accounts.connect(b.id)
 
     async def guard(account_id: str) -> str | None:
         return "a position is open" if account_id == a.id else None
@@ -172,28 +174,26 @@ async def test_disconnecting_and_switching_are_refused_while_a_guard_sees_risk(h
     assert disconnect.value.code == "disconnect_refused" and disconnect.value.details["reasons"] == [
         "a position is open"
     ]
-    with pytest.raises(Conflict) as switch:
-        await accounts.set_active(b.id)
-    assert switch.value.code == "switch_refused" and accounts.active_account_id == a.id
+    with pytest.raises(Conflict) as other:  # b cannot come in while a holds risk — and a cannot leave
+        await accounts.connect(b.id)
+    assert other.value.code == "another_account_connected" and accounts.active_account_id == a.id
 
-    await accounts.disconnect(b.id)  # nothing at risk on b
-    assert (await accounts.get(b.id)).status is AccountStatus.DISCONNECTED
     forced = await accounts.disconnect(a.id, force=True)
     assert forced.status is AccountStatus.DISCONNECTED
-    assert [e.reason for e in h.recorder.of(AccountDisconnected)] == ["user", "user"]
+    assert [e.reason for e in h.recorder.of(AccountDisconnected)] == ["user"]
     with pytest.raises(Conflict) as offline:
         await accounts.set_active(b.id)
     assert offline.value.code == "account_not_connected"
 
 
-async def test_switching_to_another_connected_account_works_when_nothing_is_at_risk(h: Harness) -> None:
+async def test_taking_another_account_means_detaching_the_first_and_the_new_one_becomes_active(h: Harness) -> None:
     accounts = service(h)
     a = await accounts.create(exness())
     b = await accounts.create(ftmo())
     await accounts.connect(a.id)
+    await accounts.disconnect(a.id)  # nothing at risk: allowed
     await accounts.connect(b.id)
-    await accounts.set_active(b.id)
-    assert accounts.active_account_id == b.id
+    assert accounts.active_account_id == b.id and not accounts.is_connected(a.id)
     assert [(e.previous, e.current) for e in h.recorder.of(ActiveAccountChanged)] == [(None, a.id), (a.id, b.id)]
 
 
@@ -231,6 +231,152 @@ async def test_an_account_cannot_be_archived_while_connected_and_loses_the_activ
     assert h.recorder.of(AccountArchived)
 
 
+# ------------------------------------------------------------------------------------------------------ discovery (ADR 0020)
+
+DEMO_PATH = "C:/MT5/exness-demo"
+DEMO_LOGIN, DEMO_SERVER, DEMO_PASSWORD = 123_456_789, "Exness-MT5Trial10", "pw-demo-only"
+
+
+def demo_terminal(
+    h: Harness, *, suffix: str = "m", company: str = "Exness Technologies Ltd", **account: object
+) -> FakeMt5:
+    """A terminal already logged into an Exness-looking demo account, as the trader leaves it."""
+    terminal = FakeMt5.for_accounts(
+        [FakeAccount(login=DEMO_LOGIN, server=DEMO_SERVER, password=DEMO_PASSWORD, company=company, **account)],  # type: ignore[arg-type]
+        suffix=suffix,
+        server_offset_minutes=h.server_offset_minutes,
+        clock=lambda: h.clock.now().timestamp(),
+    )
+    h.terminals[DEMO_PATH] = terminal
+    return terminal
+
+
+async def test_discovery_reads_the_account_from_the_broker_and_registers_nothing(h: Harness) -> None:
+    accounts = service(h)
+    demo_terminal(h)
+    found = await accounts.discover(login=DEMO_LOGIN, server=DEMO_SERVER, terminal_path=DEMO_PATH)
+    assert (found.login, found.server, found.company) == (DEMO_LOGIN, DEMO_SERVER, "Exness Technologies Ltd")
+    assert (found.balance, found.equity, found.currency, found.leverage) == (10_000.0, 10_000.0, "USD", 500)
+    assert found.trade_mode == "demo" and found.margin_mode == "hedging" and found.trade_allowed
+    assert found.provider is Provider.EXNESS and found.environment is Environment.DEMO
+    assert found.symbol_suffix == "m" and [s.broker_name for s in found.symbols] == ["EURUSDm", "XAUUSDm"]
+    assert all(s.volume_min > 0 and s.contract_size > 0 and s.tradable for s in found.symbols)
+    assert (found.open_positions, found.pending_orders) == (0, 0) and found.suggested_name == "Exness 123456789 démo"
+    assert found.warnings == []
+    # Read, not registered: no account, nothing active, no connection left behind.
+    assert await accounts.accounts() == [] and accounts.active_account_id is None
+    assert not h.recorder.of(AccountCreated) and not h.recorder.of(AccountConnected)
+
+
+async def test_without_a_deposit_in_the_history_the_balance_is_only_a_proposal(h: Harness) -> None:
+    demo_terminal(h, balance=9_640.25)
+    found = await service(h).discover(login=DEMO_LOGIN, server=DEMO_SERVER, terminal_path=DEMO_PATH)
+    assert (found.capital.amount, found.capital.source, found.capital.reliable) == (9_640.25, "current_balance", False)
+
+
+async def test_the_first_deposit_in_the_brokers_history_is_the_initial_capital(h: Harness) -> None:
+    terminal = demo_terminal(h, balance=9_640.25)
+    first = int(h.clock.now().timestamp()) - 5 * 86_400
+    terminal.add_deal(position_id=0, symbol="", side=DEAL_TYPE_BALANCE, entry=0, volume=0.0, price=0.0,
+                      server_time=first, profit=10_000.0)  # fmt: skip
+    terminal.add_deal(position_id=0, symbol="", side=DEAL_TYPE_BALANCE, entry=0, volume=0.0, price=0.0,
+                      server_time=first + 3_600, profit=500.0)  # a later top-up is not the initial capital  # fmt: skip
+    terminal.add_deal(position_id=0, symbol="", side=DEAL_TYPE_BALANCE, entry=0, volume=0.0, price=0.0,
+                      server_time=first - 60, profit=-25.0)  # a withdrawal is not a deposit  # fmt: skip
+    found = await service(h).discover(login=DEMO_LOGIN, server=DEMO_SERVER, terminal_path=DEMO_PATH)
+    assert (found.capital.amount, found.capital.source, found.capital.reliable) == (10_000.0, "first_deposit", True)
+    assert found.capital.at is not None and found.capital.at.timestamp() == first
+
+
+async def test_a_wrong_password_is_refused_without_echoing_it_and_the_terminal_is_freed(h: Harness) -> None:
+    accounts = service(h)
+    demo_terminal(h)
+    with pytest.raises(ConnectFailed) as refused:
+        await accounts.discover(
+            login=DEMO_LOGIN, server=DEMO_SERVER, password=SecretStr("S3NTINEL-wrong"), terminal_path=DEMO_PATH
+        )
+    assert refused.value.code == "login_failed" and "S3NTINEL-wrong" not in str(refused.value)
+    found = await accounts.discover(  # the failed attempt left nothing behind: the right password works at once
+        login=DEMO_LOGIN, server=DEMO_SERVER, password=SecretStr(DEMO_PASSWORD), terminal_path=DEMO_PATH
+    )
+    assert found.login == DEMO_LOGIN
+    assert DEMO_PASSWORD not in found.model_dump_json()  # a password is never part of what comes back
+
+
+async def test_discovery_refuses_while_another_account_is_connected(h: Harness) -> None:
+    accounts = service(h)
+    demo_terminal(h)
+    created = await accounts.create(exness(login=DEMO_LOGIN, server=DEMO_SERVER, terminal_path=DEMO_PATH))
+    await accounts.connect(created.id)
+    with pytest.raises(Conflict) as refused:
+        await accounts.discover(login=DEMO_LOGIN, server=DEMO_SERVER, terminal_path=DEMO_PATH)
+    assert refused.value.code == "another_account_connected"
+
+
+async def test_an_unknown_server_and_an_account_with_positions_are_warned_about(h: Harness) -> None:
+    terminal = demo_terminal(h, company="Some Broker Ltd")
+    terminal.add_position(identifier=7, symbol="EURUSDm", side=0, volume=0.1, price_open=1.08, sl=1.07,
+                          opened_server_time=int(h.clock.now().timestamp()) - 60)  # fmt: skip
+    found = await service(h).discover(login=DEMO_LOGIN, server="Exness-MT5Trial10", terminal_path=DEMO_PATH)
+    assert found.open_positions == 1
+    assert any("open position" in w for w in found.warnings)
+    other = demo_terminal(h, company="Some Broker Ltd")
+    other.accounts[DEMO_LOGIN].server = "Other-Server"
+    unknown = await service(h).discover(login=DEMO_LOGIN, server="Other-Server", terminal_path=DEMO_PATH)
+    assert unknown.provider is None and any("choose the provider" in w for w in unknown.warnings)
+
+
+# ------------------------------------------------------------------------------------------------------ the FTMO profile on a demo
+
+
+def ftmo_on_exness(**extra: object) -> AccountCreate:
+    return exness(
+        account_type=AccountType.PROP_CHALLENGE,
+        rules_profile=Provider.FTMO,
+        challenge=FtmoChallenge(type="2-step", account_size=10_000, phase="challenge"),
+        **extra,
+    )
+
+
+async def test_an_exness_demo_can_rehearse_the_ftmo_profile(h: Harness) -> None:
+    accounts = service(h)
+    created = await accounts.create(ftmo_on_exness())
+    # The broker is Exness (its symbols, its terminal) ...
+    assert created.provider is Provider.EXNESS and created.symbol_suffix == "m"
+    # ... and the rules are FTMO's: a 2-Step challenge measured against its size, with FTMO's objectives and costs.
+    assert created.account_type is AccountType.PROP_CHALLENGE
+    assert created.trading_rules.challenge is not None and created.trading_rules.challenge.account_size == 10_000
+    assert (created.trading_rules.min_trading_days, created.trading_rules.profit_target_percent) == (4, 10.0)
+    assert created.risk_profile.drawdown.reference_balance == 10_000
+    assert created.execution_profile.limits.commission_per_lot_round_trip == 5.0
+
+
+async def test_the_rehearsed_profile_is_held_to_ftmos_ceilings_too(h: Harness) -> None:
+    accounts = service(h)
+    created = await accounts.create(ftmo_on_exness())
+    await accounts.connect(created.id)
+    drawdown = created.risk_profile.drawdown.model_copy(
+        update={"daily_loss_limit_percent": 8.0, "max_drawdown_limit_percent": 15.0}
+    )
+    looser = created.rules.model_copy(
+        update={"risk_profile": created.risk_profile.model_copy(update={"drawdown": drawdown})}
+    )
+    await accounts.request_rules(created.id, looser)
+    effective = (await accounts.effective(created.id)).risk_profile.drawdown
+    assert (effective.daily_loss_limit_percent, effective.max_drawdown_limit_percent) == (5.0, 10.0)
+
+
+async def test_a_prop_profile_is_never_rehearsed_on_real_money(h: Harness) -> None:
+    with pytest.raises(ValidationFailed) as refused:
+        await service(h).create(ftmo_on_exness(environment=Environment.LIVE))
+    assert refused.value.code == "rules_profile_demo_only"
+
+
+async def test_the_default_is_still_the_brokers_own_profile(h: Harness) -> None:
+    created = await service(h).create(exness())
+    assert created.account_type is AccountType.DIRECT and created.trading_rules.challenge is None
+
+
 # ------------------------------------------------------------------------------------------------------ rules ledger
 
 
@@ -249,6 +395,27 @@ async def test_a_rule_change_with_no_live_account_waits_for_the_next_trading_day
 
     await h.repos.risk.record_anchor(a.id, h.clock.now() + timedelta(hours=8))  # the next trading day has started
     assert (await accounts.effective(a.id)).risk_profile.max_trades_per_day == 6
+
+
+async def test_a_looser_limit_never_goes_past_the_providers_contract(h: Harness) -> None:
+    accounts = service(h)
+    a = await accounts.create(ftmo())
+    await accounts.connect(a.id)
+    drawdown = a.risk_profile.drawdown.model_copy(
+        update={"daily_loss_limit_percent": 8.0, "max_drawdown_limit_percent": 15.0}
+    )
+    looser = a.rules.model_copy(update={"risk_profile": a.risk_profile.model_copy(update={"drawdown": drawdown})})
+    await accounts.request_rules(a.id, looser)
+    effective = (await accounts.effective(a.id)).risk_profile.drawdown
+    assert (effective.daily_loss_limit_percent, effective.max_drawdown_limit_percent) == (5.0, 10.0)  # FTMO's own
+    h.clock.advance(minutes=1)
+    # A stricter internal limit is kept: the strictest of the two applies.
+    stricter = drawdown.model_copy(update={"daily_loss_limit_percent": 3.0, "max_drawdown_limit_percent": 8.0})
+    await accounts.request_rules(
+        a.id, a.rules.model_copy(update={"risk_profile": a.risk_profile.model_copy(update={"drawdown": stricter})})
+    )
+    effective = (await accounts.effective(a.id)).risk_profile.drawdown
+    assert (effective.daily_loss_limit_percent, effective.max_drawdown_limit_percent) == (3.0, 8.0)
 
 
 async def test_a_rule_change_is_immediate_only_when_no_session_is_in_progress(h: Harness) -> None:

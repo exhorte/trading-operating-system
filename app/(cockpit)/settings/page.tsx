@@ -23,13 +23,13 @@ import { SplitLayout } from "@/components/ui/split-layout";
  * Which accounts exist, and the limits each one is held to. Every change to the
  * limits goes to the core's append-only ledger, which decides at the moment
  * of writing whether it applies now or at the next trading day (the anti-tilt
- * guard): a limit never loosens mid-session (ADR 0007). No credential is ever
- * asked for: MT5 logs in, the core follows (ADR 0003, 0013).
+ * guard): a limit never loosens mid-session (ADR 0007). No password is asked
+ * here: accounts are connected from Account (ADR 0013, 0020, 0021).
  *
  * Composition (ADR 0017, « formulaire avec aperçu en direct »): the guard
  * answer, the account to set and its limits on the left, the dark panel of what
  * is in force (and when a change would apply) on the right and sticky; then the
- * registration of a new account, the connection procedure, the history and the
+ * registration of an account without connecting it, the connection procedure, the history and the
  * « Important » note.
  */
 export default function SettingsPage() {
@@ -84,7 +84,8 @@ export default function SettingsPage() {
             ) : (
               !selected && (
                 <Callout title="Aucun compte enregistré" variant="info">
-                  Les limites sont celles d&apos;un compte : enregistre le premier ci-dessous, puis reviens ici les écrire.
+                  Les limites sont celles d&apos;un compte : connecte le premier depuis Account (« Connecter un compte »), puis
+                  reviens ici les écrire.
                 </Callout>
               )
             )}
@@ -100,7 +101,7 @@ export default function SettingsPage() {
       {selected && overview && <SettingsHistory versions={overview.versions} registeredRules={selected} />}
 
       <Callout title="Important">
-        Rien ici ne se connecte à un broker ni ne demande un mot de passe : MT5 se connecte, le cœur suit (ADR 0003, 0013).
+        Rien ici ne demande de mot de passe : les comptes se connectent depuis Account, un seul à la fois (ADR 0013, 0021).
         Chaque changement est inscrit dans un registre en ajout seul, et le cœur décide au moment d&apos;enregistrer s&apos;il
         s&apos;applique tout de suite ou au prochain jour de trading — une limite ne se desserre jamais en pleine séance (ADR
         0007). Le plafond d&apos;autonomie d&apos;un compte et ses fenêtres de trading ne se changent pas depuis cet écran.

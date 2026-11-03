@@ -5,8 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from trading_os.api.schemas.common import StrictRequest
 from trading_os.domain.accounts.models import Account
 from trading_os.domain.autonomy.overview import AutonomyOverview
+from trading_os.domain.autonomy.plan_modes import PlanMode
+from trading_os.domain.autonomy.state import AutonomyMode
 from trading_os.domain.execution.agent import AgentStatus
 from trading_os.domain.primitives import DomainModel
 from trading_os.domain.system.supervision import Finding, Severity
@@ -91,3 +94,22 @@ class EventRecord(DomainModel):
     account_id: str | None = None
     correlation_id: str | None = None
     payload: dict[str, Any]
+
+
+class StartRequest(StrictRequest):
+    """« Démarrer le système » (ADR 0034). Starting climbs to ``target`` (OBSERVE by default; PAPER or CONFIRM when asked) and never
+    higher; a real account needs ``acknowledgeRealAccount`` to start up to CONFIRM."""
+
+    target: AutonomyMode = AutonomyMode.OBSERVE
+    acknowledge_real_account: bool = False
+
+
+class AuthorizeAutomaticRequest(StrictRequest):
+    """« Autoriser le trading automatique »: a separate gesture from starting, one rung, with every condition green at that instant."""
+
+    acknowledge_real_account: bool = False
+
+
+class AuthorizeAutomaticResult(DomainModel):
+    mode: AutonomyMode
+    plan_mode: PlanMode

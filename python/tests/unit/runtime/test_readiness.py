@@ -182,7 +182,8 @@ async def test_without_a_registered_strategy_and_exit_management_autonomy_stays_
         await core.cycle()
     report = await verdict(core)
     assert set(report.blockers) == {"strategy_valid", "position_management"}
-    assert "S01" in detail(report, "strategy_valid") and "TD-09" in detail(report, "position_management")
+    # exit management exists since ADR 0023 (the Position Manager): until it has run, the check says so — not that S01 has no exits
+    assert "S01" in detail(report, "strategy_valid") and "Position Manager" in detail(report, "position_management")
 
 
 async def test_the_user_must_have_written_the_limits_and_fixed_the_reference_capital(h: Harness) -> None:

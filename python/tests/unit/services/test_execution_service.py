@@ -252,11 +252,17 @@ async def test_no_order_without_an_approved_decision_that_matches_it(h: Harness)
         assert event.code and event.detail
 
 
-async def test_a_stop_loss_is_mandatory_and_only_market_orders_travel(h: Harness) -> None:
+async def test_a_stop_loss_is_mandatory_and_a_limit_order_needs_an_agent_that_announces_it(h: Harness) -> None:
     rig = await make_rig(h, AutonomyMode.ARMED)
     decision = await rig.approved()
     assert RejectCode.STOP_REQUIRED in await rejected_codes(rig, "cmd-stop-1", decision, stop_loss=None)
-    assert RejectCode.ORDER_TYPE_UNSUPPORTED in await rejected_codes(rig, "cmd-stop-2", decision, order_type="limit")
+    # ADR 0023: a limit order is carried, but only to an agent that says it can place one (agent 1.11 says nothing)
+    assert RejectCode.AGENT_CAPABILITY_MISSING in await rejected_codes(
+        rig, "cmd-stop-2", decision, order_type="limit", price=1.0995
+    )
+    assert RejectCode.ORDER_TYPE_UNSUPPORTED in await rejected_codes(
+        rig, "cmd-stop-3", decision, order_type="stop", price=1.1005
+    )
 
 
 async def test_the_account_must_be_the_one_really_attached(h: Harness) -> None:
@@ -303,11 +309,163 @@ async def test_trading_switch_halt_and_missing_agent_are_refused(h: Harness) -> 
     assert RejectCode.AGENT_UNREACHABLE in await rejected_codes(rig, "cmd-gate-4", decision)
 
 
+async def test_a_halted_system_still_sends_a_human_closing_and_cancelling_and_nothing_else(h: Harness) -> None:
+    """ADR 0033: HALTED stops new risk, not the way out. By hand a close and a cancel reach the agent; an opening, a stop move and every
+    automatic command are refused, as before."""
+    rig = await make_rig(h, AutonomyMode.ARMED)
+    rig.mode["mode"] = AutonomyMode.HALTED
+    rig.halted["on"] = True
+    rig.link.capabilities = ["ping", "halt", "modify", "close", "cancel"]
+    decision = await rig.approved()
+
+    close = await rig.execution.submit(
+        make_request(
+            "cmd-halt-close",
+            account_id=rig.account.id,
+            kind=CommandKind.CLOSE,
+            position_id="777",
+            risk_decision_id=None,
+        )
+    )
+    assert close.command.state is CommandState.SENT and close.rejections == []
+    cancel = await rig.execution.submit(
+        make_request(
+            "cmd-halt-cancel", account_id=rig.account.id, kind=CommandKind.CANCEL, order_id="55", risk_decision_id=None
+        )
+    )
+    assert cancel.command.state is CommandState.SENT
+    assert [json.loads(line)["type"] for _, line in rig.link.lines] == ["execution.close", "execution.cancel"]
+
+    sent_before = len(rig.link.lines)
+    refused = [
+        await rig.execution.submit(rig.request("cmd-halt-open", decision)),
+        await rig.execution.submit(rig.request("cmd-halt-open-auto", decision), automatic=True),
+        await rig.execution.submit(
+            make_request(
+                "cmd-halt-modify",
+                account_id=rig.account.id,
+                kind=CommandKind.MODIFY,
+                position_id="777",
+                stop_loss=1.0995,
+                risk_decision_id=None,
+            )
+        ),
+        await rig.execution.submit(
+            make_request(
+                "cmd-halt-close-auto",
+                account_id=rig.account.id,
+                kind=CommandKind.CLOSE,
+                position_id="777",
+                risk_decision_id=None,
+            ),
+            automatic=True,
+        ),
+    ]
+    for outcome in refused:
+        assert outcome.command.state is CommandState.REJECTED and RejectCode.HALTED in {
+            r.code for r in outcome.rejections
+        }
+    assert len(rig.link.lines) == sent_before  # none of them left the core
+
+
+async def test_the_agents_local_halt_does_not_stop_a_human_exit_either(h: Harness) -> None:
+    rig = await make_rig(h, AutonomyMode.ARMED)
+    rig.link.capabilities = ["ping", "halt", "close", "cancel"]
+    rig.link.halted = True  # the agent's own kill switch, set on the chart or by the core
+    decision = await rig.approved()
+    close = await rig.execution.submit(
+        make_request(
+            "cmd-lhalt-close",
+            account_id=rig.account.id,
+            kind=CommandKind.CLOSE,
+            position_id="777",
+            risk_decision_id=None,
+        )
+    )
+    assert close.command.state is CommandState.SENT and rig.link.sent()[-1]["type"] == "execution.close"
+    opening = await rig.execution.submit(rig.request("cmd-lhalt-open", decision), automatic=True)
+    assert opening.command.state is CommandState.REJECTED and RejectCode.HALTED in {r.code for r in opening.rejections}
+    automatic_close = await rig.execution.submit(
+        make_request(
+            "cmd-lhalt-close-auto",
+            account_id=rig.account.id,
+            kind=CommandKind.CLOSE,
+            position_id="777",
+            risk_decision_id=None,
+        ),
+        automatic=True,
+    )
+    assert automatic_close.command.state is CommandState.REJECTED
+
+
+@pytest.mark.parametrize("mode", [AutonomyMode.OFF, AutonomyMode.OBSERVE, AutonomyMode.PAPER])
+async def test_a_human_closing_reaches_the_agent_in_off_observe_and_paper_too(h: Harness, mode: AutonomyMode) -> None:
+    """ADR 0034: the way out is never closed by the mode. A closing issued by a human gesture goes to the agent in OFF, OBSERVE and PAPER
+    like in CONFIRM and HALTED; without an agent that can close it is refused for that reason — not silently recorded as if it had worked."""
+    rig = await make_rig(h, mode)
+    rig.link.capabilities = ["ping", "halt", "close", "cancel"]
+    outcome = await rig.execution.submit(
+        make_request(
+            f"cmd-{mode.value}-close", account_id=rig.account.id, kind=CommandKind.CLOSE, position_id="777",
+            risk_decision_id=None,
+        )
+    )  # fmt: skip
+    assert outcome.command.route is ExecutionRoute.CONFIRM and outcome.command.state is CommandState.SENT
+    assert len(rig.link.lines) == 1
+
+    rig.link.capabilities = ["ping", "halt"]  # an agent that cannot close: refused, with the reason
+    refused = await rig.execution.submit(
+        make_request(
+            f"cmd-{mode.value}-close-2", account_id=rig.account.id, kind=CommandKind.CLOSE, position_id="778",
+            risk_decision_id=None,
+        )
+    )  # fmt: skip
+    assert refused.command.state is CommandState.REJECTED
+    assert RejectCode.AGENT_CAPABILITY_MISSING in {r.code for r in refused.rejections}
+
+
+@pytest.mark.parametrize("mode", [AutonomyMode.OFF, AutonomyMode.OBSERVE, AutonomyMode.PAPER])
+async def test_an_automatic_closing_still_follows_the_mode_only_the_human_gesture_opens_the_way(
+    h: Harness, mode: AutonomyMode
+) -> None:
+    rig = await make_rig(h, mode)
+    rig.link.capabilities = ["ping", "halt", "close", "cancel"]
+    outcome = await rig.execution.submit(
+        make_request(
+            f"cmd-{mode.value}-auto-close", account_id=rig.account.id, kind=CommandKind.CLOSE, position_id="777",
+            risk_decision_id=None,
+        ),
+        automatic=True,
+    )  # fmt: skip
+    assert rig.link.lines == []
+    assert outcome.command.route in {ExecutionRoute.NONE, ExecutionRoute.PAPER}
+
+
+async def test_the_disable_trading_switch_stops_risk_not_the_way_out(h: Harness) -> None:
+    rig = await make_rig(h, AutonomyMode.CONFIRM)
+    rig.link.capabilities = ["ping", "halt", "close", "cancel", "modify"]
+    await rig.accounts.set_trading_enabled(rig.account.id, False)
+    close = await rig.execution.submit(
+        make_request(
+            "cmd-dis-close", account_id=rig.account.id, kind=CommandKind.CLOSE, position_id="777", risk_decision_id=None
+        )
+    )
+    assert close.command.state is CommandState.SENT  # a human closing goes through
+    modify = await rig.execution.submit(
+        make_request(
+            "cmd-dis-modify", account_id=rig.account.id, kind=CommandKind.MODIFY, position_id="777", stop_loss=1.09,
+            risk_decision_id=None,
+        )
+    )  # fmt: skip
+    assert RejectCode.TRADING_DISABLED in {r.code for r in modify.rejections}  # a stop move is not an exit
+
+
 async def test_only_the_active_account_receives_automatic_commands(h: Harness) -> None:
     rig = await make_rig(h, AutonomyMode.ARMED)
     second = await rig.accounts.create(exness(login=8_000_008, terminal_path="C:/MT5/second"))
-    await rig.accounts.connect(second.id)
-    assert rig.accounts.active_account_id == rig.account.id
+    assert (
+        rig.accounts.active_account_id == rig.account.id
+    )  # the second one is registered, not connected: it cannot be taken
     decision = make_decision(second.id, approved=True).model_copy(
         update={"expires_at": h.clock.now() + timedelta(seconds=60)}
     )
@@ -391,6 +549,37 @@ async def test_ack_then_fill_walks_the_happy_path(h: Harness) -> None:
     assert reported.outcome == "executed" and reported.broker_position_id == "9001"
     await rig.execution.on_report(LOGIN, report("cmd-ok-1", "FILLED", filled_volume=0.05))  # a repeated report
     assert (await rig.execution.get("cmd-ok-1")).state is CommandState.EXECUTED  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("status", ["SUBMITTED", "MODIFIED", "CLOSED", "CANCELLED"])
+async def test_every_success_report_of_the_agent_takes_the_command_to_executed(h: Harness, status: str) -> None:
+    """ADR 0029: a resting LIMIT order, a stop move, a close and a cancel are reported with their own words, and each one means
+    « the broker did it » — none of them is ignored and left to time out into UNKNOWN."""
+    rig = await make_rig(h, AutonomyMode.ARMED)
+    command_id = f"cmd-{status.lower()}-1"
+    await sent_command(rig, command_id)
+    await rig.execution.on_ack(LOGIN, ExecutionAck(account_id=LOGIN, command_id=command_id, status="ACCEPTED"))
+    # a report without a side (a management command has none of its own) is read, not dropped
+    await rig.execution.on_report(LOGIN, report(command_id, status, side=None, broker_order_id=9002, detail=status))
+    done = await rig.execution.get(command_id)
+    assert done is not None and done.state is CommandState.EXECUTED
+    assert h.recorder.of(ExecutionReported)[-1].outcome == "executed"
+
+
+def test_the_wire_reads_the_reports_the_1_12_agent_writes() -> None:
+    """The exact shapes TradingOsAgent.mq5 puts on the wire: a null side, ids as strings, the new CANCELLED status."""
+    from trading_os.infrastructure.mt5.wire import SUCCESS_REPORT_STATUSES, ExecutionReport, decode_line
+
+    line = (
+        '{"version":1,"type":"execution.report","accountId":"1000001","time":1790000000000,"commandId":"cmd-x-1",'
+        '"status":"CANCELLED","symbol":"EURUSDm","side":null,"brokerOrderId":"9002","brokerPositionId":null,'
+        '"filledVolume":null,"averagePrice":null,"brokerRetcode":"10009","detail":"CANCELLED pending order 9002 EURUSDm"}'
+    )
+    message = decode_line(line).message
+    assert isinstance(message, ExecutionReport) and message.status == "CANCELLED" and message.side is None
+    assert message.broker_order_id == "9002" and message.status in SUCCESS_REPORT_STATUSES
+    # an empty side — what 1.11 could write for a report without one — would drop the whole frame: that is why 1.12 writes null
+    assert decode_line(line.replace('"side":null', '"side":""')).message is None
 
 
 async def test_a_final_report_that_overtakes_a_lost_ack_still_settles_the_command(h: Harness) -> None:

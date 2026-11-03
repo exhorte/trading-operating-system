@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import Field
 
 from trading_os.domain.autonomy.state import AutonomyMode
-from trading_os.domain.market.sessions import DEFAULT_TRADING_WINDOWS, TradingWindow
+from trading_os.domain.market.sessions import ACCOUNT_TRADING_WINDOWS, TradingWindow
 from trading_os.domain.primitives import DomainModel
 from trading_os.domain.risk.policy import RiskProfile
 
@@ -58,7 +58,9 @@ class FtmoChallenge(DomainModel):
 
 class TradingRules(DomainModel):
     allowed_symbols: tuple[str, ...] | None = None  # broker-side names; None = whatever the broker offers
-    trading_windows: tuple[TradingWindow, ...] = DEFAULT_TRADING_WINDOWS  # New York local time
+    # New York local time. The envelope the Risk Engine's session gate enforces: a new account starts with every hour a strategy may
+    # trade (ADR 0030); each strategy keeps to its own windows inside it.
+    trading_windows: tuple[TradingWindow, ...] = ACCOUNT_TRADING_WINDOWS
     challenge: FtmoChallenge | None = None
     # What a prop phase requires beyond staying inside the limits. None = "not sourced" — shown as such, never guessed.
     min_trading_days: int | None = Field(default=None, ge=1)

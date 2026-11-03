@@ -23,8 +23,8 @@ export type ActionState = { status: "idle" } | { status: "busy"; what: string } 
 
 /**
  * The gestures a card offers on one registered account. Each is a request to the core, which decides — attaching needs the
- * terminal to be logged into that very account, and detaching or switching is refused while it could hide risk (an open
- * position, a pending order, a command in doubt). The refusal comes back with its reasons and is shown as is; the new state
+ * terminal to be logged into that very account, and detaching is refused while it could hide risk (an open
+ * position, a pending order, a command in doubt); only one account is connected at a time (ADR 0021). The refusal comes back with its reasons and is shown as is; the new state
  * arrives through the stream (`account.*` events), not from this module.
  *
  * No password is asked here, and none is stored by the Trading OS: the terminal is logged in by the trader (ADR 0013).
@@ -47,8 +47,6 @@ export function useAccountActions(accountId: string) {
     connect: () => run("Rattachement…", () => call("accounts_connect", { path: { account_id: accountId } })),
     disconnect: () =>
       run("Détachement…", () => call("accounts_disconnect", { path: { account_id: accountId } })),
-    makeActive: () =>
-      run("Changement de compte actif…", () => call("accounts_set_active", { body: { accountId } })),
     setTrading: (enabled: boolean) =>
       run(enabled ? "Activation du trading…" : "Désactivation du trading…", () =>
         call("accounts_set_trading", { path: { account_id: accountId }, body: { enabled } }),

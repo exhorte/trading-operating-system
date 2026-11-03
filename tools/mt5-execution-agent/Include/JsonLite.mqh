@@ -142,6 +142,20 @@ double JsonGetDouble(const string json, const string key, const double defaultVa
    return StringToDouble(raw);
 }
 
+//--- A number that may be absent or null on purpose (a MODIFY names only the level it moves; the other is null): true only when
+//    the key is present and not null, so "leave it as it is" can never be read as "set it to zero".
+bool JsonGetOptionalDouble(const string json, const string key, double &value)
+{
+   string raw;
+   bool isNull;
+   if(!JsonFindRaw(json, key, raw, isNull) || isNull)
+   {
+      return false;
+   }
+   value = StringToDouble(raw);
+   return true;
+}
+
 long JsonGetLong(const string json, const string key, const long defaultValue = 0)
 {
    string raw;

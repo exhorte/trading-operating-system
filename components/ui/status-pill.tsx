@@ -41,7 +41,7 @@ export function StatusPill({ tone, children, pulse = false, onPanel = false, cla
   return (
     <Badge
       variant="outline"
-      className={cn("text-[11px]", onPanel ? PANEL_TONE_CLASSES[tone] : TONE_CLASSES[tone], className)}
+      className={cn("text-[0.6875rem]", onPanel ? PANEL_TONE_CLASSES[tone] : TONE_CLASSES[tone], className)}
     >
       <span className={cn("size-1.5 rounded-full bg-current", pulse && "animate-pulse")} aria-hidden />
       {children}

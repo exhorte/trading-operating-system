@@ -61,7 +61,7 @@ externes.
 | Positions simultanées | `ValidateOrderCommand`, `InpMaxOpenPositions` (toutes positions du terminal) | `POSITIONS_LIMIT` |
 | Stop-loss obligatoire | `ValidateOrderCommand` | `STOP_MISSING` |
 | Spread maximum | `ValidateOrderCommand`, **par symbole en unités de prix** depuis I1 (`InpMaxSpreadCsv`) ; symbole sans entrée = refus | `SPREAD_LIMIT_MISSING`, `SPREAD_TOO_WIDE` |
-| Kill switch local | **Existe depuis I1** : fichier dans `MQL5\Files` (bouton du graphique, `control.halt` qui ne peut que le poser, ou dépôt manuel de `tradingos_halt.flag`) ; levé seulement par un humain sur le graphique ; tient le cœur éteint | `HALTED` |
+| Kill switch local | **Existe depuis I1** : fichier dans `MQL5\Files` (bouton du graphique, `control.halt` qui ne peut que le poser, ou dépôt manuel de `tradingos_halt.flag`) ; levé seulement par un humain sur le graphique ; tient le cœur éteint. **Depuis l'ADR 0033 (agent 1.13), il arrête le nouveau risque, pas la sortie** : ouvertures et `MODIFY` refusés, une fermeture ou une annulation humaine passe | `HALTED` (ouvertures, `MODIFY`) |
 | Compte de la commande ≠ terminal | `HandleOrderCommand`, contre le **login réel** du terminal depuis I1 | `ACCOUNT_MISMATCH` |
 | Identité attendue (nouveau, I1) | `InpAccountId` facultatif ; s'il diffère du login, l'agent reste chargé et refuse tout | `IDENTITY_REFUSED` |
 | Magic number | `InpMagicNumber` > 0, porté par tout ordre ; positions externes signalées (EA-06) | — |

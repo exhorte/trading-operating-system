@@ -139,6 +139,26 @@ Hors plateforme, construisibles isolément, sans dépendance à l'avancement des
 | S2 — Rapport hebdo CLI depuis l'export MT5 | 1 j | 3 |
 | S3 — Watcher de conditions de marché | 0,5 j | 2 |
 
+## Mission « Trading OS autonome » — phases (2026-11-01)
+
+> Le plan de mission est `../../../01_context/plan trading operating system.md` (hors dépôt, dans le vault). **La conformité de l'état actuel à ce plan, section par section, et les incréments restants dans l'ordre**
+> sont dans `../../../02_plan/plan-reprise-2026-11-01.md` : à lire avant de choisir la prochaine phase. Les lignes ci-dessous disent ce qui est *construit*, pas que le plan est *respecté*.
+
+Mission donnée le 2026-11-01 : faire du Trading OS une plateforme de trading algorithmique autonome, déterministe, pilotée par Python, sur XAUUSD et EURUSD (scalping / intraday, Londres et New York AM). L'accord d'élargissement est dans `session-log.md` (2026-11-01) ; **chaque phase attend son ADR avant son code** (`.claude/CLAUDE.md`). Les modes d'autonomie montent un par un : `OBSERVE` → `PAPER` → `CONFIRM` → démo automatique → réel avec confirmation → réel automatique (ce dernier jamais atteint d'office).
+
+| Phase | Contenu | État au 2026-11-01 |
+|---|---|---|
+| 0 — Audit et assainissement | état réel du dépôt, nettoyage, documents | audit fait ; **nettoyage non fait** (aucun composant supprimé) |
+| 1 — Risk Engine | grille dynamique, déclencheur 200 $, limites jour / semaine, 15 trades, 5 positions, lots | **livré** (ADR 0019, `risk_rules.md`) ; écarts clos le 2026-11-01 (ADR 0022 : pas de limite par symbole, perte hebdomadaire réglable dans Settings) ; restent les arrêts 20 R / 50 trades de l'ADR 0015 |
+| — Connexion des comptes | formulaire, lecture chez le courtier, profil FTMO sur démo, un seul compte connecté | **livré** (ADR 0020, 0021, T13) |
+| 2 — Stratégie ICT (S02) | biais H4/H1, dealing range, liquidité, sweep, displacement, MSS, POI, FVG, entrées `LIMIT` | **construite le 2026-11-01** (ADR 0024) : le pipeline de S01 recomposé (biais H4+H1, entrée `LIMIT` dans la zone), **arrêtée par défaut** (`STRATEGY_S02=off`) ; jamais mesurée sur des données réelles |
+| 3 — Exécution et Position Manager | `OPEN` marché et `LIMIT`, `MODIFY`, `CLOSE`, `PARTIAL_CLOSE`, `CANCEL`, break-even, fin de séance | **construite le 2026-11-01** : cœur (ADR 0023) et **agent MQL5 1.12** (ADR 0029, un seul `ExecuteOrder`, compilé sur copie sans erreur). **Jamais éprouvée chez un courtier** : agent compilé `OBSERVE`, vérification sur démo restant à faire par l'utilisateur |
+| 4 — Account Guardian | surveillance continue, kill switch, reprise après panne | **construit le 2026-11-01 (ADR 0025), complété le 2026-11-02 (ADR 0032)** : limite atteinte → positions du cœur fermées, position sans stop → fermée après 30 s, constat de reprise ; surveille aussi spread, glissement, santé (terminal, flux, agent, courtier, réconciliation), exposition par symbole ; demande une réconciliation ; `GET /api/guardian`. `HALTED` laisse passer les fermetures et annulations humaines (ADR 0033) |
+| 5 — Backtest et validation | coûts réels, walk-forward, Monte Carlo, analyse par session | **construit le 2026-11-01** (ADR 0026, qui borne l'exception à l'ADR 0002) : `python -m trading_os validate`, une configuration figée, registre des regards. **Jamais lancé sur les vraies bougies** |
+| 6 — Autonomie | critères de passage de chaque mode | **critères écrits et mesurés le 2026-11-01** (ADR 0027), **consultatifs** : `GET /api/autonomy/promotion`. Modes réels toujours bloqués par la préparation |
+| 7 — Cockpit | opportunités, raisons de blocage (« WHY NO TRADE ? »), état de l'autonomie | **panneau « Pourquoi pas de trade ? »** sur le tableau de bord (ADR 0028, `GET /api/why-no-trade`) ; pas de page dédiée au Guardian ni aux critères de passage |
+| — Cockpit opérationnel (ADR 0034) | un bouton pour tout fermer, un bouton pour démarrer, l'échelle du plan | **construit le 2026-11-02** : « FERMER TOUTES LES POSITIONS » (dans tous les modes, `HALTED` compris), « DÉMARRER LE SYSTÈME » (treize étapes, réconciliation, `OBSERVE` au plus), « AUTORISER LE TRADING AUTOMATIQUE » (geste séparé), écran Démarrage, correspondance `DEMO_AUTO`/`LIVE_CONFIRM`/`LIVE_AUTO`. **Jamais éprouvé chez un courtier** (agent compilé `OBSERVE`) |
+
 ## Hors périmètre, volontairement
 
 - Générateur de signaux IA, copy-trading. (« Bot d'exécution autonome » est sorti de cette liste le 2026-09-26 : l'ADR 0015 autorise l'exécution autonome de la stratégie que l'utilisateur configure lui-même, dans des limites automatiques — jamais d'une stratégie inventée ou optimisée.)

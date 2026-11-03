@@ -74,7 +74,7 @@ export function DisciplineGauge() {
       actions={<span className="text-sm text-muted-foreground">{lookbackDays} derniers jours</span>}
     >
       <div className="flex flex-col items-center">
-        <svg viewBox="0 0 140 78" className="w-full max-w-[220px]" role="img"
+        <svg viewBox="0 0 140 78" className="w-full max-w-[13.75rem]" role="img"
           aria-label={`Score de discipline ${percent} %, ${label}`}>
           <path
             d={ARC_PATH}

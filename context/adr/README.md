@@ -24,6 +24,22 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0016 | Architecture Python-native : le cœur est un monolithe Python | Accepté le 2026-10-07 — supersède la pile .NET/SignalR de 0003, amende 0004 et 0013 (stockage opt-in des identifiants) ; réalise le Risk Engine côté serveur de 0007/0015 ; points à confirmer listés dans l'ADR |
 | 0017 | Système de design : « ExponentValue Monochrome » | Accepté le 2026-10-08 — supersède l'apparence de 0012 (thème clair + sombre, panneau de métriques sombre, une seule pastille menthe), amende 0003 (« cockpit sombre ») ; écarts assumés par rapport au design d'origine et points laissés ouverts listés dans l'ADR |
 | 0018 | Suppression de la capture graphique : on garde les données | Accepté le 2026-10-09 — supersède 0009 pour le rendu (plus aucun graphique ni image de trade) ; les faits enregistrés (prix d'entrée, stop, objectif, sortie) et le dossier du trade restent |
+| 0019 | Risque dynamique par trade et nouvelles limites officielles | Accepté le 2026-11-01 — amende 0015 (limites : 15 trades, 5 positions, perte hebdomadaire 10 %, grille de risque −5 % → 1,5 %, déclencheur 200 $) ; interprétations et points à confirmer listés dans l'ADR |
+| 0020 | Connexion par identifiants du courtier, lecture du compte chez lui, profil FTMO répété sur une démo | Accepté le 2026-11-01 — réalise l'incrément I3 de 0013 ; amende 0019 (plafonds contractuels portés par le challenge des règles) ; essai avec mot de passe à faire par l'utilisateur |
+| 0021 | Un seul compte connecté à la fois ; le formulaire de connexion sur Account, et à la place des écrans vides | Accepté le 2026-11-01 — supersède 0020 pour l'emplacement du formulaire, amende 0013 (D2) ; `set_active` à retirer dans un lot à part |
+| 0022 | Aucune limite de positions par symbole ; la perte hebdomadaire se règle dans Settings | Accepté le 2026-11-01 — amende 0019 et 0015 ; le champ `max_positions_per_symbol` (jamais appliqué) est retiré |
+| 0023 | Ordres `LIMIT`, `MODIFY`, `CLOSE`, `PARTIAL_CLOSE`, `CANCEL` et Position Manager (phase 3) | Accepté le 2026-11-01 — côté cœur ; l'agent MQL5 n'est pas modifié |
+| 0024 | Stratégie S02 (ICT 2022) : le pipeline de S01 recomposé, arrêtée par défaut (phase 2) | Accepté le 2026-11-01 |
+| 0025 | Account Guardian : un surveillant indépendant des positions du cœur (phase 4) | Accepté le 2026-11-01 |
+| 0026 | Banc de validation : mesurer une configuration figée, jamais en chercher une (phase 5) | Accepté le 2026-11-01 — amende 0002 de façon bornée |
+| 0027 | Critères de passage de chaque mode d'autonomie : mesurés, affichés, jamais imposés (phase 6) | Accepté le 2026-11-01 — consultatif |
+| 0028 | « Pourquoi pas de trade ? » : une seule réponse lisible (phase 7) | Accepté le 2026-11-01 |
+| 0029 | Agent MQL5 : gestionnaires `LIMIT`, `MODIFY`, `CLOSE`, `PARTIAL_CLOSE`, `CANCEL` derrière un seul `ExecuteOrder` | Accepté le 2026-11-01 — réalise la partie MQL5 de 0023 ; agent 1.12, toujours `OBSERVE` compilé, un seul `OrderSend` |
+| 0030 | Fenêtres horaires propres à chaque stratégie : S02 à 08:30–11:00 New York, S01 inchangée | Accepté le 2026-11-01 — amende 0024 (S02 n'hérite plus des heures de S01) |
+| 0031 | N8 « Drawdown Flatlining » : un plafond qui ne fait que baisser le risque, par pas de 0,1 % | Accepté le 2026-11-01 — étend 0019 ; désactivé et inerte tant que la plus petite unité n'est pas écrite |
+| 0032 | Account Guardian complet : surveiller spread, glissement et santé ; demander une réconciliation (plan §9) | Accepté le 2026-11-02 — étend 0025 ; l'annulation sur spread large est désactivée par défaut |
+| 0033 | Sous `HALTED`, les fermetures et les annulations passent ; tout le reste reste refusé | Accepté le 2026-11-02 — amende 0025 ; agent 1.13 ; une sortie humaine seulement, jamais l'automatique |
+| 0034 | « Fermer toutes les positions » et « Démarrer le système » depuis le cockpit ; les sorties humaines passent dans tous les modes ; l'échelle du plan lue sur celle du dépôt | Accepté le 2026-11-02 — amende 0023 et 0033 ; aucun changement de l'agent MQL5 |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 

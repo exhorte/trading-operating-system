@@ -14,7 +14,7 @@ from tests.support.harness import Harness, Recorder
 from tests.unit.services.test_accounts_service import exness
 from trading_os.app.config import Settings, TradingMode
 from trading_os.app.container import Container, build_container
-from trading_os.domain.accounts.models import Account
+from trading_os.domain.accounts.models import Account, Environment
 from trading_os.domain.autonomy.readiness import Fact
 from trading_os.domain.autonomy.state import AutonomyMode
 from trading_os.domain.execution.agent import AgentStatus
@@ -106,9 +106,9 @@ class Core:
     # ------------------------------------------------------------------------------------------ building a scenario
     async def add_account(
         self, *, max_mode: AutonomyMode = AutonomyMode.AUTONOMOUS, configured: bool = True, connect: bool = True,
-        login: int = 1_000_001,
+        login: int = 1_000_001, environment: Environment = Environment.DEMO,
     ) -> Account:  # fmt: skip
-        created = await self.c.accounts.create(exness(login=login))
+        created = await self.c.accounts.create(exness(login=login, environment=environment))
         if connect:
             await self.c.accounts.connect(created.id)
         rules = created.rules

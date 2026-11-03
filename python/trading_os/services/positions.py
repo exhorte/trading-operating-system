@@ -30,7 +30,7 @@ from trading_os.domain.events import (
     PositionsSnapshotUpdated,
 )
 from trading_os.domain.positions.models import ClosedTrade, PendingOrder, Position
-from trading_os.domain.risk.trading_day import resolve_today_start_utc
+from trading_os.domain.risk.trading_day import resolve_week_start_utc
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.client import Mt5Client
 from trading_os.infrastructure.mt5.mt5_semantics import (
@@ -193,9 +193,12 @@ class PositionService:
                 if position.position_id not in already:
                     await self._opened(account_id, position, now)
             st.known, st.by_id, st.baselined = set(current), dict(current), True
-            # Rebuild the trading day from the broker: trades closed while we were not looking still count (the day's
-            # trade counter and the loss streak must survive a restart). Idempotent: known facts are not republished.
-            st.last_deal_scan = resolve_today_start_utc(now, client.offset) if client.offset_known else now
+            # Rebuild the trading *week* from the broker: trades closed while we were not looking still count (the day's
+            # trade counter, the loss streak and — ADR 0019 — the equity the week started with, which is the balance less
+            # what the week realised, must survive a restart). Scanning only the day would make a core started mid-week
+            # under-count the weekly loss, the dangerous direction. Idempotent: known facts are not republished, and the
+            # day's counter still anchors on the day (``position_opens`` since the day anchor).
+            st.last_deal_scan = resolve_week_start_utc(now, client.offset) if client.offset_known else now
             await self._missed_round_trips(account_id, st, client, set(), set(current), now)
             st.last_deal_scan = now
             return

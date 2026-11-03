@@ -26,6 +26,7 @@ from trading_os.domain.market.calendar import CalendarSnapshot, UpcomingRelease
 from trading_os.domain.positions.models import ClosedTrade
 from trading_os.domain.primitives import Side
 from trading_os.domain.risk.lockout import CONSECUTIVE_LOSS_REASON, KILL_SWITCH_REASON
+from trading_os.domain.risk.n8 import N8Policy
 from trading_os.domain.risk.state import RiskMode
 from trading_os.domain.strategy.intent import TradeIntent
 from trading_os.infrastructure.database.pool import Database
@@ -83,9 +84,9 @@ class Rig:
         pass
 
 
-async def make_rig(h: Harness) -> Rig:
+async def make_rig(h: Harness, *, n8: N8Policy | None = None, **account: object) -> Rig:
     accounts = service(h)
-    created = await accounts.create(exness())
+    created = await accounts.create(exness(**account))
     await accounts.connect(created.id)
     market = MarketDataService(accounts=accounts, repos=h.repos, events=h.events, clock=h.clock)
     positions = PositionService(accounts=accounts, repos=h.repos, events=h.events, clock=h.clock, market=market)
@@ -93,7 +94,7 @@ async def make_rig(h: Harness) -> Rig:
     calendar = FakeCalendar(CalendarSnapshot(releases=[], synced_at=h.clock.now()))
     risk = RiskService(
         accounts=accounts, positions=positions, market=market, repos=h.repos, events=h.events, clock=h.clock,
-        calendar=calendar, agents=agents,
+        calendar=calendar, agents=agents, n8=n8,
     )  # fmt: skip
     positions.set_enricher(risk.enrich)
     risk.subscribe()
@@ -217,6 +218,67 @@ async def test_a_position_carried_over_midnight_leaves_the_day_start_unknown_and
     assert any("starting equity" in p for p in rig.risk.problems(rig.account_id))
 
 
+async def test_the_week_starts_where_the_deals_say_and_is_kept(h: Harness) -> None:
+    rig = await make_rig(h)
+    login = (await rig.accounts.get(rig.account_id)).login
+    # Wednesday noon. Monday realised -600 $, today nothing: the week began at 10 000, the day at 9 400.
+    rig.terminal.accounts[login].balance = 9_400.0
+    monday = int(h.clock.now().replace(hour=9, minute=0).timestamp()) - 2 * 86_400
+    rig.terminal.add_deal(position_id=21, symbol="EURUSDm", side=DEAL_TYPE_BUY, entry=DEAL_ENTRY_IN, volume=0.1,
+                          price=1.1, server_time=monday)  # fmt: skip
+    rig.terminal.add_deal(position_id=21, symbol="EURUSDm", side=1, entry=1, volume=0.1, price=1.094,
+                          server_time=monday + 600, profit=-600.0)  # fmt: skip
+    await rig.warm()
+    status = await rig.risk.evaluate(rig.account_id)
+    today = await h.repos.risk.today(rig.account_id, h.clock.now())
+    assert today.week_start_equity == 10_000.0 and today.day_start_equity == 9_400.0
+    assert today.week_anchor_starts_at_utc is not None and today.week_anchor_starts_at_utc.weekday() == 0
+    assert status is not None and status.weekly_loss_used_percent == pytest.approx(6.0)
+    assert status.daily_loss_used_percent == 0.0
+
+    # The reference is persisted: a later reading of the same week never replaces it.
+    rig.terminal.accounts[login].balance = 9_300.0
+    await rig.tick()
+    again = await h.repos.risk.today(rig.account_id, h.clock.now())
+    assert again.week_start_equity == 10_000.0
+
+
+async def test_the_weekly_loss_limit_locks_the_account_and_blocks_entries(h: Harness) -> None:
+    rig = await make_rig(h)
+    login = (await rig.accounts.get(rig.account_id)).login
+    rig.terminal.accounts[login].balance = 8_800.0  # Monday's -1 200 $ is the week's -12 %
+    monday = int(h.clock.now().replace(hour=9, minute=0).timestamp()) - 2 * 86_400
+    rig.terminal.add_deal(position_id=22, symbol="EURUSDm", side=DEAL_TYPE_BUY, entry=DEAL_ENTRY_IN, volume=0.1,
+                          price=1.1, server_time=monday)  # fmt: skip
+    rig.terminal.add_deal(position_id=22, symbol="EURUSDm", side=1, entry=1, volume=0.1, price=1.088,
+                          server_time=monday + 600, profit=-1_200.0)  # fmt: skip
+    await rig.warm()
+    status = await rig.risk.evaluate(rig.account_id)
+    assert status is not None and status.state is RiskMode.LOCKED
+    weekly = next(g for g in status.gates if g.gate_id == "gate-weekly-loss")
+    assert weekly.state == "blocked"
+    enabled = h.recorder.of(LockoutEnabled)
+    assert len(enabled) == 1 and "Weekly loss guard" in enabled[0].reason
+    answer = await rig.risk.can_i_trade(rig.account_id, "EURUSDm")
+    assert answer.decision == "DENIED" and "weekly_loss_limit_reached" in answer.reasons
+    # Acknowledging does not open the door while the loss is still there: the gate closes it again at once.
+    await rig.risk.acknowledge(rig.account_id)
+    again = await rig.risk.evaluate(rig.account_id)
+    assert again is not None and again.state is RiskMode.LOCKED
+    assert len(h.recorder.of(LockoutEnabled)) == 2
+
+
+async def test_without_a_recorded_initial_capital_no_entry_is_approved(h: Harness) -> None:
+    rig = await make_rig(h, reference_balance=None)
+    await rig.warm()
+    status = await rig.risk.evaluate(rig.account_id)
+    assert status is not None and status.performance_percent is None  # nothing to measure the grid against
+    decision = await rig.risk.review(intent(rig.account_id))
+    assert not decision.approved and "reference_capital_not_fixed" in decision.reasons
+    assert decision.sizing is None and decision.allowance is not None and decision.allowance.status == "unavailable"
+    assert await h.repos.risk.get_decision(decision.decision_id) == decision  # the refusal is on record too
+
+
 # ------------------------------------------------------------------------------------------------------ lockouts
 
 
@@ -334,10 +396,50 @@ async def test_a_reviewed_intent_is_sized_from_the_broker_specification_and_pers
     assert decision.sizing is not None and decision.approved_volume == decision.sizing.volume
     # 1 % of 10 000 = 100 $; 10 pips + 0.8 pip of spread on EURUSD at 1 $/pip/0.1 lot… far below the 100 $ budget cap rule
     assert 0 < decision.sizing.risk_at_stop <= 100.0
+    # ADR 0019: the dynamic allowance is on the persisted decision — flat account, so the grid's « initial capital » row.
+    assert decision.allowance is not None and decision.allowance.risk_percent == 1.0
+    assert decision.allowance.binding_cap == "grid" and decision.allowance.status == "allowed"
     assert decision.symbol == "EURUSDm" and decision.side is Side.BUY
     assert await h.repos.risk.get_decision(decision.decision_id) == decision
     assert [e.decision.decision_id for e in h.recorder.of(RiskApproved)] == [decision.decision_id]
     assert h.recorder.of(RiskRejected) == []
+
+
+async def test_n8_lowers_the_next_trades_risk_after_a_loss_and_the_decision_says_so(h: Harness) -> None:
+    """ADR 0031: with N8 on and its smallest unit written (0.3 %), one recorded loss caps the next trade at 0.3 % — the grid's 1 % is the
+    ceiling, not the value. The cap is on the persisted decision; it was not there before the loss."""
+    rig = await make_rig(h, n8=N8Policy.from_percent(enabled=True, minimum_percent=0.3))
+    await rig.warm()
+    before = await rig.risk.review(intent(rig.account_id))
+    assert before.allowance is not None and (before.allowance.risk_percent, before.allowance.binding_cap) == (
+        1.0,
+        "grid",
+    )
+
+    await record_loss(rig, "p-1", -20.0)
+    after = await rig.risk.review(intent(rig.account_id).model_copy(update={"intent_id": "int-2"}))
+    assert after.allowance is not None and after.approved, after.reasons
+    assert (after.allowance.risk_percent, after.allowance.binding_cap) == (0.3, "n8_flatlining")
+    assert "the last trade lost" in after.allowance.detail or any(
+        "the last trade lost" in c.detail for c in after.allowance.caps
+    )
+    assert after.sizing is not None and after.sizing.risk_at_stop < before.sizing.risk_at_stop  # type: ignore[union-attr]
+
+    h.clock.advance(seconds=60)  # the win closes later than the loss: « the most recent trade » is not a tie
+    await record_loss(rig, "p-2", 35.0)  # a winning trade releases it: the grid decides again
+    released = await rig.risk.review(intent(rig.account_id).model_copy(update={"intent_id": "int-3"}))
+    assert released.allowance is not None and released.allowance.binding_cap == "grid"
+
+
+async def test_n8_switched_on_without_its_smallest_unit_changes_nothing(h: Harness) -> None:
+    rig = await make_rig(h, n8=N8Policy.from_percent(enabled=True, minimum_percent=None))
+    await rig.warm()
+    await record_loss(rig, "p-1", -20.0)
+    decision = await rig.risk.review(intent(rig.account_id))
+    assert decision.allowance is not None and (decision.allowance.risk_percent, decision.allowance.binding_cap) == (
+        1.0,
+        "grid",
+    )
 
 
 async def test_a_wrong_side_stop_is_refused_and_the_refusal_is_on_record(h: Harness) -> None:
@@ -371,7 +473,8 @@ async def test_a_cycle_publishes_the_read_model_with_its_limits(h: Harness) -> N
     published = h.recorder.of(RiskStateUpdated)
     assert status is not None and published and published[-1].risk == status
     assert status.daily_loss_limit_percent == 5.0 and status.max_drawdown_limit_percent == 10.0
-    assert status.max_trades_per_day == 6 and status.trades_today == 0
+    assert status.max_trades_per_day == 15 and status.trades_today == 0  # ADR 0019
+    assert status.weekly_loss_limit_percent == 10.0 and status.weekly_loss_used_percent == 0.0
     assert rig.risk.status(rig.account_id) == status
 
 

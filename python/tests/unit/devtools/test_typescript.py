@@ -253,7 +253,11 @@ def test_the_cockpit_reads_how_far_back_a_strategy_read_may_reach_from_the_core_
 def test_no_secret_shaped_field_reaches_a_type_the_browser_reads(generated: str) -> None:
     """A secret travels in one direction: only the request models carry one (and the words in a comment are not fields)."""
     secret_field = re.compile(r'^\s+"?\w*(password|secret|token)\w*"?\??:', re.IGNORECASE | re.MULTILINE)
-    carriers = {"ConnectRequest", "CredentialRequest"}
+    carriers = {
+        "ConnectRequest",
+        "CredentialRequest",
+        "DiscoverRequest",
+    }  # requests only: browser -> core (ADR 0013, 0020)
     for block in re.finditer(r"export interface (\w+) \{(.*?)\n\}", generated, re.DOTALL):
         name, body = block.group(1), block.group(2)
         if name in carriers:

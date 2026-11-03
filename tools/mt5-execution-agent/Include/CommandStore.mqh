@@ -20,7 +20,11 @@
 //| Since I1 a line carries the whole report, so an outcome can be sent |
 //| again after a reconnection (ReplayRecentReports in the agent):      |
 //| "<commandId>\t<status>\t<detail>\t<symbol>\t<side>\t<timeMs>\t     |
-//|  <orderId>\t<positionId>\t<volume>\t<price>\t<retcode>".           |
+//|  <orderId>\t<positionId>\t<volume>\t<price>\t<retcode>\t<kind>\t    |
+//|  <sl>\t<tp>". The last three (1.12, ADR 0029) say WHAT an UNKNOWN   |
+//| line was about — a limit order, a stop move, a close, a cancel — so |
+//| that reconciliation can look for the right thing; a line written    |
+//| before 1.12 has none of them and reads as an OPEN at the market.    |
 //| Lookup scans the whole file and keeps the LAST matching line (last |
 //| write wins). A personal trading system issues at most a handful of  |
 //| commands a day; a linear scan of a small text file is simple and    |
@@ -44,6 +48,9 @@ struct CommandRecord
    double filledVolume;
    double averagePrice;
    int    retcode;
+   string kind;   // "" (written before 1.12) | OPEN | MODIFY | CLOSE | PARTIAL_CLOSE | CANCEL
+   double sl;     // the stop a MODIFY wanted (0 = none named)
+   double tp;     // the target a MODIFY wanted (0 = none named)
 };
 
 void CommandRecordInit(CommandRecord &rec, const string commandId, const string status, const string detail,
@@ -60,6 +67,9 @@ void CommandRecordInit(CommandRecord &rec, const string commandId, const string 
    rec.filledVolume = 0.0;
    rec.averagePrice = 0.0;
    rec.retcode = 0;
+   rec.kind = "";
+   rec.sl = 0.0;
+   rec.tp = 0.0;
 }
 
 void CommandStoreInit(const long login, const int magicNumber)
@@ -91,6 +101,9 @@ bool CommandStoreParseLine(const string line, CommandRecord &rec)
    rec.filledVolume = (n >= 9 ? StringToDouble(parts[8]) : 0.0);
    rec.averagePrice = (n >= 10 ? StringToDouble(parts[9]) : 0.0);
    rec.retcode = (n >= 11 ? (int)StringToInteger(parts[10]) : 0);
+   rec.kind = (n >= 12 ? parts[11] : "");
+   rec.sl = (n >= 13 ? StringToDouble(parts[12]) : 0.0);
+   rec.tp = (n >= 14 ? StringToDouble(parts[13]) : 0.0);
    return true;
 }
 
@@ -147,7 +160,8 @@ bool CommandStoreRecord(const CommandRecord &rec)
                  CommandStoreSanitize(rec.side) + "\t" + IntegerToString(rec.timeMs) + "\t" +
                  IntegerToString(rec.brokerOrderId) + "\t" + IntegerToString(rec.brokerPositionId) + "\t" +
                  DoubleToString(rec.filledVolume, 2) + "\t" + DoubleToString(rec.averagePrice, 8) + "\t" +
-                 IntegerToString(rec.retcode);
+                 IntegerToString(rec.retcode) + "\t" + CommandStoreSanitize(rec.kind) + "\t" +
+                 DoubleToString(rec.sl, 8) + "\t" + DoubleToString(rec.tp, 8);
    uint written = FileWrite(handle, line);
    FileClose(handle);
    if(written == 0)
@@ -205,11 +219,12 @@ int CommandStoreLatest(CommandRecord &latest[])
    return count;
 }
 
-//--- EA-06: returns every commandId whose most recent recorded status is
-//    exactly "UNKNOWN" — last write wins, same rule as CommandStoreLookup.
-int CommandStoreFindUnknown(string &commandIds[])
+//--- EA-06: every command whose most recent recorded status is exactly
+//    "UNKNOWN" — last write wins, same rule as CommandStoreLookup. The whole
+//    record comes back (1.12): reconciliation needs to know what the line was about.
+int CommandStoreFindUnknown(CommandRecord &unknown[])
 {
-   ArrayResize(commandIds, 0);
+   ArrayResize(unknown, 0);
    CommandRecord latest[];
    int count = CommandStoreLatest(latest);
    int found = 0;
@@ -217,17 +232,21 @@ int CommandStoreFindUnknown(string &commandIds[])
    {
       if(latest[i].status == "UNKNOWN")
       {
-         ArrayResize(commandIds, found + 1);
-         commandIds[found] = latest[i].commandId;
+         ArrayResize(unknown, found + 1);
+         unknown[found] = latest[i];
          found++;
       }
    }
    return found;
 }
 
+//--- Statuses that end a command's story and are reported to the core:
+//    FILLED / PARTIALLY_FILLED (a market order), SUBMITTED (a pending order is
+//    resting at the broker), MODIFIED, CLOSED, CANCELLED (1.12), plus the refusals.
 bool CommandStoreIsFinalStatus(const string status)
 {
    return status == "SIMULATED" || status == "FILLED" || status == "PARTIALLY_FILLED" ||
+          status == "SUBMITTED" || status == "MODIFIED" || status == "CLOSED" || status == "CANCELLED" ||
           status == "FAILED" || status == "REJECTED";
 }
 
