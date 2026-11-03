@@ -15,7 +15,7 @@ Demande d'Exhorte (mission « rendre le Trading OS opérationnel depuis le cockp
 - **Défaut trouvé par un test et corrigé** : la vérification avant `CONFIRM` lisait un rapport de préparation en cache (2 s) — elle est recalculée à cet instant.
 - **Deux tests de l'ADR 0033 amendés** (ils encodaient « OFF/OBSERVE : enregistré seulement » et « Disable Trading refuse une fermeture sous arrêt »), et la garde `FORBIDDEN_WORDS` du contrat OpenAPI (qui interdisait `close-all`) : exactement les quatre routes de la famille sont autorisées, tout autre raccourci reste interdit.
 - **Pas fait, volontairement** : aucun changement de l'agent MQL5 (toujours `OBSERVE`, donc `SIMULATED`) ; les positions d'un autre numéro magique restent à fermer dans MT5 ; pas d'annulation automatique des ordres sous arrêt ni de liquidation automatique sous arrêt. Claude n'a cliqué aucun des boutons : contrôle visuel en lecture seule sur un cœur jetable (terminal simulé, base éphémère, arrêtés ensuite).
-- **Vérifié** : voir `state.md` (pytest, cockpit, build). **Pas commité.**
+- **Vérifié** : voir `state.md` (pytest, cockpit, build). **Commité (`0537d49`) puis fusionné et poussé sur `main` (`8e9e938`, 2026-11-03)** ; la branche de travail a été supprimée.
 
 ## 2026-11-02 (suite 8 : **sous `HALTED`, les fermetures et annulations passent — ADR 0033, agent 1.13**)
 
