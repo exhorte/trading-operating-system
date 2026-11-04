@@ -297,6 +297,19 @@ class TestProviderRules:
         drawdown = apply_provider_ceilings(loose, ceilings).risk_profile.drawdown
         assert (drawdown.daily_loss_limit_percent, drawdown.max_drawdown_limit_percent) == (5.0, 10.0)
 
+    def test_every_sourced_product_gets_its_own_ceilings(self) -> None:
+        expected = {
+            ("1-step", "challenge"): (3.0, 10.0),
+            ("2-step", "challenge"): (5.0, 10.0),
+            ("2-step", "verification"): (5.0, 10.0),
+            ("1-step", "funded"): (3.0, 10.0),
+            ("2-step", "funded"): (5.0, 10.0),
+        }
+        for (type_, phase), (daily, maximum) in expected.items():
+            challenge = FtmoChallenge.model_validate({"type": type_, "accountSize": 10_000, "phase": phase})
+            ceilings = provider_ceilings(challenge)
+            assert (ceilings.daily_loss_percent, ceilings.max_drawdown_percent) == (daily, maximum), (type_, phase)
+
     def test_stricter_internal_limits_and_unsourced_phases_are_left_alone(self) -> None:
         strict = AccountRules(
             risk_profile=RiskProfile(drawdown=DrawdownPolicy(daily_loss_limit_percent=2.0)),
@@ -309,9 +322,11 @@ class TestProviderRules:
             apply_provider_ceilings(strict, provider_ceilings(challenge)).risk_profile.drawdown.daily_loss_limit_percent
             == 2.0
         )
-        funded = FtmoChallenge(type="1-step", account_size=10_000, phase="funded")
-        assert provider_ceilings(funded).daily_loss_percent is None  # not sourced: not guessed
-        assert provider_ceilings(None).daily_loss_percent is None
+        swing = FtmoChallenge.model_validate(
+            {"type": "2-step", "accountSize": 10_000, "phase": "funded", "variant": "swing"}
+        )
+        assert provider_ceilings(swing).daily_loss_percent is None  # not sourced: not guessed
+        assert provider_ceilings(None).daily_loss_percent is None  # nothing declared: nothing assumed
         loose = strict.model_copy(
             update={"risk_profile": RiskProfile(drawdown=DrawdownPolicy(daily_loss_limit_percent=9.0))}
         )

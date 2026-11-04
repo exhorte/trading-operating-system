@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request
 
 from trading_os import __version__
+from trading_os.api.params import AccountQuery, resolve_account
 from trading_os.api.schemas.system import (
     AccessView,
     AuditView,
@@ -28,6 +29,7 @@ from trading_os.app.dependencies import Core
 from trading_os.domain.autonomy.readiness import ReadinessReport
 from trading_os.domain.system.incidents import Incident
 from trading_os.domain.system.startup import StartupRun, StartupStatus
+from trading_os.domain.telemetry.live_metrics import MAX_WINDOW_MINUTES, LiveMetrics
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -136,6 +138,21 @@ async def incidents(
     c: Core, limit: Limit = 100, open_only: Annotated[bool, Query(alias="openOnly")] = False
 ) -> list[Incident]:
     return await c.repos.incidents.open_incidents() if open_only else await c.repos.incidents.recent(limit)
+
+
+# ------------------------------------------------------------------------------------------------------ live measures (ADR 0035)
+
+
+@router.get(
+    "/live-metrics", response_model=LiveMetrics,
+    summary="What the terminal and the broker really did over a window: spreads, quote rate and lag, agent link, command timings",
+)  # fmt: skip
+async def live_metrics(
+    c: Core,
+    account_id: AccountQuery = None,
+    minutes: Annotated[int, Query(ge=1, le=MAX_WINDOW_MINUTES)] = 60,
+) -> LiveMetrics:
+    return await c.live_metrics.snapshot(await resolve_account(c, account_id), minutes)
 
 
 # ------------------------------------------------------------------------------------------------------ start-up (ADR 0034)

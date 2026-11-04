@@ -39,6 +39,8 @@ from trading_os.domain.execution.agent import AgentStatus
 from trading_os.domain.market.calendar import CalendarSnapshot
 from trading_os.domain.market.sessions import in_trading_window, window_name_at
 from trading_os.domain.positions.models import Position
+from trading_os.domain.providers.context import ProviderContext
+from trading_os.domain.providers.loss_floors import DAILY_LOSS_BREACHED, MAX_LOSS_BREACHED
 from trading_os.domain.risk.decision import (
     CanITradeResult,
     HealthFlags,
@@ -47,6 +49,7 @@ from trading_os.domain.risk.decision import (
     TradingContext,
     can_i_trade,
     decide,
+    provider_checks,
 )
 from trading_os.domain.risk.dynamic_risk import AppliedCap
 from trading_os.domain.risk.evaluate import RiskInputs, evaluate_risk_state
@@ -62,7 +65,7 @@ from trading_os.domain.risk.lockout import (
     detect_new_lockout,
 )
 from trading_os.domain.risk.n8 import N8Policy, evaluate_n8
-from trading_os.domain.risk.state import RiskState
+from trading_os.domain.risk.state import GateResult, RiskState
 from trading_os.domain.risk.trading_day import RiskToday, resolve_today_start_utc, resolve_week_start_utc
 from trading_os.domain.risk.view import RiskStatus, to_risk_status
 from trading_os.domain.strategy.intent import TradeIntent
@@ -70,6 +73,7 @@ from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.services.accounts import AccountService
 from trading_os.services.market_data import MarketDataService
 from trading_os.services.positions import PositionService
+from trading_os.services.providers import ProviderService
 from trading_os.shared.errors import Conflict, NotFound, Unavailable
 from trading_os.shared.events.dispatcher import EventDispatcher
 from trading_os.shared.ids import new_id
@@ -124,7 +128,9 @@ class RiskService:
         halted: Callable[[], bool] = lambda: False,
         degraded: Callable[[str], Sequence[str]] = lambda account_id: (),
         n8: N8Policy | None = None,
+        providers: ProviderService | None = None,
     ) -> None:
+        self._providers = providers
         self._accounts = accounts
         self._positions = positions
         self._market = market
@@ -170,6 +176,8 @@ class RiskService:
 
     def forget(self, account_id: str) -> None:
         self._cache.pop(account_id, None)
+        if self._providers is not None:
+            self._providers.forget(account_id)
 
     # ------------------------------------------------------------------------------------------ the context
     async def _build(self, account_id: str, *, symbol: str | None = None) -> _Built:
@@ -245,6 +253,7 @@ class RiskService:
             else None
         )
 
+        provider = await self._providers.context(account_id, symbol=symbol) if self._providers is not None else None
         inputs = RiskInputs(
             account_id=account_id,
             now=now,
@@ -270,6 +279,7 @@ class RiskService:
             window_label=window_name_at(now, account.trading_rules.trading_windows),
             calendar=tuple(calendar) if calendar is not None else None,
             n8_cap=n8_cap,
+            provider_loss=provider.loss if provider is not None else None,
         )
         health = HealthFlags(
             account_healthy=not problems,
@@ -289,6 +299,7 @@ class RiskService:
             active_lockout=today.active_lockout,
             positions=tuple(positions),
             specs=specs,
+            provider=provider,
         )
         if agent_problem:
             problems.append(agent_problem)
@@ -368,7 +379,7 @@ class RiskService:
         except Unavailable as error:
             self.last_error = error.safe_message
             return self.status(account_id)
-        status = to_risk_status(state, built.context.risk.profile)
+        status = _with_provider_refusals(to_risk_status(state, built.context.risk.profile), built.context.provider)
         cache = self._cache.setdefault(account_id, _Cache())
         cache.status, cache.unhealthy = status, built.problems
         self.last_cycle_at, self.last_error = self._clock.now(), None
@@ -472,6 +483,10 @@ class RiskService:
 
     async def review(self, intent: TradeIntent) -> RiskDecision:
         """Review one intent. Always returns a decision, approved or not, and has *persisted* it before returning."""
+        if self._providers is not None:
+            await self._providers.refresh_commission(
+                intent.account_id
+            )  # the cost gate reads the account's own commission (ADR 0036)
         account = await self._accounts.effective(intent.account_id)
         built = await self._build(intent.account_id, symbol=intent.symbol)
         spec = await self._market.require_spec(intent.account_id, intent.symbol)
@@ -531,10 +546,36 @@ _HARD_GATES = frozenset(
         "gate-weekly-loss",
         "gate-performance-stop",
         "gate-total-dd",
+        "gate-provider-loss",
         "gate-max-trades",
         CONSECUTIVE_LOSS_GATE_ID,
     }
 )
+
+
+_LOSS_BREACHES = frozenset({DAILY_LOSS_BREACHED, MAX_LOSS_BREACHED})
+
+
+def _with_provider_refusals(status: RiskStatus, provider: ProviderContext | None) -> RiskStatus:
+    """What the provider side refuses, as lines of the read model: « Pourquoi pas de trade ? » and the risk screen read ``gates``, so a
+    refusal such as « product not declared » or « calendar not loaded » is said where the others are, with its stable code. A breach of a
+    provider floor is already a gate (and a lockout): it is not repeated. These lines never open a lockout — the ledger is fed from the
+    live gates before this runs."""
+    if provider is None:
+        return status
+    refusals = [check for check in provider_checks(provider) if not check.ok and check.reason not in _LOSS_BREACHES]
+    if not refusals:
+        return status
+    lines = [
+        GateResult(
+            gate_id=f"provider:{check.reason}",
+            label=check.label,
+            state="blocked",
+            detail=f"{check.reason}: {check.detail}",
+        )
+        for check in refusals
+    ]
+    return status.model_copy(update={"gates": [*status.gates, *lines]})
 
 
 def _with_problems(reasons: list[str], problems: list[str]) -> list[str]:

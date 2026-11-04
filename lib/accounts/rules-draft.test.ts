@@ -114,7 +114,7 @@ describe("draftOf / applyDraft", () => {
 describe("what a challenge account may edit", () => {
   const challenge = {
     ...rules,
-    tradingRules: { ...rules.tradingRules, challenge: { type: "2-step" as const, accountSize: 10_000, phase: "challenge" as const } },
+    tradingRules: { ...rules.tradingRules, challenge: { type: "2-step" as const, accountSize: 10_000, phase: "challenge" as const, variant: "standard" as const } },
   };
 
   it("does not offer the capital of an FTMO challenge: it is the size of the challenge", () => {
@@ -159,7 +159,7 @@ describe("describeChange", () => {
     expect(describeChange(rules, withConfigured(rules, !rules.riskProfile.configured))).toEqual([
       "Limites écrites par toi : oui → non",
     ]);
-    const changed = { ...rules, tradingRules: { ...rules.tradingRules, challenge: { type: "1-step" as const, accountSize: 5000, phase: "funded" as const } } };
+    const changed = { ...rules, tradingRules: { ...rules.tradingRules, challenge: { type: "1-step" as const, accountSize: 5000, phase: "funded" as const, variant: "standard" as const } } };
     expect(describeChange(rules, changed)).toEqual(["Challenge FTMO modifié"]);
   });
 

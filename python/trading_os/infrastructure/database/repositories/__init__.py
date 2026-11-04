@@ -15,6 +15,7 @@ from trading_os.infrastructure.database.repositories.events import EventStore, I
 from trading_os.infrastructure.database.repositories.execution import ExecutionRepository
 from trading_os.infrastructure.database.repositories.market import MarketRepository, NewsRepository
 from trading_os.infrastructure.database.repositories.positions import PositionRepository
+from trading_os.infrastructure.database.repositories.providers import ProviderRepository
 from trading_os.infrastructure.database.repositories.risk import RiskRepository
 from trading_os.infrastructure.database.repositories.strategy import StrategyRepository
 
@@ -32,6 +33,7 @@ class Repositories:
     execution: ExecutionRepository
     events: EventStore
     incidents: IncidentRepository
+    providers: ProviderRepository
 
     @classmethod
     def create(cls, db: Database) -> Repositories:
@@ -47,6 +49,7 @@ class Repositories:
             execution=ExecutionRepository(db),
             events=EventStore(db),
             incidents=IncidentRepository(db),
+            providers=ProviderRepository(db),
         )
 
 

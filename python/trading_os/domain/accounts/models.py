@@ -51,9 +51,11 @@ class FtmoChallenge(DomainModel):
     """The challenge being traded — the only FTMO configuration that varies between challenges. Every FTMO limit is
     a percentage of ``account_size`` (fixed for the whole challenge), never of the current balance."""
 
-    type: Literal["1-step", "2-step"]
+    type: Literal["1-step", "2-step", "instant"]
     account_size: float = Field(ge=1_000, le=10_000_000)
     phase: Literal["challenge", "verification", "funded"]
+    # ``swing`` is a variant of the standard product with other conditions (ADR 0036): never assumed, always declared.
+    variant: Literal["standard", "swing"] = "standard"
 
 
 class TradingRules(DomainModel):

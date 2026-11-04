@@ -14,6 +14,7 @@ from pydantic import Field
 
 from trading_os.domain.market.calendar import UpcomingRelease
 from trading_os.domain.primitives import AccountId, DomainModel
+from trading_os.domain.providers.loss_floors import ProviderLossState
 from trading_os.domain.risk.dynamic_risk import (
     AppliedCap,
     RemainingBudget,
@@ -32,6 +33,7 @@ from trading_os.domain.risk.gates import (
     open_risk_gate,
     performance_stop_gate,
     position_limit_gate,
+    provider_loss_gate,
     session_gate,
     spread_gate,
     weekly_loss_gate,
@@ -73,12 +75,45 @@ class RiskInputs(DomainModel):
     # N8's reduction for the next trade (ADR 0031), already weighed by the service from the trade history. ``None`` = N8 puts no cap
     # (off, not configured, or no trigger): it is one more cap in the minimum, and it never raises anything.
     n8_cap: AppliedCap | None = None
+    # The provider's loss floors (ADR 0036), when the account's product has any: one more pair of budgets in the minimum, one more
+    # gate. ``None`` = the product imposes none, or nobody asked: the personal limits above are unchanged either way.
+    provider_loss: ProviderLossState | None = None
 
 
 def loss_percent(start_equity: float, equity: float, reference: float) -> float:
     """Loss since ``start_equity``, in percent of the reference balance (never negative), unrounded."""
     denominator = reference if reference > 0 else 1.0
     return max(0.0, (start_equity - equity) / denominator * 100)
+
+
+def _provider_budgets(state: ProviderLossState | None, open_risk: float) -> list[RemainingBudget]:
+    """The room left under each provider floor, in the unit of the other budgets (percent of the initial capital). Open risk counts in
+    full against it, like the personal ones. A floor not computed gives no budget: the decision refuses through the provider checks."""
+    if state is None or state.initial_capital is None or state.equity is None:
+        return []
+    capital, equity = state.initial_capital, state.equity
+    budgets: list[RemainingBudget] = []
+    if state.daily_reference_balance is not None and state.daily_loss_amount is not None:
+        budgets.append(
+            RemainingBudget(
+                code="provider_daily_budget",
+                label="provider daily loss",
+                limit_percent=state.daily_loss_amount / capital * 100,
+                used_percent=(state.daily_reference_balance - equity) / capital * 100,
+                open_risk_percent=open_risk,
+            )
+        )
+    if state.max_reference_balance is not None and state.max_loss_amount is not None:
+        budgets.append(
+            RemainingBudget(
+                code="provider_max_budget",
+                label="provider maximum loss",
+                limit_percent=state.max_loss_amount / capital * 100,
+                used_percent=(state.max_reference_balance - equity) / capital * 100,
+                open_risk_percent=open_risk,
+            )
+        )
+    return budgets
 
 
 def risk_allowance(inputs: RiskInputs) -> RiskAllowance:
@@ -111,6 +146,7 @@ def risk_allowance(inputs: RiskInputs) -> RiskAllowance:
             open_risk_percent=open_risk,
         ),
     ]
+    budgets += _provider_budgets(inputs.provider_loss, open_risk)
     return resolve_risk_allowance(
         profile.dynamic,
         initial_capital=reference if inputs.reference_fixed else None,
@@ -162,7 +198,17 @@ def evaluate_risk_state(inputs: RiskInputs) -> RiskState:
         connection_gate(inputs.agent_connected),
     ]
 
-    hard_breaches = [gate for gate in (daily, weekly, performance_stop, drawdown, trades, consecutive) if gate.blocked]
+    provider_gates = (
+        [provider_loss_gate(inputs.provider_loss)]
+        if inputs.provider_loss is not None and inputs.provider_loss.status != "not_applicable"
+        else []
+    )
+    gates += provider_gates
+    hard_breaches = [
+        gate
+        for gate in (daily, weekly, performance_stop, drawdown, trades, consecutive, *provider_gates)
+        if gate.blocked
+    ]
     locked = bool(hard_breaches)
     limits = profile.drawdown
     warning = not locked and (

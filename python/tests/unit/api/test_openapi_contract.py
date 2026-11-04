@@ -29,6 +29,8 @@ SURFACE: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/accounts/{account_id}/reconnect"),
         ("GET", "/api/accounts/{account_id}/snapshot"), ("GET", "/api/accounts/{account_id}/positions"),
         ("GET", "/api/accounts/{account_id}/orders"),
+        ("GET", "/api/accounts/{account_id}/profile"), ("GET", "/api/accounts/{account_id}/effective-policy"),
+        ("GET", "/api/accounts/{account_id}/provider-loss"),
         ("GET", "/api/accounts/{account_id}/rules"), ("POST", "/api/accounts/{account_id}/rules"),
         ("POST", "/api/accounts/{account_id}/rules/{version_id}/cancel"), ("POST", "/api/accounts/rules-preview"), ("POST", "/api/accounts/discover"),
         ("GET", "/api/accounts/{account_id}/credentials"), ("PUT", "/api/accounts/{account_id}/credentials"),
@@ -54,6 +56,8 @@ SURFACE: frozenset[tuple[str, str]] = frozenset(
         # start-up of the trading system (ADR 0034): the stages, « start » (never above CONFIRM), and the separate automatic-trading gesture
         ("GET", "/api/system/startup"), ("POST", "/api/system/startup"),
         ("POST", "/api/system/startup/authorize-automatic"),
+        # live measures (ADR 0035, L1): read-only
+        ("GET", "/api/system/live-metrics"),
         # market
         ("GET", "/api/market/calendar"), ("GET", "/api/market/quotes"), ("GET", "/api/market/{symbol}"),
         ("GET", "/api/market/{symbol}/candles"), ("GET", "/api/market/{symbol}/context"),

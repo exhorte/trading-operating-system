@@ -61,6 +61,19 @@ class MarketRepository:
             [(t.symbol, t.time, t.bid, t.ask) for t in ticks],
         )
 
+    async def spread_summary(self, symbol: str, start: datetime, end: datetime) -> Row:
+        """How many ticks were stored in ``[start, end)``, their first and last time, and the spread's min, median, p95 and
+        max — ``percentile_disc`` returns a stored value, never an interpolation (ADR 0035, L1). One row, always."""
+        row = await self._db.fetch_one(
+            "SELECT count(*) AS n, min(ask - bid) AS low, "
+            "percentile_disc(0.5) WITHIN GROUP (ORDER BY ask - bid) AS median, "
+            "percentile_disc(0.95) WITHIN GROUP (ORDER BY ask - bid) AS p95, max(ask - bid) AS high, "
+            "min(ts) AS first_ts, max(ts) AS last_ts FROM ticks WHERE symbol = %s AND ts >= %s AND ts < %s",
+            (symbol, start, end),
+        )
+        assert row is not None  # an aggregate without GROUP BY returns exactly one row
+        return row
+
     async def spread_by_hour(self, symbol: str, start: datetime, end: datetime) -> list[Row]:
         """Average and maximum spread per hour of the day (UTC) — the measurement behind the cost gate (ADR 0015)."""
         return await self._db.fetch_all(

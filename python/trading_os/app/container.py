@@ -44,11 +44,13 @@ from trading_os.services.close_all import CloseAllService
 from trading_os.services.execution import AgentLinkPort, ExecutionService
 from trading_os.services.guardian import AccountGuardianService
 from trading_os.services.journal import JournalService
+from trading_os.services.live_metrics import LiveMetricsService
 from trading_os.services.market_data import MarketDataService, TickWriter
 from trading_os.services.news import CalendarClient, NewsService
 from trading_os.services.position_manager import PositionManagerService
 from trading_os.services.positions import PositionService
 from trading_os.services.promotion import PromotionService
+from trading_os.services.providers import ProviderService
 from trading_os.services.readiness import AccountCheck, ReadinessCollector
 from trading_os.services.reconciliation import ReconciliationService
 from trading_os.services.risk import RiskService
@@ -88,6 +90,7 @@ class Container:
     ea_server: EaLinkServer | None  # None when the caller supplied its own link
     execution: ExecutionService
     risk: RiskService
+    providers: ProviderService
     reconciliation: ReconciliationService
     journal: JournalService
     strategy: StrategyService
@@ -97,6 +100,7 @@ class Container:
     promotion: PromotionService
     why: WhyNoTradeService
     close_all: CloseAllService
+    live_metrics: LiveMetricsService
     startup: StartupService
     scheduler: Scheduler
     heartbeat: Heartbeat
@@ -197,9 +201,10 @@ def build_container(
         logger.warning(
             "N8 is switched on but RISK_N8_MINIMUM_PERCENT is not written: N8 does nothing until the smallest unit is set (ADR 0031)"
         )
+    providers = ProviderService(accounts=accounts, positions=positions, market=market, repos=repos, clock=clock)
     risk = RiskService(
         accounts=accounts, positions=positions, market=market, repos=repos, events=events, clock=clock,
-        calendar=news, agents=execution, n8=n8,
+        calendar=news, agents=execution, n8=n8, providers=providers,
     )  # fmt: skip
     positions.set_enricher(risk.enrich)
     reconciliation = ReconciliationService(
@@ -285,6 +290,10 @@ def build_container(
         heartbeat=heartbeat, db=db, events=events, clock=clock,
     )  # fmt: skip
 
+    live_metrics = LiveMetricsService(
+        accounts=accounts, market=market, execution=execution, repos=repos, events=events, clock=clock
+    )
+
     autonomy.wire(readiness=readiness, halt_agents=execution.halt_agents)
     risk.wire(
         autonomy_permits_entries=autonomy.permits_entries, halted=autonomy.halted, degraded=supervisor.degraded_for
@@ -293,7 +302,7 @@ def build_container(
     return Container(
         settings=settings, clock=clock, db=db, repos=repos, events=events, audit=audit, credentials=credentials,
         accounts=accounts, tick_writer=tick_writer, market=market, positions=positions, news=news, autonomy=autonomy,
-        agent_link=agent_link, ea_server=ea_server, execution=execution, risk=risk, reconciliation=reconciliation,
-        journal=journal, strategy=strategy, strategy_s02=strategy_s02, position_manager=position_manager, guardian=guardian, promotion=promotion, why=why, close_all=close_all, startup=startup, scheduler=scheduler, heartbeat=heartbeat,
+        agent_link=agent_link, ea_server=ea_server, execution=execution, risk=risk, providers=providers, reconciliation=reconciliation,
+        journal=journal, strategy=strategy, strategy_s02=strategy_s02, position_manager=position_manager, guardian=guardian, promotion=promotion, why=why, close_all=close_all, live_metrics=live_metrics, startup=startup, scheduler=scheduler, heartbeat=heartbeat,
         supervisor=supervisor, readiness=readiness,
     )  # fmt: skip

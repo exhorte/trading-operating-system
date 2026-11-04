@@ -20,7 +20,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from trading_os.domain.accounts.models import AccountSnapshot
-from trading_os.domain.market.models import Candle, SymbolSpec, Tick
+from trading_os.domain.market.instrument import InstrumentSpecification, specification_from_terminal
+from trading_os.domain.market.models import Candle, Tick
 from trading_os.domain.positions.models import PendingOrder, Position
 from trading_os.domain.primitives import Side, Timeframe
 from trading_os.infrastructure.mt5.mt5_semantics import (
@@ -91,6 +92,8 @@ class Mt5TerminalInfo(_Raw):
     trade_allowed: bool = False
     build: int = 0
     path: str = ""
+    company: str = ""  # the company the terminal belongs to: a reading of the provider independent of the account's
+    name: str = ""
 
 
 class Mt5Client:
@@ -277,31 +280,13 @@ class Mt5Client:
         raw = await self._transport.call("symbols_get")
         return [row["name"] for row in raw or [] if "name" in row]
 
-    async def symbol_spec(self, name: str) -> SymbolSpec | None:
+    async def symbol_spec(self, name: str) -> InstrumentSpecification | None:
+        """The instrument as the terminal reports it, with what it did not say listed in ``missing`` (ADR 0036). An
+        ``InstrumentSpecification`` is a ``SymbolSpec``: everything that sizes an order reads it unchanged."""
         raw = await self._transport.call("symbol_info", name)
         if not raw:
             return None
-        tick_size = float(raw.get("trade_tick_size") or raw.get("point") or 0)
-        loss = raw.get("trade_tick_value_loss")
-        return SymbolSpec(
-            name=name,
-            description=raw.get("description", ""),
-            currency_base=raw.get("currency_base", ""),
-            currency_profit=raw.get("currency_profit", ""),
-            currency_margin=raw.get("currency_margin", ""),
-            digits=int(raw.get("digits", 0)),
-            point=float(raw.get("point") or 10 ** -int(raw.get("digits", 0))),
-            tick_size=tick_size,
-            tick_value=float(raw.get("trade_tick_value_profit") or raw.get("trade_tick_value") or 0),
-            tick_value_loss=float(loss) if loss else None,
-            contract_size=float(raw.get("trade_contract_size", 0)),
-            volume_min=float(raw.get("volume_min", 0)),
-            volume_max=float(raw.get("volume_max", 0)),
-            volume_step=float(raw.get("volume_step", 0)),
-            stops_level_points=int(raw.get("trade_stops_level", 0)),
-            freeze_level_points=int(raw.get("trade_freeze_level", 0)),
-            trade_allowed=int(raw.get("trade_mode", 0)) == SYMBOL_TRADE_MODE_FULL,
-        )
+        return specification_from_terminal(name, raw, now=self._clock.now())
 
     async def tick(self, symbol: str) -> Tick | None:
         raw = await self._transport.call("symbol_info_tick", symbol)

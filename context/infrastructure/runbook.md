@@ -76,6 +76,11 @@ python -m trading_os export-history --symbol XAUUSDm --timeframe M1 --bars 1500 
 python -m trading_os import-candles exports\xauusd_m1.jsonl     # idempotent
 python -m trading_os spread-history --help           # le spread par fenêtre New York, depuis les ticks du courtier
 python -m trading_os weekly-review                   # revue hebdomadaire (Markdown) depuis le journal
+python -m trading_os live-report --minutes 60        # mesures live d'une fenêtre (spread, cadence des ticks, durées des commandes) depuis la base — ADR 0035, L1 ; --from/--to pour le passé ; page dans exports\live\
+curl -H "Authorization: Bearer $TOKEN" -H "Origin: http://localhost:3000" http://127.0.0.1:8000/api/accounts/<id>/profile          # ADR 0036 : qui est ce compte (déclaré à côté d'observé), avec quelle confiance
+curl … /api/accounts/<id>/effective-policy                                                                                            # chaque limite, toutes ses sources, celle qui l'emporte
+curl … /api/accounts/<id>/provider-loss                                                                                               # planchers de perte du fournisseur (références de 00:00, équité, marge restante) — « unknown » bloque les entrées
+# (le cœur en marche donne les mêmes mesures + le retard de réception et le lien agent : GET /api/system/live-metrics?minutes=60)
 python -m trading_os mcp                             # serveur MCP en lecture seule, sur stdio
 python -m trading_os gen-types                       # régénère lib/api/generated.ts (un test échoue s'il est périmé)
 ```
@@ -168,4 +173,4 @@ Ces boutons ne se cliquent pas pendant le développement par Claude (`.claude/CL
 - **Un cockpit ouvert dans un onglet caché ne se peint pas** : React n'y révèle pas le contenu diffusé en flux, la page reste sur « Chargement de l'écran… » alors que le serveur répond. Ce n'est pas une panne — la vérifier dans un onglet visible (ou un Chrome headless).
 - **Fins de ligne** — le dépôt a été cloné avec des fins de ligne CRLF alors que l'index git est en LF. `git config core.autocrlf true` dans ce clone ; si un `git status` affiche à nouveau tout le dépôt comme modifié, c'est ce réglage qu'il faut vérifier en premier — **surtout ne pas commiter la différence**.
 - **Les jetons ne se relisent qu'au démarrage** : un jeton ajouté à `.env` n'est pas vu par un cœur déjà lancé (le relancer) ; un cockpit déjà ouvert relit `.env` seul.
-- **Rien n'a encore tourné contre un vrai MT5 depuis la migration** : le cœur, le lien agent et le cockpit ont été vérifiés avec un terminal simulé et des sockets réels, pas avec un compte. Le premier rattachement d'un vrai compte est un essai à faire par l'utilisateur, en `OBSERVE`.
+- **Vérifié sur le vrai terminal (2026-11-03, démo Exness)** : l'attache sans mot de passe, la lecture du compte, des spécifications, des ticks, des bougies, des positions et des ordres, le refus d'un mauvais serveur, le détachement puis le rattachement, l'inaccessibilité des fonctions d'ordre, le dimensionnement avec les chiffres du courtier (14 tests de contrat, `MT5_LIVE_TESTS=1`), et la lecture continue du flux par le cœur (mesures L1). **Jamais vérifié chez un courtier** : l'agent, les commandes, les accusés, les remplissages, la réconciliation avec des positions réelles, la reconnexion après coupure.

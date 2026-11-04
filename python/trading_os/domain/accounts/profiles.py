@@ -10,8 +10,10 @@ numbers the user fixed on 2026-09-26 are theirs to write into the account rules,
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import re
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from trading_os.domain.accounts.models import (
     AccountRules,
@@ -23,6 +25,7 @@ from trading_os.domain.accounts.models import (
     TradingRules,
 )
 from trading_os.domain.primitives import DomainModel
+from trading_os.domain.providers.rules import ProviderProduct, ftmo_product_of, rule_set_for
 from trading_os.domain.risk.policy import DrawdownPolicy, RiskProfile
 from trading_os.shared.errors import ValidationFailed
 
@@ -33,12 +36,43 @@ class ProfileParams(DomainModel):
     challenge: FtmoChallenge | None = None  # prop accounts
 
 
+class ProductEvidence(DomainModel):
+    """What can tell a provider's products apart: the suffixes the terminal's symbols really carry, and what the user declared."""
+
+    observed_suffixes: tuple[str, ...] = ()
+    challenge: FtmoChallenge | None = None
+
+
+@dataclass(frozen=True)
+class ProviderSignature:
+    """How a provider shows itself to the terminal (ADR 0036). Each pattern is one **independent** signal: the server name, the
+    company the account reports, the company the terminal reports. ``execution_environment`` says what kind of place it is — FTMO
+    is simulated trading on real quotes, never a broker."""
+
+    server: re.Pattern[str]
+    company: re.Pattern[str]
+    execution_environment: Literal["broker", "simulated"]
+    typical_suffix: str  # a weak signal only: never enough on its own
+
+
+def _exness_product(evidence: ProductEvidence) -> ProviderProduct:
+    """Standard accounts name their symbols with a trailing ``m``; Raw, Zero and Pro do not. One observed suffix, all alike."""
+    return ProviderProduct.EXNESS_STANDARD if evidence.observed_suffixes == ("m",) else ProviderProduct.UNKNOWN
+
+
+def _ftmo_product_resolver(evidence: ProductEvidence) -> ProviderProduct:
+    """FTMO's product is not readable from the terminal: it is what the user declared, or it is unknown — never a default."""
+    return ftmo_product_of(evidence.challenge)
+
+
 @dataclass(frozen=True)
 class ProviderProfile:
     provider: Provider
     symbol_suffix: str
     allowed_account_types: frozenset[AccountType]
     build_rules: Callable[[ProfileParams], AccountRules]
+    signature: ProviderSignature
+    resolve_product: Callable[[ProductEvidence], ProviderProduct]
 
 
 _PHASE_BY_TYPE = {
@@ -56,17 +90,20 @@ def _ftmo_objectives(challenge: FtmoChallenge) -> tuple[int | None, float | None
 
 def _build_ftmo(params: ProfileParams) -> AccountRules:
     phase = _PHASE_BY_TYPE[params.account_type]
-    challenge = params.challenge or FtmoChallenge(type="2-step", account_size=10_000, phase=phase)
-    if challenge.phase != phase:
+    challenge = params.challenge
+    if challenge is not None and challenge.phase != phase:
         raise ValidationFailed(
             f"challenge phase {challenge.phase!r} does not match the account type {params.account_type}",
             code="phase_mismatch",
         )
-    min_days, target = _ftmo_objectives(challenge)
+    # No challenge declared = no product: nothing is invented (ADR 0036 — a default 2-Step of 10 000 was attributed here before).
+    # The account is then not executable until the user declares its product; the reference is only what was given.
+    reference = challenge.account_size if challenge is not None else params.reference_balance
+    min_days, target = _ftmo_objectives(challenge) if challenge is not None else (None, None)
     return AccountRules(
         risk_profile=RiskProfile(
             drawdown=DrawdownPolicy(
-                daily_loss_limit_percent=5.0, max_drawdown_limit_percent=10.0, reference_balance=challenge.account_size
+                daily_loss_limit_percent=5.0, max_drawdown_limit_percent=10.0, reference_balance=reference
             ),
         ),
         trading_rules=TradingRules(challenge=challenge, min_trading_days=min_days, profit_target_percent=target),
@@ -97,6 +134,13 @@ PROFILES: Mapping[Provider, ProviderProfile] = {
         symbol_suffix="m",
         allowed_account_types=frozenset({AccountType.DIRECT}),
         build_rules=_build_exness,
+        signature=ProviderSignature(
+            server=re.compile(r"^exness", re.IGNORECASE),
+            company=re.compile(r"exness", re.IGNORECASE),
+            execution_environment="broker",
+            typical_suffix="m",
+        ),
+        resolve_product=_exness_product,
     ),
     Provider.FTMO: ProviderProfile(
         provider=Provider.FTMO,
@@ -105,8 +149,19 @@ PROFILES: Mapping[Provider, ProviderProfile] = {
             {AccountType.PROP_CHALLENGE, AccountType.PROP_VERIFICATION, AccountType.PROP_FUNDED}
         ),
         build_rules=_build_ftmo,
+        signature=ProviderSignature(
+            server=re.compile(r"^ftmo", re.IGNORECASE),
+            company=re.compile(r"ftmo", re.IGNORECASE),
+            execution_environment="simulated",
+            typical_suffix="",
+        ),
+        resolve_product=_ftmo_product_resolver,
     ),
 }
+
+
+def provider_signatures() -> Sequence[tuple[Provider, ProviderSignature]]:
+    return [(provider, profile.signature) for provider, profile in PROFILES.items()]
 
 
 class ProviderCeilings(DomainModel):
@@ -118,11 +173,16 @@ class ProviderCeilings(DomainModel):
 
 
 def provider_ceilings(challenge: FtmoChallenge | None) -> ProviderCeilings:
-    """The ceilings of the contract the rules describe. A FTMO challenge *in the rules* is the FTMO contract, whichever broker
-    carries the account: that is what lets a demo account at another broker rehearse the FTMO profile (ADR 0020)."""
-    if challenge is not None and challenge.type == "2-step" and challenge.phase == "challenge":
-        return ProviderCeilings(daily_loss_percent=5.0, max_drawdown_percent=10.0)  # sourced: FTMO MetriX exports
-    return ProviderCeilings()  # TODO(FTMO-rules): verification, funded and 1-step ceilings are not sourced
+    """The ceilings of the contract the rules describe, read from the sourced rule set of its product (ADR 0036). A FTMO challenge
+    *in the rules* is the FTMO contract, whichever broker carries the account: that is what lets a demo account at another broker
+    rehearse the FTMO profile (ADR 0020). A product whose loss rules are not sourced (Swing) or not declared has **no** ceiling here
+    — it is refused as a product by the identity gate, never trusted at an invented percentage."""
+    rule_set = rule_set_for(ftmo_product_of(challenge))
+    if rule_set is None or not rule_set.loss_rules_sourced or rule_set.daily_loss is None or rule_set.max_loss is None:
+        return ProviderCeilings()
+    return ProviderCeilings(
+        daily_loss_percent=rule_set.daily_loss.percent, max_drawdown_percent=rule_set.max_loss.percent
+    )
 
 
 def apply_provider_ceilings(rules: AccountRules, ceilings: ProviderCeilings) -> AccountRules:

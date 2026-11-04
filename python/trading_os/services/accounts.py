@@ -67,6 +67,7 @@ from trading_os.domain.events import (
     ActiveAccountChanged,
 )
 from trading_os.domain.primitives import DomainModel
+from trading_os.domain.providers.commission import CommissionReading
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.client import MARGIN_MODES, TRADE_MODES, Mt5AccountInfo, Mt5Client
 from trading_os.infrastructure.mt5.protocol import WorkerError
@@ -157,6 +158,7 @@ class AccountService:
         self._factory = mt5_factory
         self._open_positions = open_positions
         self._sessions: dict[str, AccountSession] = {}
+        self._commissions: dict[str, CommissionReading] = {}
         self._connecting: set[str] = set()
         self._errors: dict[str, str] = {}
         self._guards: list[Guard] = []
@@ -236,7 +238,33 @@ class AccountService:
         account = await self._repos.accounts.require(account_id)
         resolution = await self._resolution(account)
         ceilings = provider_ceilings(resolution.rules.trading_rules.challenge)
-        return self._view(account.with_rules(apply_provider_ceilings(resolution.rules, ceilings)))
+        rules = apply_provider_ceilings(resolution.rules, ceilings)
+        reading = self._commissions.get(account_id)
+        if reading is not None:
+            # The commission is the account's own, observed or documented (ADR 0036): it replaces the configured figure everywhere the
+            # effective rules are read — risk review, sizing, break-even buffer, the strategy's cost gate.
+            limits = rules.execution_profile.limits.model_copy(
+                update={"commission_per_lot_round_trip": reading.per_lot_round_trip}
+            )
+            rules = rules.model_copy(
+                update={"execution_profile": rules.execution_profile.model_copy(update={"limits": limits})}
+            )
+        return self._view(account.with_rules(rules))
+
+    def set_commission(self, account_id: str, reading: CommissionReading | None) -> None:
+        if reading is None:
+            self._commissions.pop(account_id, None)
+        else:
+            self._commissions[account_id] = reading
+
+    def commission(self, account_id: str) -> CommissionReading | None:
+        return self._commissions.get(account_id)
+
+    async def resolved_rules(self, account_id: str) -> AccountRules:
+        """The rules the trader's own ledger puts in effect *now*, before any provider ceiling is applied (ADR 0036): the effective
+        policy shows the trader's value and the provider's side by side, which it could not if it only saw the clamped one."""
+        account = await self._repos.accounts.require(account_id)
+        return (await self._resolution(account)).rules
 
     async def _resolution(self, account: Account) -> RuleResolution:
         versions = await self._repos.rules.for_account(account.id)
@@ -502,6 +530,7 @@ class AccountService:
 
     async def _drop(self, account_id: str, *, reason: str) -> None:
         session = self._sessions.pop(account_id, None)
+        self._commissions.pop(account_id, None)
         if session is None:
             return
         try:

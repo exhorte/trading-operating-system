@@ -95,6 +95,15 @@ class FakeSymbol:
     stops_level: int = 0
     freeze_level: int = 0
     trade_mode: int = 4  # SYMBOL_TRADE_MODE_FULL
+    # What a real terminal always reports and the simulated one used to leave at 0 (ADR 0036): the market-execution broker of the
+    # tests (Exness-like), FOK + IOC, swap in points with the triple swap on Wednesday.
+    execution_mode: int = 2  # SYMBOL_TRADE_EXECUTION_MARKET
+    filling_mode: int = 3  # FOK | IOC
+    swap_mode: int = 1  # SYMBOL_SWAP_MODE_POINTS
+    swap_long: float = -6.5
+    swap_short: float = 2.1
+    swap_rollover3days: int = 3  # WEDNESDAY
+    volume_limit: float = 0.0
     amplitude: float = 0.0  # simulated feed only
     bid: float | None = None
     ask: float | None = None
@@ -358,7 +367,7 @@ class FakeMt5:
             ping_last=25_000,
             community_balance=0.0,
             retransmission=0.0,
-            company="Simulated Broker",
+            company=account.company if (account := self._account()) is not None else "Simulated Broker",
             name="MetaTrader 5 (simulated)",
             language="English",
             path="C:\\Simulated\\MetaTrader 5",
@@ -397,6 +406,13 @@ class FakeMt5:
             spread_float=True,
             trade_mode=s.trade_mode,
             trade_stops_level=s.stops_level,
+            trade_exemode=s.execution_mode,
+            filling_mode=s.filling_mode,
+            swap_mode=s.swap_mode,
+            swap_long=s.swap_long,
+            swap_short=s.swap_short,
+            swap_rollover3days=s.swap_rollover3days,
+            volume_limit=s.volume_limit,
             trade_freeze_level=s.freeze_level,
             bid=bid,
             ask=ask,

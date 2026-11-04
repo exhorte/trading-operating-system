@@ -31,9 +31,10 @@ from trading_os.domain.risk.state import RiskMode
 from trading_os.domain.strategy.intent import TradeIntent
 from trading_os.infrastructure.database.pool import Database
 from trading_os.infrastructure.mt5.fake import DEAL_ENTRY_IN, DEAL_TYPE_BUY, FakeMt5
-from trading_os.services.accounts import AccountService
+from trading_os.services.accounts import AccountCreate, AccountService
 from trading_os.services.market_data import MarketDataService
 from trading_os.services.positions import PositionService
+from trading_os.services.providers import ProviderService
 from trading_os.services.risk import RiskService
 from trading_os.shared.errors import Conflict, NotFound, Unavailable
 
@@ -69,6 +70,7 @@ class Rig:
     agents: FakeAgents
     calendar: FakeCalendar
     account_id: str
+    providers: ProviderService | None = None
 
     async def warm(self) -> None:
         await self.market.prepare(self.account_id)
@@ -84,21 +86,33 @@ class Rig:
         pass
 
 
-async def make_rig(h: Harness, *, n8: N8Policy | None = None, **account: object) -> Rig:
+async def make_rig(
+    h: Harness,
+    *,
+    n8: N8Policy | None = None,
+    with_providers: bool = False,
+    create: AccountCreate | None = None,
+    **account: object,
+) -> Rig:
     accounts = service(h)
-    created = await accounts.create(exness(**account))
+    created = await accounts.create(create or exness(**account))
     await accounts.connect(created.id)
     market = MarketDataService(accounts=accounts, repos=h.repos, events=h.events, clock=h.clock)
     positions = PositionService(accounts=accounts, repos=h.repos, events=h.events, clock=h.clock, market=market)
     agents = FakeAgents()
     calendar = FakeCalendar(CalendarSnapshot(releases=[], synced_at=h.clock.now()))
+    providers = (
+        ProviderService(accounts=accounts, positions=positions, market=market, repos=h.repos, clock=h.clock)
+        if with_providers
+        else None
+    )
     risk = RiskService(
         accounts=accounts, positions=positions, market=market, repos=h.repos, events=h.events, clock=h.clock,
-        calendar=calendar, agents=agents, n8=n8,
+        calendar=calendar, agents=agents, n8=n8, providers=providers,
     )  # fmt: skip
     positions.set_enricher(risk.enrich)
     risk.subscribe()
-    return Rig(h, accounts, market, positions, risk, h.terminal(created), agents, calendar, created.id)
+    return Rig(h, accounts, market, positions, risk, h.terminal(created), agents, calendar, created.id, providers)
 
 
 @pytest.fixture
@@ -493,3 +507,144 @@ async def test_positions_opened_outside_a_lockout_are_not_flagged(h: Harness) ->
                               opened_server_time=int(h.clock.now().timestamp()) + 1)  # fmt: skip
     await rig.tick()
     assert h.recorder.of(PositionOpened) and h.recorder.of(LockoutViolated) == []
+
+
+# ------------------------------------------------------------------------------------------ the provider's side (ADR 0036)
+
+
+def rehearsal(login: int = 1_000_001) -> AccountCreate:
+    """An Exness *demo* following the FTMO 2-Step rules (ADR 0020): the carrier is Exness Standard, the contract is FTMO's."""
+    from trading_os.domain.accounts.models import AccountType, FtmoChallenge
+
+    return exness(
+        login,
+        account_type=AccountType.PROP_CHALLENGE,
+        rules_profile="FTMO",
+        challenge=FtmoChallenge(type="2-step", account_size=10_000, phase="challenge"),
+    )
+
+
+def one_step(login: int = 3_000_007) -> AccountCreate:
+    from trading_os.domain.accounts.models import AccountType, Environment, FtmoChallenge, Provider
+
+    return AccountCreate(
+        name="FTMO account 1-Step",
+        provider=Provider.FTMO,
+        account_type=AccountType.PROP_FUNDED,
+        login=login,
+        server="FTMO-Server3",
+        environment=Environment.LIVE,
+        challenge=FtmoChallenge(type="1-step", account_size=10_000, phase="funded"),
+        terminal_path=f"C:/MT5/ftmo-{login}",
+    )
+
+
+async def test_a_healthy_identified_demo_is_still_allowed_with_the_provider_context(h: Harness) -> None:
+    rig = await make_rig(h, with_providers=True)
+    await rig.warm()
+    answer = await rig.risk.can_i_trade(rig.account_id, "EURUSDm")
+    assert answer.decision == "ALLOWED", answer.reasons
+    assert any(check.check_id == "provider_identity" and check.ok for check in answer.checks)
+
+
+async def test_an_account_the_terminal_cannot_confirm_is_refused_with_its_reason(h: Harness) -> None:
+    rig = await make_rig(h, with_providers=True)
+    await rig.warm()
+    rig.terminal.accounts[rig.terminal.current_login].company = "Some Other Broker Ltd"  # type: ignore[index]
+    h.clock.advance(minutes=6)
+    await rig.tick(0)
+    answer = await rig.risk.can_i_trade(rig.account_id, "EURUSDm")
+    assert answer.decision == "DENIED" and "provider_not_identified" in answer.reasons
+
+
+async def test_the_generic_commission_of_a_rehearsed_profile_is_not_applied_to_an_exness_standard_account(
+    h: Harness,
+) -> None:
+    rig = await make_rig(h, with_providers=True, create=rehearsal())
+    await rig.warm()
+    stored = await rig.accounts.resolved_rules(rig.account_id)
+    assert stored.execution_profile.limits.commission_per_lot_round_trip == 5.0  # what ADR 0020 wrote into the rules
+    await rig.risk.review(intent(rig.account_id))
+    effective = await rig.accounts.effective(rig.account_id)
+    assert effective.execution_profile.limits.commission_per_lot_round_trip == 0.0  # Exness Standard: none, documented
+    reading = rig.accounts.commission(rig.account_id)
+    assert reading is not None and reading.source.value == "documentary"
+
+
+async def test_a_commission_the_broker_really_charged_replaces_the_documented_one(h: Harness) -> None:
+    rig = await make_rig(h, with_providers=True)
+    await rig.warm()
+    at = int(h.clock.now().timestamp()) - 3_600
+    rig.terminal.add_deal(
+        position_id=7, symbol="EURUSDm", side=0, entry=0, volume=1.0, price=1.1, server_time=at, commission=-3.5
+    )
+    rig.terminal.add_deal(
+        position_id=7,
+        symbol="EURUSDm",
+        side=1,
+        entry=1,
+        volume=1.0,
+        price=1.1,
+        server_time=at + 60,
+        commission=-3.5,
+        profit=20.0,
+    )
+    await rig.risk.review(intent(rig.account_id))
+    reading = rig.accounts.commission(rig.account_id)
+    assert reading is not None and reading.source.value == "observed" and reading.per_lot_round_trip == 7.0
+    assert reading.documentary_mismatch  # Exness Standard is documented at none: the account says otherwise
+    assert (await rig.accounts.effective(rig.account_id)).execution_profile.limits.commission_per_lot_round_trip == 7.0
+
+
+async def test_a_provider_floor_breach_locks_the_account_and_the_strictest_limit_is_the_one_measured(
+    h: Harness,
+) -> None:
+    rig = await make_rig(h, with_providers=True, create=one_step())
+    await rig.warm()
+    await rig.risk.evaluate(rig.account_id)  # the day's reference is fixed: 10 000
+    rig.terminal.accounts[rig.terminal.current_login].balance = 9_650.0  # type: ignore[index]  # −3.5 % : under the 1-Step floor (−3 %), inside the 5 %
+    await rig.tick()
+    status = await rig.risk.evaluate(rig.account_id)
+    assert status is not None and status.state is RiskMode.LOCKED
+    assert "Provider loss floor" in (status.lockout_reason or "")
+    assert next(g for g in status.gates if g.gate_id == "gate-provider-loss").blocked
+    daily = next(g for g in status.gates if g.gate_id == "gate-daily-loss")
+    assert (
+        "of 3%" in daily.detail
+    )  # the personal 5 % was clamped to the provider's 3 %: the strictest rule is the one measured
+    assert (
+        await h.repos.risk.active_lockout(rig.account_id, h.clock.now()) is not None
+    )  # persistent, like the other hard limits
+    answer = await rig.risk.can_i_trade(rig.account_id, "EURUSD")
+    assert "provider_daily_loss_breached" in answer.reasons
+
+
+async def test_without_a_provider_context_nothing_changes(h: Harness) -> None:
+    rig = await make_rig(h)
+    await rig.warm()
+    answer = await rig.risk.can_i_trade(rig.account_id, "EURUSDm")
+    assert answer.decision == "ALLOWED" and not any(c.check_id.startswith("provider") for c in answer.checks)
+
+
+async def test_a_provider_refusal_is_said_where_the_gates_are_said(h: Harness) -> None:
+    rig = await make_rig(h, with_providers=True)
+    await rig.warm()
+    rig.terminal.accounts[rig.terminal.current_login].company = "Some Other Broker Ltd"
+    h.clock.advance(minutes=6)
+    await rig.tick(0)
+    status = await rig.risk.evaluate(rig.account_id)
+    assert status is not None
+    refused = {g.gate_id: g for g in status.gates if g.gate_id.startswith("provider:")}
+    assert (
+        "provider:provider_not_identified" in refused and refused["provider:provider_not_identified"].state == "blocked"
+    )
+    assert status.state is not RiskMode.LOCKED  # a refusal is not a lockout: nothing was lost, something is not known
+    from trading_os.domain.autonomy.state import AutonomyMode
+    from trading_os.domain.autonomy.why import build_why
+
+    why = build_why(
+        account_id=rig.account_id, mode=AutonomyMode.CONFIRM, ceiling=AutonomyMode.CONFIRM, halted_reason=None,
+        readiness=None, risk=status, evaluations=[], guardian=None, now=h.clock.now(),
+    )  # fmt: skip
+    assert any(r.code == "provider:provider_not_identified" and r.blocking for r in why.reasons)
+    assert not why.real_orders_possible

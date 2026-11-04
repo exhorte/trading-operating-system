@@ -7,6 +7,7 @@ import { AccountMetrics } from "@/components/accounts/account-metrics";
 import { ConnectAccountForm } from "@/components/accounts/connect-account-form";
 import { ConnectionChain } from "@/components/accounts/connection-chain";
 import { ObjectivesCard } from "@/components/accounts/objectives-card";
+import { ProviderRulesCard } from "@/components/accounts/provider-rules-card";
 import { RegisteredAccountCard } from "@/components/accounts/registered-account-card";
 import { RulesCard } from "@/components/accounts/rules-card";
 import { PageHeader, SectionHeading } from "@/components/shell/page-header";
@@ -103,6 +104,8 @@ export default function AccountPage() {
           )}
         </div>
       )}
+
+      {activeAccountId && <ProviderRulesCard accountId={activeAccountId} />}
 
       <Callout title="Important">
         Un seul compte est connecté à la fois. Le formulaire de connexion lit le compte chez le courtier avec ses identifiants ;

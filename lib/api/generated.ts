@@ -28,6 +28,22 @@ export interface Account {
   executionProfile: ExecutionProfileOutput;
   createdAt: string;
 }
+export interface AccountIdentification {
+  provider: Provider | null;
+  providerConfidence: Confidence;
+  brokerProduct: ProviderProduct;
+  rulesProduct: ProviderProduct;
+  rulesRehearsal: boolean;
+  productConfidence: Confidence;
+  ruleSetId: string | null;
+  accountMode: "DEMO" | "REAL" | "SIMULATED" | null;
+  signals: IdentitySignal[];
+  conflicts: string[];
+  blockers: IdentityBlocker[];
+  executable: boolean;
+  needsConfirmation: boolean;
+  summary: string;
+}
 /** The configuration screen's facts about the selected account — never a secret (the terminal keeps the password, ADR 0013). */
 export interface AccountPanel {
   accountId: string;
@@ -49,6 +65,38 @@ export interface AccountPanel {
   agentConnected: boolean;
   agentTradable: boolean | null;
   ceiling: AutonomyMode;
+}
+export interface AccountProfile {
+  accountId: string;
+  name: string;
+  provider: string | null;
+  declaredProvider: string;
+  broker: string | null;
+  server: string;
+  login: number;
+  currency: string;
+  accountType: string;
+  phase: string | null;
+  brokerProduct: string;
+  evaluationProduct: string;
+  rulesRehearsal: boolean;
+  accountMode: string | null;
+  declaredEnvironment: string;
+  leverage: number | null;
+  initialCapital: number | null;
+  balance: number | null;
+  equity: number | null;
+  freeMargin: number | null;
+  usedMargin: number | null;
+  marginLevel: number | null;
+  commission: CommissionReading | null;
+  permissions: TradingPermissions;
+  identification: AccountIdentification;
+  ruleSetId: string | null;
+  ruleVersion: string | null;
+  lastSynchronizedAt: string | null;
+  problems: string[];
+  computedAt: string;
 }
 /** A gesture on one account. */
 export interface AccountRequest {
@@ -110,6 +158,10 @@ export interface ActiveLockout {
   reason: string;
   since: string;
   until: string | null;
+}
+export interface AgentLinkMetrics {
+  connected: boolean;
+  lastHeartbeatAgeS: number | null;
 }
 export interface AgentStatus {
   accountLogin: string;
@@ -362,6 +414,17 @@ export interface ClosedTrade {
   closedAt: string;
 }
 export type CommandKind = "OPEN" | "MODIFY" | "CLOSE" | "PARTIAL_CLOSE" | "CANCEL";
+export interface CommandMetrics {
+  total: number;
+  byState: Record<string, number>;
+  rejectCodes: Record<string, number>;
+  brokerRetcodes: Record<string, number>;
+  simulated: number;
+  ackS: Distribution;
+  fillS: Distribution;
+  totalS: Distribution;
+  inconsistent: number;
+}
 /** The body of ``POST /api/execution/commands``: an ``ExecutionRequest``, strict about unknown fields — a misspelt ``stopLoss`` or ``positionId`` must be refused, not dropped. */
 export interface CommandRequest {
   commandId: string;
@@ -382,6 +445,14 @@ export interface CommandRequest {
   expiresAt?: string | null;
 }
 export type CommandState = "PENDING" | "SENT" | "ACKNOWLEDGED" | "EXECUTED" | "FAILED" | "UNKNOWN" | "RECONCILING" | "RECONCILED" | "REJECTED" | "EXPIRED" | "CANCELLED" | "SIMULATED";
+export interface CommissionReading {
+  perLotRoundTrip: number;
+  source: CommissionSource;
+  detail: string;
+  roundTrips: number;
+  documentaryMismatch: boolean;
+}
+export type CommissionSource = "observed" | "documentary" | "assumed";
 /** Compliance over a set of trades. Judges nothing beyond what ``evaluate_trade`` judges: it counts and groups. */
 export interface ComplianceSummary {
   rate: number;
@@ -390,6 +461,7 @@ export interface ComplianceSummary {
   byType: Record<string, number>;
   byTrade: Record<string, Violation[]>;
 }
+export type Confidence = "CONFIRMED" | "PROBABLE" | "WEAK" | "CONFLICT" | "NONE";
 /** Optional: without a password the core attaches to the terminal as it is (already logged in), or reads the vault the user opted into (ADR 0013). A password given here is used for this call only. */
 export interface ConnectRequest {
   password?: string | null;
@@ -407,7 +479,7 @@ export interface CreateAccountRequest {
   terminalPath?: string | null;
   symbolSuffix?: string | null;
   referenceBalance?: number | null;
-  challenge?: FtmoChallenge | null;
+  challenge?: FtmoChallengeInput | null;
   rulesProfile?: Provider | null;
 }
 /** Write-only: the vault never gives a password back. */
@@ -482,6 +554,14 @@ export interface DiscoveredSymbol {
   spread: number | null;
   tradable: boolean;
 }
+/** ``n`` observations summarised by values that really occurred. Empty (``n = 0``) means *not measured*. */
+export interface Distribution {
+  n: number;
+  min: number | null;
+  median: number | null;
+  p95: number | null;
+  max: number | null;
+}
 export interface DrawdownPolicyInput {
   dailyLossLimitPercent?: number;
   weeklyLossLimitPercent?: number;
@@ -503,6 +583,30 @@ export interface DynamicRiskPolicyOutput {
   grid: GridTierOutput[];
   absoluteLossTriggerAmount: number;
   absoluteLossRiskCapPercent: number;
+}
+export interface EffectiveLimit {
+  key: string;
+  label: string;
+  unit: "percent" | "count" | "lots" | "price";
+  candidates: LimitCandidate[];
+  value: number | null;
+  bindingSource: LimitSource | null;
+  bindingOrigin: string | null;
+  enforcedBy: string | null;
+  detail: string;
+}
+export interface EffectiveRiskPolicy {
+  accountId: string | null;
+  product: string;
+  ruleSetId: string | null;
+  ruleVersion: string | null;
+  executable: boolean;
+  blockers: string[];
+  limits: EffectiveLimit[];
+  restrictions: PolicyRestriction[];
+  notSourced: string[];
+  needsReview: string[];
+  computedAt: string;
 }
 /** One condition that must hold before the system takes a position (mission § 2.2). */
 export interface EntryCheck {
@@ -638,10 +742,18 @@ export interface Finding {
   accountId: string | null;
 }
 /** The challenge being traded — the only FTMO configuration that varies between challenges. Every FTMO limit is a percentage of ``account_size`` (fixed for the whole challenge), never of the current balance. */
-export interface FtmoChallenge {
-  type: "1-step" | "2-step";
+export interface FtmoChallengeInput {
+  type: "1-step" | "2-step" | "instant";
   accountSize: number;
   phase: "challenge" | "verification" | "funded";
+  variant?: "standard" | "swing";
+}
+/** The challenge being traded — the only FTMO configuration that varies between challenges. Every FTMO limit is a percentage of ``account_size`` (fixed for the whole challenge), never of the current balance. */
+export interface FtmoChallengeOutput {
+  type: "1-step" | "2-step" | "instant";
+  accountSize: number;
+  phase: "challenge" | "verification" | "funded";
+  variant: "standard" | "swing";
 }
 /** One safety gate; ``detail`` is the human-readable explanation (audit trail and cockpit). */
 export interface GateResult {
@@ -737,6 +849,13 @@ export interface HealthFinding {
   ok: boolean;
   detail: string;
 }
+export type IdentityBlocker = "account_facts_missing" | "provider_not_identified" | "provider_ambiguous" | "provider_mismatch" | "environment_mismatch" | "account_product_unknown" | "provider_rules_unsourced" | "rules_profile_on_real_account" | "leverage_contradicts_product";
+export interface IdentitySignal {
+  kind: SignalKind;
+  value: string;
+  pointsTo: string | null;
+  observed: boolean;
+}
 export interface Incident {
   incidentId: string;
   code: string;
@@ -791,6 +910,12 @@ export interface JournalTradeView {
   violations: Violation[];
   session: TradingSession | null;
 }
+export interface LimitCandidate {
+  source: LimitSource;
+  value: number;
+  origin: string;
+}
+export type LimitSource = "personal" | "provider" | "product" | "instrument" | "market" | "account";
 export type LiquidityKind = "buy_side" | "sell_side" | "equal_highs" | "equal_lows" | "session_high" | "session_low" | "previous_day_high" | "previous_day_low";
 /** A resting-liquidity level the market may draw toward or sweep. */
 export interface LiquidityLevel {
@@ -801,6 +926,16 @@ export interface LiquidityLevel {
   price: number;
   sweptAt: string | null;
   detectedAt: string;
+}
+export interface LiveMetrics {
+  observedAt: string;
+  accountId: string;
+  windowMinutes: number;
+  quotes: QuoteMetrics[];
+  agent: AgentLinkMetrics;
+  commands: CommandMetrics;
+  caveats: string[];
+  notMeasured: string[];
 }
 export interface LockoutOverview {
   active: ActiveLockout | null;
@@ -814,6 +949,7 @@ export interface LockoutWindow {
   until: string | null;
   clearedAt: string | null;
 }
+export type LossMethod = "static_initial" | "trailing_eod_balance" | "trailing_intraday_balance";
 /** Aggregated analysis state for one symbol: the « why » snapshot, with the referenced entities embedded so a stored context stays replayable without joins. */
 export interface MarketContextState {
   symbol: string;
@@ -914,6 +1050,15 @@ export interface PlannedItem {
   reason: string | null;
 }
 export type Platform = "MT5";
+export interface PolicyRestriction {
+  key: string;
+  label: string;
+  source: LimitSource;
+  active: boolean;
+  informational: boolean;
+  detail: string;
+  origin: string | null;
+}
 /** One open position. ``position_id`` is MT5's POSITION_IDENTIFIER (stable for the life of the position), **never** the ticket — the two diverge on broker service operations (incident of 2026-09-05). */
 export interface Position {
   positionId: string;
@@ -955,6 +1100,41 @@ export interface PromotionStep {
   current: boolean;
 }
 export type Provider = "EXNESS" | "FTMO";
+export interface ProviderLossState {
+  status: "not_applicable" | "ok" | "unknown" | "breached";
+  ruleSetId: string | null;
+  ruleVersion: string | null;
+  timezone: string | null;
+  initialCapital: number | null;
+  equity: number | null;
+  dailyReferenceBalance: number | null;
+  dailyReferenceAt: string | null;
+  dailyLossAmount: number | null;
+  dailyFloor: number | null;
+  dailyRemaining: number | null;
+  maxMethod: LossMethod | null;
+  maxReferenceBalance: number | null;
+  maxLossAmount: number | null;
+  maxFloor: number | null;
+  maxRemaining: number | null;
+  floatingPl: number | null;
+  realizedPl: number | null;
+  commissions: number | null;
+  swaps: number | null;
+  reasons: string[];
+  detail: string;
+}
+export type ProviderProduct = "EXNESS_STANDARD" | "FTMO_CHALLENGE_1STEP" | "FTMO_CHALLENGE_2STEP" | "FTMO_VERIFICATION" | "FTMO_ACCOUNT_1STEP" | "FTMO_ACCOUNT_2STEP" | "FTMO_INSTANT" | "FTMO_SWING" | "UNKNOWN";
+export interface QuoteMetrics {
+  symbol: string;
+  ticks: number;
+  spanS: number | null;
+  ticksPerMinute: number | null;
+  spread: Distribution;
+  lastTickAgeS: number | null;
+  marketOpen: boolean | null;
+  receiptLagS: Distribution;
+}
 export interface ReadinessCheck {
   checkId: string;
   label: string;
@@ -1127,7 +1307,7 @@ export interface RulesPreviewRequest {
   provider: Provider;
   accountType: AccountType;
   referenceBalance?: number | null;
-  challenge?: FtmoChallenge | null;
+  challenge?: FtmoChallengeInput | null;
 }
 /** New rules for an account. The top level is strict; the nested profiles stay lenient on purpose, because the same models read the stored versions back and an older row must still load. */
 export interface RulesRequest {
@@ -1142,6 +1322,7 @@ export interface ScoreComponent {
 }
 export type Severity = "ok" | "medium" | "high" | "critical";
 export type Side = "buy" | "sell";
+export type SignalKind = "server" | "company" | "terminal_company" | "symbol_suffix" | "leverage" | "trade_mode" | "declared_provider" | "declared_environment" | "declared_product";
 export interface SizingResult {
   volume: number;
   riskBudget: number;
@@ -1355,17 +1536,24 @@ export interface TradeIntent {
   rationale: string;
   details: Record<string, number | string>;
 }
+export interface TradingPermissions {
+  terminalTradeAllowed: boolean | null;
+  expertTradingAllowed: boolean | null;
+  accountTradingEnabled: boolean;
+  marginMode: string | null;
+  fifoClose: boolean | null;
+}
 export interface TradingRulesInput {
   allowedSymbols?: string[] | null;
   tradingWindows?: TradingWindow[];
-  challenge?: FtmoChallenge | null;
+  challenge?: FtmoChallengeInput | null;
   minTradingDays?: number | null;
   profitTargetPercent?: number | null;
 }
 export interface TradingRulesOutput {
   allowedSymbols: string[] | null;
   tradingWindows: TradingWindow[];
-  challenge: FtmoChallenge | null;
+  challenge: FtmoChallengeOutput | null;
   minTradingDays: number | null;
   profitTargetPercent: number | null;
 }
@@ -1424,6 +1612,7 @@ export type DrawdownPolicy = DrawdownPolicyOutput;
 export type DynamicRiskPolicy = DynamicRiskPolicyOutput;
 export type ExecutionLimits = ExecutionLimitsOutput;
 export type ExecutionProfile = ExecutionProfileOutput;
+export type FtmoChallenge = FtmoChallengeOutput;
 export type GridTier = GridTierOutput;
 export type NewsPolicy = NewsPolicyOutput;
 export type PositionLimits = PositionLimitsOutput;
@@ -1528,6 +1717,14 @@ export interface Operations {
     body: undefined;
     response: Account;
   };
+  accounts_effective_policy: {
+    method: "GET";
+    path: "/api/accounts/{account_id}/effective-policy";
+    pathParams: { account_id: string; };
+    query: { symbol?: string | null; };
+    body: undefined;
+    response: EffectiveRiskPolicy;
+  };
   accounts_orders: {
     method: "GET";
     path: "/api/accounts/{account_id}/orders";
@@ -1543,6 +1740,22 @@ export interface Operations {
     query: Record<string, never>;
     body: undefined;
     response: Position[];
+  };
+  accounts_profile: {
+    method: "GET";
+    path: "/api/accounts/{account_id}/profile";
+    pathParams: { account_id: string; };
+    query: Record<string, never>;
+    body: undefined;
+    response: AccountProfile;
+  };
+  accounts_provider_loss: {
+    method: "GET";
+    path: "/api/accounts/{account_id}/provider-loss";
+    pathParams: { account_id: string; };
+    query: Record<string, never>;
+    body: undefined;
+    response: ProviderLossState;
   };
   accounts_reconnect: {
     method: "POST";
@@ -1944,6 +2157,14 @@ export interface Operations {
     body: undefined;
     response: Incident[];
   };
+  system_live_metrics: {
+    method: "GET";
+    path: "/api/system/live-metrics";
+    pathParams: Record<string, never>;
+    query: { accountId?: string | null; minutes?: number; };
+    body: undefined;
+    response: LiveMetrics;
+  };
   system_readiness: {
     method: "GET";
     path: "/api/system/readiness";
@@ -2004,12 +2225,15 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   accounts_delete_credentials: { method: "DELETE", path: "/api/accounts/{account_id}/credentials" },
   accounts_disconnect: { method: "POST", path: "/api/accounts/{account_id}/disconnect" },
   accounts_discover: { method: "POST", path: "/api/accounts/discover" },
+  accounts_effective_policy: { method: "GET", path: "/api/accounts/{account_id}/effective-policy" },
   accounts_get: { method: "GET", path: "/api/accounts/{account_id}" },
   accounts_get_active: { method: "GET", path: "/api/active-account" },
   accounts_list: { method: "GET", path: "/api/accounts" },
   accounts_orders: { method: "GET", path: "/api/accounts/{account_id}/orders" },
   accounts_positions: { method: "GET", path: "/api/accounts/{account_id}/positions" },
   accounts_preview_rules: { method: "POST", path: "/api/accounts/rules-preview" },
+  accounts_profile: { method: "GET", path: "/api/accounts/{account_id}/profile" },
+  accounts_provider_loss: { method: "GET", path: "/api/accounts/{account_id}/provider-loss" },
   accounts_put_credentials: { method: "PUT", path: "/api/accounts/{account_id}/credentials" },
   accounts_reconnect: { method: "POST", path: "/api/accounts/{account_id}/reconnect" },
   accounts_request_rules: { method: "POST", path: "/api/accounts/{account_id}/rules" },
@@ -2061,6 +2285,7 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   system_events: { method: "GET", path: "/api/system/events" },
   system_health: { method: "GET", path: "/api/system/health" },
   system_incidents: { method: "GET", path: "/api/system/incidents" },
+  system_live_metrics: { method: "GET", path: "/api/system/live-metrics" },
   system_readiness: { method: "GET", path: "/api/system/readiness" },
   system_startup_authorize_automatic: { method: "POST", path: "/api/system/startup/authorize-automatic" },
   system_startup_begin: { method: "POST", path: "/api/system/startup" },

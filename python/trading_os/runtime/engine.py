@@ -62,6 +62,7 @@ class Engine:
         if c.strategy_s02 is not None:
             c.strategy_s02.subscribe()
         c.supervisor.subscribe()
+        c.live_metrics.subscribe()
         c.events.subscribe(AccountDisconnected, self._forget_account)
 
         await c.accounts.start(initial_active=c.settings.active_account_id)

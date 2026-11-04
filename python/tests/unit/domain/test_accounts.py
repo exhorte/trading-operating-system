@@ -136,8 +136,16 @@ class TestProviderProfiles:
         rules = default_rules(Provider.FTMO, ProfileParams(account_type=AccountType.PROP_FUNDED, challenge=funded))
         assert rules.trading_rules.min_trading_days is None and rules.trading_rules.profit_target_percent is None
 
+    def test_an_ftmo_account_without_a_declared_challenge_gets_no_product_invented(self) -> None:
+        # ADR 0036: a default 2-Step of 10 000 used to be attributed here. Nothing declared = nothing known.
+        rules = default_rules(Provider.FTMO, ProfileParams(account_type=AccountType.PROP_CHALLENGE))
+        assert rules.trading_rules.challenge is None
+        assert rules.risk_profile.drawdown.reference_balance is None
+        assert (rules.trading_rules.min_trading_days, rules.trading_rules.profit_target_percent) == (None, None)
+
     def test_ftmo_and_exness_do_not_get_the_same_policy(self) -> None:
-        ftmo = default_rules(Provider.FTMO, ProfileParams(account_type=AccountType.PROP_CHALLENGE))
+        challenge = FtmoChallenge(type="2-step", account_size=10_000, phase="challenge")
+        ftmo = default_rules(Provider.FTMO, ProfileParams(account_type=AccountType.PROP_CHALLENGE, challenge=challenge))
         exness = default_rules(Provider.EXNESS, ProfileParams(account_type=AccountType.DIRECT))
         assert ftmo != exness
         assert ftmo.risk_profile.drawdown.reference_balance != exness.risk_profile.drawdown.reference_balance

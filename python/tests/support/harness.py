@@ -20,6 +20,12 @@ from trading_os.shared.time import ManualClock
 
 E = TypeVar("E", bound=Event)
 
+# Plausible company names, simulated: what the provider's terminal would say, not a reading of a real one.
+SIMULATED_COMPANIES = {"EXNESS": "Exness Technologies Ltd", "FTMO": "FTMO Global Markets Ltd"}
+SIMULATED_LEVERAGE = {
+    "FTMO": 100
+}  # FTMO Standard is up to 1:100; the simulated Exness keeps the fake terminal's default
+
 
 class Recorder:
     def __init__(self) -> None:
@@ -70,7 +76,12 @@ class Harness:
             self.terminals[account.terminal_path] = terminal
         if account.login not in terminal.accounts:
             terminal.accounts[account.login] = FakeAccount(
-                login=account.login, server=account.server, password=f"pw-{account.login}", currency=account.currency
+                login=account.login,
+                server=account.server,
+                password=f"pw-{account.login}",
+                currency=account.currency,
+                company=SIMULATED_COMPANIES.get(account.provider.value, "Simulated Broker"),
+                leverage=SIMULATED_LEVERAGE.get(account.provider.value, 500),
             )
         return terminal
 

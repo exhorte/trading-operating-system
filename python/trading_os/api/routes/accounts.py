@@ -31,6 +31,9 @@ from trading_os.domain.accounts.models import Account, AccountRules, AccountSnap
 from trading_os.domain.accounts.profiles import ProfileParams, default_rules
 from trading_os.domain.accounts.rules_ledger import RuleVersion
 from trading_os.domain.positions.models import PendingOrder, Position
+from trading_os.domain.providers.loss_floors import ProviderLossState
+from trading_os.domain.providers.profile import AccountProfile
+from trading_os.domain.risk.effective import EffectiveRiskPolicy
 from trading_os.services.accounts import AccountCreate, RulesOverview
 from trading_os.shared.errors import NotFound
 
@@ -72,6 +75,35 @@ async def preview_rules(body: RulesPreviewRequest) -> AccountRules:
             account_type=body.account_type, reference_balance=body.reference_balance, challenge=body.challenge
         ),
     )
+
+
+@router.get(
+    "/{account_id}/profile", response_model=AccountProfile,
+    summary="Which account this is: what was declared next to what the terminal says, and how sure the identification is",
+)  # fmt: skip
+async def account_profile(account_id: str, c: Core) -> AccountProfile:
+    return await c.providers.profile(account_id)
+
+
+@router.get(
+    "/{account_id}/effective-policy", response_model=EffectiveRiskPolicy,
+    summary="Every limit with each source's value and the one that binds (the trader's, the provider's, the instrument's, the account's)",
+)  # fmt: skip
+async def effective_policy(
+    account_id: str, c: Core, symbol: Annotated[str | None, Query(max_length=40, pattern=r"^[A-Za-z0-9._\-]+$")] = None
+) -> EffectiveRiskPolicy:
+    status = c.risk.status(account_id)
+    return await c.providers.effective_policy(
+        account_id, symbol=symbol, live_allowance=status.allowance if status is not None else None
+    )
+
+
+@router.get(
+    "/{account_id}/provider-loss", response_model=ProviderLossState,
+    summary="The provider's loss floors: reference balance at 00:00 in its zone, equity tested, the room left (unknown blocks entries)",
+)  # fmt: skip
+async def provider_loss(account_id: str, c: Core) -> ProviderLossState:
+    return await c.providers.loss_state_of(account_id)
 
 
 @router.get("/{account_id}", response_model=Account)

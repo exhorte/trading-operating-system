@@ -7,7 +7,8 @@
     list-symbols                the broker symbols behind canonical names (read-only)
     spread-history              the spread per New York window from the broker's tick history (read-only)
     weekly-review               a Markdown review of a week, from the journal
-    validate                    the validation bench: one strategy, one frozen configuration, one past period (ADR 0026)
+    live-report                 the live measures of a window (spreads, tick rate, command timings) from the database (ADR 0035)
+    validate                   the validation bench: one strategy, one frozen configuration, one past period (ADR 0026)
     mcp                         the read-only MCP server (needs the ``mcp`` extra)
     gen-types                   generate the cockpit's TypeScript types from the core's own schemas
 
@@ -96,6 +97,17 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--to", dest="end", help="UTC date or time; default: now")
     review.add_argument("--out-dir", type=Path, default=Path("weekly-reviews"))
     review.set_defaults(handler=_weekly_review)
+
+    live = commands.add_parser(
+        "live-report", help="the live measures of a window from the stored ticks and commands (read-only, ADR 0035)"
+    )
+    live.add_argument("--account", help="default: ACTIVE_ACCOUNT_ID")
+    live.add_argument("--symbols", nargs="+", default=["EURUSDm", "XAUUSDm"], help="broker names")
+    live.add_argument("--from", dest="start", help="UTC date or time; default: --minutes before --to")
+    live.add_argument("--to", dest="end", help="UTC date or time, exclusive; default: now")
+    live.add_argument("--minutes", type=int, default=60, help="the window when --from is not given")
+    live.add_argument("--out-dir", type=Path, default=Path("exports/live"))
+    live.set_defaults(handler=_live_report)
 
     check = commands.add_parser(
         "validate", help="measure one strategy, as written, on a past period — it never searches (ADR 0026)"
@@ -381,6 +393,40 @@ def _weekly_review(args: argparse.Namespace) -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     target = args.out_dir / f"{end:%Y-%m-%d}.md"
     target.write_text(markdown, encoding="utf-8")
+    print(f"written to {target}", file=sys.stderr)
+    return 0
+
+
+def _live_report(args: argparse.Namespace) -> int:
+    from datetime import UTC, datetime
+
+    from trading_os.app.config import get_settings
+    from trading_os.cli.history import parse_utc
+    from trading_os.cli.live_report import render_live_report
+    from trading_os.services.accounts import ACTIVE_ACCOUNT_KEY
+    from trading_os.services.live_metrics import stored_commands, stored_quotes
+
+    end = parse_utc(args.end) if args.end else datetime.now(UTC)
+    start = parse_utc(args.start) if args.start else end - timedelta(minutes=args.minutes)
+    if start >= end:
+        raise ValidationFailed("--from must be before --to", code="bad_window")
+
+    async def work(repos: Any) -> str:
+        account_id = args.account or get_settings().active_account_id
+        if account_id is None:  # the account the cockpit last selected, which the core keeps in its state table
+            stored = await repos.state.get(ACTIVE_ACCOUNT_KEY)
+            account_id = stored.get("id") if isinstance(stored, dict) else None
+        if account_id is None:
+            raise ValidationFailed("name the account with --account, or set ACTIVE_ACCOUNT_ID", code="no_account")
+        quotes = await stored_quotes(repos, args.symbols, start, end)
+        commands = await stored_commands(repos, account_id, start, end)
+        return render_live_report(account_id=account_id, start=start, end=end, quotes=quotes, commands=commands)
+
+    markdown = _with_repositories(work)
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    target = args.out_dir / f"live-{end:%Y%m%dT%H%M%S}Z.md"
+    target.write_text(markdown, encoding="utf-8")
+    print(markdown)
     print(f"written to {target}", file=sys.stderr)
     return 0
 

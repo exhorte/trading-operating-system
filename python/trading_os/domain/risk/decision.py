@@ -16,9 +16,12 @@ from typing import Literal
 
 from pydantic import Field
 
+from trading_os.domain.market.instrument import InstrumentSpecification
 from trading_os.domain.market.models import SymbolSpec
 from trading_os.domain.positions.models import Position
 from trading_os.domain.primitives import AccountId, DomainModel, Side, SymbolCode
+from trading_os.domain.providers.context import ProviderContext
+from trading_os.domain.providers.identity import blocker_text
 from trading_os.domain.risk.dynamic_risk import RiskAllowance
 from trading_os.domain.risk.evaluate import RiskInputs, evaluate_risk_state
 from trading_os.domain.risk.exposure import currency_exposure, max_correlated_exposure, position_risk_amount
@@ -53,6 +56,9 @@ class TradingContext(DomainModel):
     # Open positions and the specs of their symbols are needed again for the "after" exposure of an intent.
     positions: tuple[Position, ...] = ()  # open positions (full objects), for the exposure *after* a new trade
     specs: dict[str, SymbolSpec] = Field(default_factory=dict)
+    # The provider side of the account (ADR 0036). ``None`` = not asked: no provider check runs. The service always fills it, and an
+    # account it cannot identify arrives here as a refusal, never as an absence.
+    provider: ProviderContext | None = None
 
 
 class CheckResult(DomainModel):
@@ -185,7 +191,75 @@ def _checks(ctx: TradingContext, state: RiskState, symbol: str | None) -> list[C
             "EA registered, identity ok, tradable, not halted",
         ),
     ]
+    if ctx.provider is not None:
+        results += provider_checks(ctx.provider)
     return results
+
+
+def provider_checks(provider: ProviderContext) -> list[CheckResult]:
+    """What the provider's side of the account adds to the answer. Each can refuse; none can allow what another check refuses."""
+    checks: list[CheckResult] = []
+    identification = provider.identification
+    if identification.executable:
+        checks.append(
+            CheckResult(
+                check_id="provider_identity", label="Account identified", ok=True, detail=identification.summary
+            )
+        )
+    for blocker in identification.blockers:
+        checks.append(
+            CheckResult(
+                check_id=f"provider_identity_{blocker.value}",
+                label="Account identified",
+                ok=False,
+                reason=blocker.value,
+                detail=blocker_text(blocker),
+            )
+        )
+    loss = provider.loss
+    if loss is not None and loss.status != "not_applicable":
+        if loss.blocks_entries:
+            checks += [
+                CheckResult(
+                    check_id=f"provider_loss_{reason}",
+                    label="Provider loss floors",
+                    ok=False,
+                    reason=reason,
+                    detail=loss.detail,
+                )
+                for reason in loss.reasons
+            ]
+        else:
+            checks.append(
+                CheckResult(check_id="provider_loss", label="Provider loss floors", ok=True, detail=loss.detail)
+            )
+    for check_id, label, decision in (
+        ("provider_news", "Provider news restriction", provider.news),
+        ("provider_overnight", "Provider market-break rule", provider.overnight),
+    ):
+        if decision is None or decision.status == "not_applicable":
+            continue
+        checks.append(
+            CheckResult(
+                check_id=check_id,
+                label=label,
+                ok=not decision.blocked,
+                reason=decision.reason if decision.blocked else None,
+                detail=decision.detail,
+            )
+        )
+    budget = provider.requests
+    if budget is not None and budget.status != "not_applicable":
+        checks.append(
+            CheckResult(
+                check_id="provider_requests",
+                label="Provider request budget",
+                ok=not budget.blocks_entries,
+                reason=budget.reason if budget.blocks_entries else None,
+                detail=budget.detail,
+            )
+        )
+    return checks
 
 
 def can_i_trade(ctx: TradingContext, symbol: str | None = None) -> CanITradeResult:
@@ -251,6 +325,17 @@ def _intent_failures(intent: TradeIntent, review: IntentReview) -> list[CheckRes
             )
         )
         return failures
+    if isinstance(spec, InstrumentSpecification) and spec.missing_for_trading:
+        failures.append(
+            CheckResult(
+                check_id="instrument_specification",
+                label="Instrument specification complete",
+                ok=False,
+                reason="instrument_specification_missing",
+                detail=f"the terminal did not give, for {spec.name}: {', '.join(spec.missing_for_trading)}",
+            )
+        )
+        return failures  # an order cannot be priced or placed on a specification with holes: nothing else is weighed
     stop_distance = (intent.entry_price - intent.stop_loss) * intent.side.direction
     if stop_distance <= 0:
         failures.append(
@@ -419,4 +504,5 @@ __all__ = [
     "TradingContext",
     "can_i_trade",
     "decide",
+    "provider_checks",
 ]

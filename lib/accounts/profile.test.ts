@@ -9,7 +9,7 @@ const ftmo = account({
   tradingRules: {
     allowedSymbols: null,
     tradingWindows: [],
-    challenge: { type: "2-step", accountSize: 10_000, phase: "challenge" },
+    challenge: { type: "2-step", accountSize: 10_000, phase: "challenge", variant: "standard" },
     minTradingDays: 4,
     profitTargetPercent: 10,
   },
@@ -57,6 +57,6 @@ describe("labels", () => {
   });
 
   it("names the challenge type and phase", () => {
-    expect(challengeLabel({ type: "1-step", accountSize: 100_000, phase: "funded" })).toBe("FTMO · 1-Step $100,000 · Funded");
+    expect(challengeLabel({ type: "1-step", accountSize: 100_000, phase: "funded", variant: "standard" })).toBe("FTMO · 1-Step $100,000 · Funded");
   });
 });

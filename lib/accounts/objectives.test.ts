@@ -3,7 +3,7 @@ import type { AccountRules, FtmoChallenge, JournalTrade } from "@/lib/api/genera
 import { account } from "@/lib/realtime/test-fixtures";
 import { evaluateFtmoObjectives, type ObjectivesInput } from "./objectives";
 
-const challenge: FtmoChallenge = { type: "2-step", accountSize: 10_000, phase: "challenge" };
+const challenge: FtmoChallenge = { type: "2-step", accountSize: 10_000, phase: "challenge", variant: "standard" };
 
 /** The 2-Step Challenge phase as the core's profile writes it: −5 % a day, −10 % overall, 4 days, a 10 % target. */
 function rulesOf(overrides: Partial<AccountRules["tradingRules"]> = {}): AccountRules {

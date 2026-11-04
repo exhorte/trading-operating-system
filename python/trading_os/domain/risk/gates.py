@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from trading_os.domain.market.calendar import UpcomingRelease, is_news_blackout, next_release
+from trading_os.domain.providers.loss_floors import ProviderLossState
 from trading_os.domain.risk.policy import DrawdownPolicy, NewsPolicy, PositionLimits, RiskProfile
 from trading_os.domain.risk.state import GateResult, round_half_up
 
@@ -38,6 +39,13 @@ def weekly_loss_gate(used_percent: float, policy: DrawdownPolicy) -> GateResult:
         used_percent >= policy.weekly_loss_limit_percent,
         f"{_pct(used_percent)} used of {_pct(policy.weekly_loss_limit_percent)}",
     )
+
+
+def provider_loss_gate(state: ProviderLossState) -> GateResult:
+    """The provider's own floors (ADR 0036). Blocked only on a **breach** — a hard lockout like the personal limits. A floor that cannot
+    be computed (a reference missing) refuses entries through the provider checks of the decision, without opening a lockout: nothing was
+    lost, something is not known."""
+    return _gate("gate-provider-loss", "Provider loss floor", state.status == "breached", state.detail or state.status)
 
 
 def performance_stop_gate(performance_percent: float | None, stop_level_percent: int) -> GateResult:
