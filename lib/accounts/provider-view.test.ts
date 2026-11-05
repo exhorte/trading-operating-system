@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { EffectiveLimit, ProviderLossState } from "@/lib/api/generated";
+import type { CommissionReading, EffectiveLimit, ProviderLossState } from "@/lib/api/generated";
 import {
+  commissionRow,
   confidenceView,
   limitProvenance,
   limitValue,
@@ -139,5 +140,47 @@ describe("the provider's floors", () => {
     expect(lossTone(loss({ status: "unknown" }))).toBe("warning");
     expect(lossTone(loss())).toBe("profit");
     expect(lossStatusLabel(loss({ status: "unknown" }))).toMatch(/entrées refusées/);
+  });
+});
+
+function commission(overrides: Partial<CommissionReading> = {}): CommissionReading {
+  return { perLotRoundTrip: 0, source: "documentary", detail: "", roundTrips: 0, documentaryMismatch: false, ...overrides };
+}
+
+describe("the commission the account pays", () => {
+  it("shows the documented figure, and the stored one it replaces, when they differ", () => {
+    const row = commissionRow(5, commission());
+    expect(row.text).toBe("aucune");
+    expect(row.note).toMatch(/^documentaire : le contrat du produit/);
+    expect(row.note).toMatch(/règle stockée : \$5\.00 par lot, non utilisée/);
+    expect(row.warn).toBe(false);
+  });
+
+  it("says nothing about the stored figure when it is the one in force", () => {
+    const row = commissionRow(3.5, commission({ perLotRoundTrip: 3.5, source: "assumed" }));
+    expect(row.text).toBe("$3.50 par lot, aller-retour");
+    expect(row.note).toBe("supposée : ta règle, ni mesurée ni sourcée");
+  });
+
+  it("counts the round trips a measure rests on, in the singular too", () => {
+    expect(commissionRow(0, commission({ perLotRoundTrip: 4.5, source: "observed", roundTrips: 3 })).note).toBe(
+      "mesurée sur 3 aller-retours clos · règle stockée : aucune, non utilisée",
+    );
+    expect(commissionRow(4.5, commission({ perLotRoundTrip: 4.5, source: "observed", roundTrips: 1 })).note).toBe(
+      "mesurée sur 1 aller-retour clos",
+    );
+  });
+
+  it("asks for attention when the measure contradicts the product's contract", () => {
+    const row = commissionRow(0, commission({ perLotRoundTrip: 7, source: "observed", roundTrips: 2, documentaryMismatch: true }));
+    expect(row.warn).toBe(true);
+    expect(row.note).toMatch(/la mesure diffère du contrat du produit/);
+  });
+
+  it("falls back on the stored figure, flagged, while the account's own is not read", () => {
+    const row = commissionRow(5, null);
+    expect(row.text).toBe("$5.00 par lot, aller-retour");
+    expect(row.note).toMatch(/pas encore lue/);
+    expect(row.warn).toBe(true);
   });
 });

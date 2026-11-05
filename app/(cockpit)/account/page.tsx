@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCockpit } from "@/lib/realtime/provider";
 import { useActiveProfile } from "@/lib/accounts/use-rules";
+import { useApi } from "@/lib/api/use-api";
 import { AccountMetrics } from "@/components/accounts/account-metrics";
 import { ConnectAccountForm } from "@/components/accounts/connect-account-form";
 import { ConnectionChain } from "@/components/accounts/connection-chain";
@@ -40,6 +41,10 @@ const LINK = "text-foreground underline underline-offset-4 hover:no-underline";
 export default function AccountPage() {
   const { accounts, activeAccountId, connection } = useCockpit();
   const { profile, error } = useActiveProfile();
+  // The commission the core really applies (ADR 0036): the rules ledger only holds the one the trader configured.
+  const provider = useApi("accounts_profile", activeAccountId ? { path: { account_id: activeAccountId } } : null, {
+    pollMs: 15_000,
+  });
 
   return (
     <div className="flex flex-col gap-10">
@@ -90,7 +95,7 @@ export default function AccountPage() {
 
       {profile && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <RulesCard profile={profile} />
+          <RulesCard profile={profile} commission={provider.data?.commission ?? null} />
           {profile.challenge ? (
             <ObjectivesCard profile={profile} />
           ) : (

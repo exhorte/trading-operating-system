@@ -6,7 +6,14 @@
  * code itself, never swallowed.
  */
 
-import type { AccountIdentification, EffectiveLimit, LimitSource, ProviderLossState } from "@/lib/api/generated";
+import type {
+  AccountIdentification,
+  CommissionReading,
+  EffectiveLimit,
+  LimitSource,
+  ProviderLossState,
+} from "@/lib/api/generated";
+import { formatMoney } from "@/lib/format";
 
 /** The core's stable reason codes, in the trader's words. */
 const REASONS: Record<string, string> = {
@@ -170,4 +177,46 @@ export function lossStatusLabel(state: ProviderLossState): string {
     default:
       return "Aucun plancher";
   }
+}
+
+/** A stored figure and the account's own figure this close are the same one (the core's own tolerance for a documented figure). */
+const SAME_COMMISSION = 0.005;
+
+export interface CommissionRow {
+  /** What the account pays, in one line. */
+  text: string;
+  /** Where that figure comes from, or what is not known yet. */
+  note: string;
+  /** The note asks for attention: the account's figure is not read yet, or the measure contradicts the product's contract. */
+  warn: boolean;
+}
+
+function roundTrip(value: number): string {
+  return value > 0 ? `${formatMoney(value)} par lot, aller-retour` : "aucune";
+}
+
+/**
+ * The commission row of « Règles appliquées » (ADR 0036). The rules ledger holds the figure the trader *configured*; wherever the core
+ * decides — risk review, sizing, the break-even buffer, the cost gate — it replaces it with the account's own: measured on its closed
+ * positions, else the product contract's, else the configured one. Showing the ledger figure alone would contradict what is applied, so
+ * the row says the figure in force, where it comes from, and the stored one when it is not the one used.
+ */
+export function commissionRow(stored: number, reading: CommissionReading | null): CommissionRow {
+  if (reading === null) {
+    return { text: roundTrip(stored), note: "règle stockée : la commission du compte n'est pas encore lue", warn: true };
+  }
+  const origin =
+    reading.source === "observed"
+      ? `mesurée sur ${reading.roundTrips} aller-retour${reading.roundTrips > 1 ? "s" : ""} clos`
+      : reading.source === "documentary"
+        ? "documentaire : le contrat du produit, en attendant les transactions du compte"
+        : "supposée : ta règle, ni mesurée ni sourcée";
+  const notes = [origin];
+  if (Math.abs(stored - reading.perLotRoundTrip) > SAME_COMMISSION) {
+    notes.push(`règle stockée : ${stored > 0 ? `${formatMoney(stored)} par lot` : "aucune"}, non utilisée`);
+  }
+  if (reading.documentaryMismatch) {
+    notes.push("la mesure diffère du contrat du produit");
+  }
+  return { text: roundTrip(reading.perLotRoundTrip), note: notes.join(" · "), warn: reading.documentaryMismatch };
 }

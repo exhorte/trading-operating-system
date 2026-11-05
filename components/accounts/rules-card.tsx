@@ -1,5 +1,7 @@
 import { Scale } from "lucide-react";
 import type { AccountProfile } from "@/lib/accounts/profile";
+import { commissionRow } from "@/lib/accounts/provider-view";
+import type { CommissionReading } from "@/lib/api/generated";
 import { formatMoney } from "@/lib/format";
 import { Panel } from "@/components/ui/panel";
 
@@ -8,11 +10,19 @@ function percentOf(reference: number | null, percent: number): string {
 }
 
 /** The limits the risk engine applies to the account, in % and in money, with the reference they are measured from —
- *  the rules in force today, as the core resolved them. */
-export function RulesCard({ profile }: { profile: AccountProfile }) {
+ *  the rules in force today, as the core resolved them. The commission is the exception: the rules ledger holds the figure the
+ *  trader configured, so the account's own (`commission`, from its provider profile) is shown beside it (ADR 0036). */
+export function RulesCard({
+  profile,
+  commission = null,
+}: {
+  profile: AccountProfile;
+  commission?: CommissionReading | null;
+}) {
   const { riskProfile: p, executionProfile } = profile.rules;
   const ref = profile.referenceBalance;
   const limits = executionProfile.limits;
+  const commissionView = commissionRow(limits.commissionPerLotRoundTrip, commission);
 
   const rows: Array<[string, string, string]> = [
     ["Perte journalière max", `${p.drawdown.dailyLossLimitPercent} %`, percentOf(ref, p.drawdown.dailyLossLimitPercent)],
@@ -61,9 +71,10 @@ export function RulesCard({ profile }: { profile: AccountProfile }) {
         <dd className={ref === null ? "text-warning" : "text-foreground"}>{profile.referenceSource}</dd>
         <dt className="text-muted-foreground">Commission</dt>
         <dd className="text-foreground">
-          {limits.commissionPerLotRoundTrip > 0
-            ? `${formatMoney(limits.commissionPerLotRoundTrip)} par lot, aller-retour`
-            : "aucune (compte Standard mesuré en Phase 0)"}
+          {commissionView.text}
+          <span className={`block text-xs ${commissionView.warn ? "text-warning" : "text-muted-foreground"}`}>
+            {commissionView.note}
+          </span>
         </dd>
         <dt className="text-muted-foreground">Plafond d&apos;autonomie</dt>
         <dd className="text-foreground">{executionProfile.maxMode} — jamais au-dessus, quoi que le cœur reçoive</dd>
