@@ -993,6 +993,12 @@ export interface ModeRights {
   needsGreenReadiness: boolean;
   realMoney: boolean;
 }
+/** The MT5 worker processes this core started and ended (ADR 0037) — counts only. One alive per connected account is expected, one more while a reconnection is in flight; more, for long, is a leak. */
+export interface Mt5WorkersView {
+  spawned: number;
+  ended: number;
+  alive: number;
+}
 export interface NewsPolicyInput {
   blackoutMinutes?: number;
   calendarMaxAgeHours?: number;
@@ -1461,6 +1467,7 @@ export interface SystemHealthView {
   audit: AuditView;
   ticks: TickQueueView;
   websocket: WebSocketView;
+  mt5Workers: Mt5WorkersView;
   agentsConnected: number;
   jobs: JobView[];
   findings: Finding[];

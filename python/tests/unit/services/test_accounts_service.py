@@ -3,15 +3,17 @@ switch/disconnect guards, the trading switch, and the anti-tilt rules ledger."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
+from typing import Any, NoReturn
 
 import pytest
 from pydantic import SecretStr
 
 from tests.support.harness import Harness
 from trading_os.domain.accounts.discovery import DEAL_TYPE_BALANCE
-from trading_os.domain.accounts.models import AccountStatus, AccountType, Environment, FtmoChallenge, Provider
+from trading_os.domain.accounts.models import Account, AccountStatus, AccountType, Environment, FtmoChallenge, Provider
 from trading_os.domain.events import (
     AccountArchived,
     AccountConnected,
@@ -23,8 +25,9 @@ from trading_os.domain.events import (
     ActiveAccountChanged,
 )
 from trading_os.infrastructure.database.pool import Database
-from trading_os.infrastructure.mt5.client import ConnectFailed
+from trading_os.infrastructure.mt5.client import ConnectFailed, Mt5Client
 from trading_os.infrastructure.mt5.fake import FakeAccount, FakeMt5
+from trading_os.infrastructure.mt5.transport import InProcessTransport
 from trading_os.infrastructure.security.credentials import EnvCredentialStore
 from trading_os.services.accounts import AccountCreate, AccountService
 from trading_os.shared.errors import AccountMismatch, Conflict, ValidationFailed
@@ -106,6 +109,58 @@ async def test_the_connected_account_is_the_active_one_and_it_is_remembered(h: H
     restarted = service(h)  # a new process: the active account comes back from the database
     await restarted.start()
     assert restarted.active_account_id == first.id
+
+
+class HangingClient(Mt5Client):
+    """A client whose attach never answers: a terminal that does not respond."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.attaching = asyncio.Event()
+        self.disconnects = 0
+
+    async def connect(self, **kwargs: Any) -> NoReturn:
+        self.attaching.set()
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    async def disconnect(self) -> None:
+        self.disconnects += 1
+        await super().disconnect()
+
+
+async def test_an_attach_cancelled_midway_leaves_nothing_behind(h: Harness) -> None:
+    """The supervisor's job deadline can cut a reconnection short (ADR 0037): the account must not stay « connecting » for good, and the
+    client the attempt created must be closed so that its MT5 worker does not outlive it."""
+    made: list[HangingClient] = []
+    built = asyncio.Event()
+
+    def factory(account: Account) -> Mt5Client:
+        if made:  # the next attempt reaches a working terminal
+            return h.mt5_factory(account)
+        hanging = HangingClient(InProcessTransport(h.terminal(account)), account_id=account.id, clock=h.clock)
+        made.append(hanging)
+        built.set()
+        return hanging
+
+    accounts = AccountService(
+        repos=h.repos, events=h.events, clock=h.clock, credentials=h.credentials, mt5_factory=factory
+    )
+    created = await accounts.create(exness())
+    attempt = asyncio.create_task(accounts.connect(created.id))
+    await asyncio.wait_for(built.wait(), timeout=5)
+    await asyncio.wait_for(made[0].attaching.wait(), timeout=5)
+    assert (await accounts.get(created.id)).status is AccountStatus.CONNECTING
+
+    attempt.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await attempt
+
+    assert made[0].disconnects == 1  # the client of the abandoned attempt was closed
+    assert (await accounts.get(created.id)).status is AccountStatus.DISCONNECTED  # not stuck « connecting »
+    assert not h.recorder.of(AccountConnected)
+    again = await accounts.connect(created.id)  # and the account can be attached afterwards
+    assert again.status is AccountStatus.CONNECTED
 
 
 async def test_connecting_twice_is_idempotent_and_only_one_account_is_connected_at_a_time(h: Harness) -> None:

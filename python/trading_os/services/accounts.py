@@ -476,6 +476,13 @@ class AccountService:
                 with contextlib.suppress(TradingOsError):
                     await client.disconnect()  # the worker process of a failed attempt must not linger
                 raise
+            except asyncio.CancelledError:
+                # Cut short from outside — the supervisor's job deadline. An attempt that is abandoned leaves nothing behind: no account
+                # stuck « connecting », and no client (nor MT5 worker) that nobody will ever close (ADR 0037).
+                self._connecting.discard(account_id)
+                with contextlib.suppress(TradingOsError):
+                    await asyncio.shield(client.disconnect())
+                raise
             self._connecting.discard(account_id)
             self._errors.pop(account_id, None)
             self._sessions[account_id] = AccountSession(account, client, info, self._clock.now())

@@ -22,7 +22,20 @@ async def test_the_health_is_open_minimal_and_never_names_a_secret_or_an_account
     assert body["access"] == {"cockpitGuarded": True, "agentLinkGuarded": False}  # whether, never what
     assert {job["name"] for job in body["jobs"]} == set() and body["websocket"]["clients"] == 0
     assert TOKEN not in response.text and "exness" not in response.text and "1000001" not in response.text
-    assert set(body) >= {"version", "startedAt", "uptimeSeconds", "checkedAt", "audit", "ticks", "findings"}
+    assert set(body) >= {
+        "version",
+        "startedAt",
+        "uptimeSeconds",
+        "checkedAt",
+        "audit",
+        "ticks",
+        "findings",
+        "mt5Workers",
+    }
+    # counts only (ADR 0037): the MT5 worker processes this core started, ended, and still holds
+    workers = body["mt5Workers"]
+    assert set(workers) == {"spawned", "ended", "alive"}
+    assert workers["alive"] == workers["spawned"] - workers["ended"] >= 0
 
 
 async def test_everything_else_needs_the_token_and_the_origin(api: Api) -> None:

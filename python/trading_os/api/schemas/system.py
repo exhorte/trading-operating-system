@@ -47,6 +47,15 @@ class TickQueueView(DomainModel):
     dropped: int  # quotes the database could not take: telemetry may be lossy, never silently
 
 
+class Mt5WorkersView(DomainModel):
+    """The MT5 worker processes this core started and ended (ADR 0037) — counts only. One alive per connected account is expected,
+    one more while a reconnection is in flight; more, for long, is a leak."""
+
+    spawned: int
+    ended: int
+    alive: int
+
+
 class WebSocketView(DomainModel):
     clients: int
     frames_sent: int
@@ -71,6 +80,7 @@ class SystemHealthView(DomainModel):
     audit: AuditView
     ticks: TickQueueView
     websocket: WebSocketView
+    mt5_workers: Mt5WorkersView
     agents_connected: int
     jobs: list[JobView]
     findings: list[Finding]

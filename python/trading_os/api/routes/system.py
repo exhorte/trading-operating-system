@@ -17,6 +17,7 @@ from trading_os.api.schemas.system import (
     DatabaseView,
     EventRecord,
     JobView,
+    Mt5WorkersView,
     StartRequest,
     SystemHealthView,
     SystemStatus,
@@ -30,6 +31,7 @@ from trading_os.domain.autonomy.readiness import ReadinessReport
 from trading_os.domain.system.incidents import Incident
 from trading_os.domain.system.startup import StartupRun, StartupStatus
 from trading_os.domain.telemetry.live_metrics import MAX_WINDOW_MINUTES, LiveMetrics
+from trading_os.infrastructure.mt5.transport import WORKERS
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -57,6 +59,7 @@ def build_health(c: Container, stream: CockpitStream | None) -> SystemHealthView
             frames_dropped=stats.frames_dropped if stats else 0,
             closed_for_overflow=stats.closed_for_overflow if stats else 0,
         ),
+        mt5_workers=Mt5WorkersView(spawned=WORKERS.spawned, ended=WORKERS.ended, alive=WORKERS.alive),
         agents_connected=len(c.execution.registered_logins()),
         jobs=[
             JobView(
