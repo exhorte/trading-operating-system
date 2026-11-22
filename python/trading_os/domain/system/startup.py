@@ -4,7 +4,7 @@ Three things are kept apart on purpose:
 
 * **A — the application** (core, database, cockpit) is up: it authorises no order;
 * **B — the trading system** is started: engines verified, the broker reconciled, the autonomy ladder climbed to OBSERVE (or, if
-  asked, PAPER / CONFIRM) — never higher;
+  asked, CONFIRM) — never higher;
 * **C — automatic trading** is authorised: a separate gesture, one rung at a time, with the readiness green *then*.
 
 This module is models only: the service that gathers the facts is ``services/startup.py``.
@@ -26,7 +26,7 @@ from trading_os.domain.primitives import DomainModel
 REAL_ACCOUNT_BANNER = "COMPTE RÉEL — LES ORDRES PEUVENT ENTRAÎNER UNE PERTE FINANCIÈRE"
 
 # What « start » may climb to. Everything above is the separate « authorise automatic trading » gesture.
-START_TARGETS = (AutonomyMode.OBSERVE, AutonomyMode.PAPER, AutonomyMode.CONFIRM)
+START_TARGETS = (AutonomyMode.OBSERVE, AutonomyMode.CONFIRM)
 
 
 class StartupStageState(StrEnum):

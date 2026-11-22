@@ -1,7 +1,7 @@
 """The ladder of the plan (§18) read on the ladder of the repository (ADR 0034).
 
-The plan names six modes — OBSERVE, PAPER, CONFIRM, DEMO_AUTO, LIVE_CONFIRM, LIVE_AUTO. The repository climbs OFF → OBSERVE → PAPER
-→ CONFIRM → ARMED → AUTONOMOUS (+ HALTED). The two are the same ladder seen with the account's environment on: a CONFIRM on a real
+The plan names six modes — OBSERVE, PAPER, CONFIRM, DEMO_AUTO, LIVE_CONFIRM, LIVE_AUTO; PAPER is gone (ADR 0041: no simulated execution). The
+repository climbs OFF → OBSERVE → CONFIRM → ARMED → AUTONOMOUS (+ HALTED). The two are the same ladder seen with the account's environment on: a CONFIRM on a real
 account is LIVE_CONFIRM, an automatic rung on a demo is DEMO_AUTO and on a real account LIVE_AUTO. This module is a **reading**: it
 adds, renames and removes no state, and nothing in the core switches on it.
 """
@@ -18,7 +18,6 @@ from trading_os.domain.primitives import DomainModel
 class PlanMode(StrEnum):
     OFF = "OFF"  # not in the plan: the system is stopped
     OBSERVE = "OBSERVE"
-    PAPER = "PAPER"
     CONFIRM = "CONFIRM"
     DEMO_AUTO = "DEMO_AUTO"
     LIVE_CONFIRM = "LIVE_CONFIRM"
@@ -45,7 +44,7 @@ def plan_mode(mode: AutonomyMode, environment: Environment) -> PlanMode:
         return PlanMode.LIVE_CONFIRM if live else PlanMode.CONFIRM
     if mode in AUTOMATIC_MODES:
         return PlanMode.LIVE_AUTO if live else PlanMode.DEMO_AUTO
-    return PlanMode(mode.value)  # OFF, OBSERVE, PAPER
+    return PlanMode(mode.value)  # OFF, OBSERVE
 
 
 def rights(mode: PlanMode) -> ModeRights:
@@ -65,7 +64,6 @@ def ladder(environment: Environment) -> list[ModeRights]:
     live = environment is Environment.LIVE
     steps = [
         PlanMode.OBSERVE,
-        PlanMode.PAPER,
         PlanMode.LIVE_CONFIRM if live else PlanMode.CONFIRM,
         PlanMode.LIVE_AUTO if live else PlanMode.DEMO_AUTO,
     ]

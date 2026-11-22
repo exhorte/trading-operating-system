@@ -107,30 +107,39 @@ async def test_an_unknown_command_is_not_found_whatever_is_done_to_it(api: Api) 
 # ------------------------------------------------------------------------------------------------------ the routes
 
 
-async def test_paper_fills_in_process_at_the_live_quote_and_a_replay_is_the_same_command(h: Harness) -> None:
-    async with open_api(h, top=AutonomyMode.PAPER) as api:
-        decision = await approved(api)
-        body = open_command(decision)
+async def test_observe_refuses_the_order_with_a_code_sends_nothing_and_a_replay_is_the_same_command(h: Harness) -> None:
+    async with open_api(h, top=AutonomyMode.OBSERVE) as api:
+        # In OBSERVE the Risk Engine itself approves nothing (autonomy_not_permitting), so there is no decision to hand in: the order is a bare one
+        account = api.core.account
+        assert account is not None
+        body = {
+            "commandId": "cmd-api-1", "accountId": account.id, "kind": "OPEN", "symbol": "EURUSDm", "side": "buy",
+            "volume": 0.1, "stopLoss": 1.08,
+        }  # fmt: skip
         first = await api.post("/api/execution/commands", body)
         outcome = first.json()
-        assert first.status_code == 201 and outcome["replayed"] is False and outcome["rejections"] == []
+        assert first.status_code == 201 and outcome["replayed"] is False
+        assert (
+            outcome["rejections"][0]["code"] == "MODE_NOT_PERMITTING"
+        )  # ADR 0041: refused, never recorded as « simulated »
         command = outcome["command"]
-        assert command["state"] == "SIMULATED" and command["route"] == "paper" and command["mode"] == "PAPER"
-        assert command["averagePrice"] == 1.085 and command["filledVolume"] == decision["approvedVolume"]
-        assert api.core.link.lines == []  # PAPER never reaches an agent, let alone a broker
+        assert command["state"] == "REJECTED" and command["rejectCode"] == "MODE_NOT_PERMITTING"
+        assert command["route"] == "none" and command["mode"] == "OBSERVE"
+        assert command["averagePrice"] is None and command["filledVolume"] is None  # nothing was filled, anywhere
+        assert api.core.link.lines == []  # OBSERVE never reaches an agent, let alone a broker
 
         again = await api.post("/api/execution/commands", body)  # the same commandId and content: the original
         assert again.status_code == 200 and again.json()["replayed"] is True
         assert again.json()["command"]["createdAt"] == command["createdAt"]
 
-        other = await api.post("/api/execution/commands", {**body, "volume": decision["approvedVolume"] / 2})
+        other = await api.post("/api/execution/commands", {**body, "volume": 0.05})
         assert other.status_code == 409 and other.json()["code"] == "DUPLICATE_CONFLICT"  # same id, another order
 
         assert len((await api.get("/api/execution/commands")).json()) == 1  # one id, at most one execution
 
 
 async def test_a_command_cannot_exceed_what_the_risk_engine_approved(h: Harness) -> None:
-    async with open_api(h, top=AutonomyMode.PAPER) as api:
+    async with open_api(h, top=AutonomyMode.CONFIRM) as api:
         decision = await approved(api)
         too_big = open_command(decision, "cmd-big", volume=decision["approvedVolume"] * 2)
         wrong_way = open_command(decision, "cmd-way", side="sell")
@@ -142,7 +151,7 @@ async def test_a_command_cannot_exceed_what_the_risk_engine_approved(h: Harness)
 
 
 async def test_a_halted_system_refuses_every_command(h: Harness) -> None:
-    async with open_api(h, top=AutonomyMode.PAPER) as api:
+    async with open_api(h, top=AutonomyMode.CONFIRM) as api:
         decision = await approved(api)
         await api.post("/api/autonomy/halt", {})
         outcome = (await api.post("/api/execution/commands", open_command(decision))).json()

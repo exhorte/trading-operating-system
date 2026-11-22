@@ -226,7 +226,9 @@ class TestEveryKindOfCommandGoesThroughOneChain:
         fork = re.search(r"if\s*\(\s*g_mode\s*==\s*MODE_CONFIRM\s*\)\s*\{(?P<then>.*?)\n   \}", body, re.DOTALL)
         assert fork and "ExecuteOrder(" in fork.group("then")
         words = body_of(keep, "ProcessCommand")
-        assert words.rindex('"SIMULATED"') > words.index("ExecuteOrder(")  # every other mode ends in a SIMULATED report
+        # ADR 0041: every other mode is refused with a typed code, after validation and BEFORE the acknowledgement — never an answer that looks done
+        assert words.index("ValidateTradeCommand(") < words.index('"AGENT_OBSERVE: ') < words.index("SendAck(")
+        assert re.search(r"if\s*\(\s*g_mode\s*!=\s*MODE_CONFIRM\s*\)\s*\{[^}]*RefuseCommand\(", words, re.DOTALL)
 
     def test_execute_order_validates_again_builds_checks_writes_unknown_and_only_then_sends(self, keep: str) -> None:
         body = body_of(keep, "ExecuteOrder")

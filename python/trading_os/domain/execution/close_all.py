@@ -3,7 +3,7 @@
 A batch is **not** a mechanism of its own: it is a set of ordinary ``CLOSE`` (and, if asked, ``CANCEL``) commands that the
 execution engine already knows how to send, de-duplicate, acknowledge and reconcile. What this module adds is the *reading*: from
 the commands on record and the broker's last picture, say for each target whether it is confirmed closed, still in progress,
-refused, simulated or in doubt — and whether the whole is complete. Nothing is called a success until the broker's own picture
+refused (an agent compiled in OBSERVE refuses with ``AGENT_OBSERVE``) or in doubt — and whether the whole is complete. Nothing is called a success until the broker's own picture
 agrees and a reconciliation has run after the last settlement.
 """
 
@@ -131,8 +131,9 @@ class CloseAllItemStatus(StrEnum):
     VERIFYING = "VERIFYING"  # the agent says it is done; the broker's picture does not show it yet
     CONFIRMED = "CONFIRMED"  # done and gone from the broker's picture
     ALREADY_CLOSED = "ALREADY_CLOSED"  # it was not there (any more) when the order came to be sent
-    REJECTED = "REJECTED"  # refused by the core or by the agent, with a code
-    SIMULATED = "SIMULATED"  # paper or an agent compiled OBSERVE: validated, and nothing was closed at the broker
+    REJECTED = (
+        "REJECTED"  # refused by the core or by the agent, with a code (``AGENT_OBSERVE``: the agent sends no order)
+    )
     UNKNOWN = "UNKNOWN"  # sent, outcome not observed: never replayed, only reconciled
     MISMATCH = "MISMATCH"  # executed according to the agent, still open according to the broker, past the grace
     NOT_CLOSABLE = "NOT_CLOSABLE"  # not the execution agent's to close (foreign magic number): close it in MT5
@@ -145,7 +146,7 @@ class CloseAllStatus(StrEnum):
         "AWAITING_RECONCILIATION"  # everything confirmed, the comparison with the broker has not run since
     )
     COMPLETE = "COMPLETE"
-    INCOMPLETE = "INCOMPLETE"  # settled, but something is still open, refused, simulated or in doubt
+    INCOMPLETE = "INCOMPLETE"  # settled, but something is still open, refused or in doubt
 
 
 class CloseAllAction(StrEnum):
@@ -203,7 +204,6 @@ class CloseAllCounts(DomainModel):
     verifying: int = 0
     already_closed: int = 0
     rejected: int = 0
-    simulated: int = 0
     unknown: int = 0
     mismatch: int = 0
     not_closable: int = 0
@@ -236,7 +236,6 @@ class CloseAllReport(DomainModel):
     other_open_positions: list[str] = Field(
         default_factory=list
     )  # open at the broker, not part of this batch (opened since)
-    simulated_only: bool = False  # every command came back SIMULATED: this batch closed nothing
 
 
 # ------------------------------------------------------------------------------------------------------ the rules
@@ -283,14 +282,6 @@ def classify(
         return CloseAllItem(
             status=CloseAllItemStatus.VERIFYING, detail="waiting for the broker's picture to agree", **base
         )
-    if state is CommandState.SIMULATED:
-        if not still_open:
-            return CloseAllItem(
-                status=CloseAllItemStatus.ALREADY_CLOSED, detail="closed elsewhere; this command only simulated", **base
-            )
-        return CloseAllItem(
-            status=CloseAllItemStatus.SIMULATED, detail="validated end to end; no order reached the broker", **base
-        )
     # refused before or by the agent
     if (
         command.reject_code in {RejectCode.POSITION_NOT_FOUND.value, RejectCode.ORDER_NOT_FOUND.value}
@@ -307,13 +298,13 @@ def _counts(items: list[CloseAllItem], *, positions_open: int, orders_pending: i
     return CloseAllCounts(
         detected=len(items), confirmed=n(CloseAllItemStatus.CONFIRMED), in_progress=n(CloseAllItemStatus.IN_PROGRESS),
         verifying=n(CloseAllItemStatus.VERIFYING), already_closed=n(CloseAllItemStatus.ALREADY_CLOSED), rejected=n(CloseAllItemStatus.REJECTED),
-        simulated=n(CloseAllItemStatus.SIMULATED), unknown=n(CloseAllItemStatus.UNKNOWN), mismatch=n(CloseAllItemStatus.MISMATCH),
+        unknown=n(CloseAllItemStatus.UNKNOWN), mismatch=n(CloseAllItemStatus.MISMATCH),
         not_closable=n(CloseAllItemStatus.NOT_CLOSABLE), positions_still_open=positions_open, orders_still_pending=orders_pending,
     )  # fmt: skip
 
 
 _PROBLEMS = (
-    CloseAllItemStatus.REJECTED, CloseAllItemStatus.UNKNOWN, CloseAllItemStatus.SIMULATED, CloseAllItemStatus.MISMATCH, CloseAllItemStatus.NOT_CLOSABLE,
+    CloseAllItemStatus.REJECTED, CloseAllItemStatus.UNKNOWN, CloseAllItemStatus.MISMATCH, CloseAllItemStatus.NOT_CLOSABLE,
 )  # fmt: skip
 
 
@@ -339,16 +330,13 @@ def _actions(items: list[CloseAllItem], *, moving: bool, other_open: list[str]) 
         actions.append(CloseAllAction.RECONCILE)
     if CloseAllItemStatus.MISMATCH in present:
         actions.append(CloseAllAction.CHECK_MT5)
-    if CloseAllItemStatus.SIMULATED in present:
+    if any(
+        item.reject_code == RejectCode.AGENT_OBSERVE.value for item in items
+    ):  # the agent sends no order: only the trader can lift that
         actions.append(CloseAllAction.ENABLE_AGENT)
     if CloseAllItemStatus.REJECTED in present:
         actions.append(CloseAllAction.REVIEW_REJECTIONS)
-    if present & {
-        CloseAllItemStatus.NOT_CLOSABLE,
-        CloseAllItemStatus.SIMULATED,
-        CloseAllItemStatus.REJECTED,
-        CloseAllItemStatus.MISMATCH,
-    }:
+    if present & {CloseAllItemStatus.NOT_CLOSABLE, CloseAllItemStatus.REJECTED, CloseAllItemStatus.MISMATCH}:
         actions.append(CloseAllAction.CLOSE_IN_MT5)
     if other_open:
         actions.append(CloseAllAction.RERUN)
@@ -384,9 +372,6 @@ def assess(
         status = CloseAllStatus.AWAITING_RECONCILIATION
     else:
         status = CloseAllStatus.COMPLETE
-    simulated_only = bool(items) and all(
-        item.status in {CloseAllItemStatus.SIMULATED, CloseAllItemStatus.ALREADY_CLOSED, CloseAllItemStatus.NOT_CLOSABLE} for item in items
-    ) and any(item.status is CloseAllItemStatus.SIMULATED for item in items)  # fmt: skip
     return CloseAllReport(
         batch_id=batch_id, account_id=account_id, status=status,
         final=status in {CloseAllStatus.COMPLETE, CloseAllStatus.INCOMPLETE, CloseAllStatus.NOTHING_TO_CLOSE},
@@ -394,5 +379,5 @@ def assess(
         counts=_counts(items, positions_open=positions_open, orders_pending=orders_pending),
         failures=_failures(items), actions=_actions(items, moving=moving, other_open=other_open_positions),
         reconciled=reconciled, reconciliation_critical=reconciliation_critical, snapshot_fresh=snapshot_fresh,
-        other_open_positions=other_open_positions, simulated_only=simulated_only,
+        other_open_positions=other_open_positions,
     )  # fmt: skip

@@ -18,7 +18,6 @@ class PromotionPlan(DomainModel):
     """The thresholds — posed, not derived; the user's to rewrite."""
 
     evaluation_days: int = Field(default=5, ge=1)
-    paper_commands: int = Field(default=20, ge=1)
     confirmed_orders: int = Field(default=20, ge=1)
     validation_trades: int = Field(default=100, ge=1)
     max_total_breach: float = Field(default=0.05, ge=0, le=1)
@@ -30,7 +29,6 @@ class PromotionFacts(DomainModel):
 
     limits_configured: bool
     evaluation_days: int
-    paper_commands: int
     confirmed_orders: int
     commands_in_doubt: int
     critical_incidents: int
@@ -114,12 +112,8 @@ def promotion_steps(facts: PromotionFacts, plan: PromotionPlan, mode: AutonomyMo
     incidents = _none("no_incident", "No critical incident open", facts.critical_incidents, "critical incident(s) open")
     plans: list[tuple[AutonomyMode, AutonomyMode, list[Criterion]]] = [
         (
-            AutonomyMode.OBSERVE, AutonomyMode.PAPER,
-            [limits, _count("evaluation_days", f"Strategy evaluated on {plan.evaluation_days} trading days", facts.evaluation_days, plan.evaluation_days, "day(s)"), incidents],
-        ),
-        (
-            AutonomyMode.PAPER, AutonomyMode.CONFIRM,
-            [limits, _count("paper_commands", f"{plan.paper_commands} simulated orders through the whole path", facts.paper_commands, plan.paper_commands, "order(s)"), doubt, ready],
+            AutonomyMode.OBSERVE, AutonomyMode.CONFIRM,
+            [limits, _count("evaluation_days", f"Strategy evaluated on {plan.evaluation_days} trading days", facts.evaluation_days, plan.evaluation_days, "day(s)"), incidents, ready],
         ),
         (
             AutonomyMode.CONFIRM, AutonomyMode.ARMED,

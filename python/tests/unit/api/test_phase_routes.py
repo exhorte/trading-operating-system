@@ -25,7 +25,7 @@ async def test_the_guardian_report_follows_the_cycle(api: Api) -> None:
 async def test_the_promotion_report_is_advisory_and_lists_each_climb(api: Api) -> None:
     body = (await api.get("/api/autonomy/promotion")).json()
     assert body["advisory"] is True
-    assert [s["toMode"] for s in body["steps"]] == ["PAPER", "CONFIRM", "ARMED", "AUTONOMOUS"]
+    assert [s["toMode"] for s in body["steps"]] == ["CONFIRM", "ARMED", "AUTONOMOUS"]
     assert all(c["status"] in {"met", "not_met", "not_measured"} for s in body["steps"] for c in s["criteria"])
     assert body["steps"][-1]["met"] is False  # nothing measured for the last climb: not met
 

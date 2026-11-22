@@ -13,6 +13,7 @@ from trading_os.domain.autonomy.plan_modes import PlanMode, ladder, plan_mode, r
 from trading_os.domain.autonomy.state import AutonomyMode
 from trading_os.domain.execution.close_all import (
     VERIFY_GRACE,
+    CloseAllAction,
     CloseAllDisposition,
     CloseAllItemStatus,
     CloseAllReport,
@@ -38,7 +39,6 @@ class TestThePlansLadder:
         [
             (M.OFF, E.DEMO, PlanMode.OFF),
             (M.OBSERVE, E.LIVE, PlanMode.OBSERVE),
-            (M.PAPER, E.LIVE, PlanMode.PAPER),
             (M.CONFIRM, E.DEMO, PlanMode.CONFIRM),
             (M.CONFIRM, E.SIMULATED, PlanMode.CONFIRM),
             (M.CONFIRM, E.LIVE, PlanMode.LIVE_CONFIRM),
@@ -60,7 +60,7 @@ class TestThePlansLadder:
                 assert isinstance(plan_mode(mode, environment), PlanMode)
 
     def test_the_rights_of_each_mode(self) -> None:
-        assert not rights(PlanMode.OBSERVE).sends_orders and not rights(PlanMode.PAPER).sends_orders
+        assert not rights(PlanMode.OBSERVE).sends_orders
         confirm = rights(PlanMode.CONFIRM)
         assert confirm.sends_orders and confirm.needs_human_confirmation and not confirm.real_money
         live_confirm = rights(PlanMode.LIVE_CONFIRM)
@@ -74,11 +74,10 @@ class TestThePlansLadder:
     def test_the_ladder_drawn_for_an_account_follows_its_environment(self) -> None:
         assert [r.mode for r in ladder(Environment.DEMO)] == [
             PlanMode.OBSERVE,
-            PlanMode.PAPER,
             PlanMode.CONFIRM,
             PlanMode.DEMO_AUTO,
         ]
-        assert [r.mode for r in ladder(Environment.LIVE)][2:] == [PlanMode.LIVE_CONFIRM, PlanMode.LIVE_AUTO]
+        assert [r.mode for r in ladder(Environment.LIVE)][1:] == [PlanMode.LIVE_CONFIRM, PlanMode.LIVE_AUTO]
 
 
 class TestTheIdsOfABatch:
@@ -129,9 +128,12 @@ class TestReadingAnItem:
         assert classify(planned(), command(state), still_open=True, now=NOW).status is CloseAllItemStatus.UNKNOWN
         assert classify(planned(), command(state), still_open=False, now=NOW).status is CloseAllItemStatus.UNKNOWN
 
-    def test_a_simulation_never_counts_as_a_closing(self) -> None:
-        item = classify(planned(), command(CommandState.SIMULATED), still_open=True, now=NOW)
-        assert item.status is CloseAllItemStatus.SIMULATED
+    def test_an_agent_that_sends_no_order_never_counts_as_a_closing(self) -> None:
+        # ADR 0041: an agent compiled in OBSERVE refuses (AGENT_OBSERVE); the position stays open and the item says it was refused, with the code
+        item = classify(
+            planned(), command(CommandState.REJECTED, reject_code="AGENT_OBSERVE"), still_open=True, now=NOW
+        )
+        assert item.status is CloseAllItemStatus.REJECTED and item.reject_code == "AGENT_OBSERVE" and item.still_open
 
     @pytest.mark.parametrize("state", [CommandState.REJECTED, CommandState.FAILED, CommandState.EXPIRED])
     def test_a_refusal_keeps_its_code(self, state: CommandState) -> None:
@@ -165,10 +167,14 @@ class TestReadingAnItem:
 
 
 def report(
-    statuses: list[tuple[CommandState | None, bool]], *, reconciled: bool = True, fresh: bool = True
-) -> CloseAllReport:
+    statuses: list[tuple[CommandState | None, bool]], *, reconciled: bool = True, fresh: bool = True,
+    reject_code: str | None = None,
+) -> CloseAllReport:  # fmt: skip
+    changes: dict[str, Any] = {"reject_code": reject_code} if reject_code else {}
     items = [
-        classify(planned(target_id=str(100 + i)), command(state) if state else None, still_open=is_open, now=NOW)
+        classify(
+            planned(target_id=str(100 + i)), command(state, **changes) if state else None, still_open=is_open, now=NOW
+        )
         for i, (state, is_open) in enumerate(statuses)
     ]
     return assess(
@@ -204,8 +210,14 @@ class TestReadingTheBatch:
     def test_one_problem_makes_it_incomplete_whatever_else_succeeded(self) -> None:
         batch = report([(CommandState.EXECUTED, False), (CommandState.REJECTED, True)])
         assert batch.status is CloseAllStatus.INCOMPLETE and batch.final and batch.counts.rejected == 1
-        assert not batch.simulated_only
 
-    def test_a_batch_of_simulations_is_flagged_as_having_closed_nothing(self) -> None:
-        batch = report([(CommandState.SIMULATED, True), (CommandState.SIMULATED, True)])
-        assert batch.status is CloseAllStatus.INCOMPLETE and batch.simulated_only and batch.counts.confirmed == 0
+    def test_a_batch_the_observe_agent_refused_closed_nothing_and_tells_the_trader_what_to_do(self) -> None:
+        refused = [(CommandState.REJECTED, True), (CommandState.REJECTED, True)]
+        batch = report(refused, reject_code="AGENT_OBSERVE")
+        assert batch.status is CloseAllStatus.INCOMPLETE and batch.counts.rejected == 2 and batch.counts.confirmed == 0
+        assert CloseAllAction.ENABLE_AGENT in batch.actions and CloseAllAction.CLOSE_IN_MT5 in batch.actions
+        assert [f.reason for f in batch.failures] == ["AGENT_OBSERVE"]
+
+    def test_a_refusal_for_another_reason_does_not_ask_to_enable_the_agent(self) -> None:
+        batch = report([(CommandState.REJECTED, True)], reject_code="TARGET_NOT_OURS")
+        assert CloseAllAction.ENABLE_AGENT not in batch.actions and CloseAllAction.REVIEW_REJECTIONS in batch.actions

@@ -234,10 +234,10 @@ async def test_without_an_agent_the_system_still_observes_but_confirm_is_held_ba
     core = await make(h, agent=False)
     status = await start(core, AutonomyMode.CONFIRM)
     assert status.run is not None and status.run.state is StartupRunState.PARTIAL
-    assert status.run.reached_mode is AutonomyMode.PAPER  # OBSERVE and PAPER send nothing; CONFIRM could
+    assert status.run.reached_mode is AutonomyMode.OBSERVE  # OBSERVE sends nothing; CONFIRM could
     assert {"heartbeat", "kill_switch_available"} <= set(status.run.blocked_on)
     assert stage(status, "agent").state is StartupStageState.FAILED and not status.entries_authorized
-    assert core.c.autonomy.mode is AutonomyMode.PAPER
+    assert core.c.autonomy.mode is AutonomyMode.OBSERVE
 
 
 async def test_an_account_whose_trading_is_switched_off_is_degraded_and_says_so(h: Harness) -> None:
@@ -253,9 +253,12 @@ async def test_a_low_ceiling_keeps_the_system_in_observation(h: Harness) -> None
     core = await make(h, max_mode=AutonomyMode.OBSERVE)
     status = await start(core, AutonomyMode.CONFIRM)
     assert (
-        status.run is not None and status.run.state is StartupRunState.PARTIAL and status.run.blocked_on == ["autonomy"]
+        status.run is not None
+        and status.run.state is StartupRunState.PARTIAL
+        and status.run.blocked_on == ["mode_authorized"]
     )
-    assert "ceiling" in status.run.message  # the ladder itself refuses PAPER above an OBSERVE ceiling
+    # CONFIRM is now the first rung above OBSERVE (ADR 0041: no PAPER): its own conditions hold it back, the ceiling check first, before the ladder is tried
+    assert "mode_authorized" in status.run.message
     assert core.c.autonomy.mode is AutonomyMode.OBSERVE and status.plan_mode is PlanMode.OBSERVE
     assert not check(status, "mode_authorized").ok and status.ceiling is AutonomyMode.OBSERVE
 

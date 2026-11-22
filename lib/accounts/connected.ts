@@ -11,7 +11,7 @@ import type { Account } from "@/lib/api/generated";
 import type { ConnectionState } from "@/lib/realtime/store";
 
 /** The screens where an account is registered, connected and set up: they stay open with none connected. */
-const OPEN_WITHOUT_ACCOUNT = ["/account", "/settings"];
+const OPEN_WITHOUT_ACCOUNT = ["/account", "/settings", "/system"]; // /system: it is where one reads why nothing can trade (ADR 0043)
 
 export function connectedAccount(accounts: readonly Account[]): Account | null {
   return accounts.find((account) => account.status === "CONNECTED") ?? null;

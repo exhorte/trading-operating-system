@@ -56,7 +56,7 @@ async def test_each_strategy_is_recorded_on_its_own_record_for_the_same_candle(h
 
 
 async def test_a_measuring_s02_hands_nothing_to_the_risk_engine(h: Harness) -> None:
-    core, _, _ = await rig(h, AutonomyMode.PAPER, h1=H1_BULLISH_DISCOUNT)
+    core, _, _ = await rig(h, AutonomyMode.CONFIRM, h1=H1_BULLISH_DISCOUNT)
     s02 = s02_service(core, acts=False)
     result = await evaluated(core, s02)
     assert result is not None and result.status == "proposed" and result.strategy_id == "S02"
@@ -66,7 +66,7 @@ async def test_a_measuring_s02_hands_nothing_to_the_risk_engine(h: Harness) -> N
 
 
 async def test_a_trading_s02_goes_through_the_same_path_with_its_own_identity(h: Harness) -> None:
-    core, _, s01 = await rig(h, AutonomyMode.PAPER, h1=H1_BULLISH_DISCOUNT)
+    core, _, s01 = await rig(h, AutonomyMode.CONFIRM, h1=H1_BULLISH_DISCOUNT)
     s02 = s02_service(core, acts=True)
     await evaluated(core, s01)
     await evaluated(core, s02)
@@ -76,7 +76,7 @@ async def test_a_trading_s02_goes_through_the_same_path_with_its_own_identity(h:
     assert intents["S02"].order_type.value == "limit" and intents["S02"].rationale.startswith("S02:")
     placed = {c.request.strategy_id: c for c in await commands(core)}
     assert set(placed) == {"S01", "S02"}
-    assert placed["S02"].state is CommandState.SIMULATED and placed["S02"].request.order_type.value == "limit"
+    assert placed["S02"].state is CommandState.PENDING and placed["S02"].request.order_type.value == "limit"
     assert placed["S01"].command_id != placed["S02"].command_id
 
 
@@ -94,7 +94,7 @@ async def test_s02_follows_the_setting(h: Harness) -> None:
 
 
 async def test_s02_reads_the_fifteen_minute_map_and_rests_its_limit_at_the_edge(h: Harness) -> None:
-    core, market, _ = await rig(h, AutonomyMode.PAPER, h1=H1_BULLISH_DISCOUNT)
+    core, market, _ = await rig(h, AutonomyMode.CONFIRM, h1=H1_BULLISH_DISCOUNT)
     s02 = s02_service(core, acts=False)
     result = await evaluated(core, s02)
     assert result is not None and result.status == "proposed"

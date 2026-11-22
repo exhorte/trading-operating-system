@@ -143,13 +143,82 @@ docker start tradingos-timescaledb → python -m trading_os db migrate → pytho
 
 **Après un arrêt non propre** (redémarrage de la machine ou de Docker Desktop — les conteneurs sortent en code 255) : `docker start tradingos-timescaledb`, attendre `healthy`, relancer le cœur. Le cœur survit à une panne de base (il refuse alors toute commande : échec fermé) et le superviseur ouvre un incident ; MT5 est à rouvrir à la main, l'agent se reconnecte seul. **Rien ne redémarre le cœur** : sa fenêtre reste ouverte, c'est tout.
 
+## Voir l'état et le plan de démarrage, sans rien lancer (ADR 0038, I1)
+
+Depuis `04_code\python` (le paquet `trading_os` ne s'importe que de là tant que l'installation éditable du venv pointe vers `C:\Dev\…`, disparu) :
+
+```powershell
+.venv\Scripts\python.exe -m trading_os launcher status     # prérequis, base / cœur / cockpit, qui tient chaque port, processus possédés
+.venv\Scripts\python.exe -m trading_os launcher plan       # ce qu'un démarrage ferait (--json pour une sortie lisible par un programme)
+```
+
+**Lecture seule** : ni l'une ni l'autre n'écrit un fichier, ne lance ni n'arrête quoi que ce soit. Une réponse `FOREIGN` veut dire qu'un processus qui n'est pas de ce dépôt tient le port : il est signalé, jamais touché, jamais pris pour le composant. Code de sortie : 0 rien de bloquant · 1 une étape du plan est bloquée · 2 la machine n'a pas pu être observée (le lanceur échoue fermé).
+
+### Démarrer, arrêter, adopter (ADR 0038, I2)
+
+```powershell
+.venv\Scripts\python.exe -m trading_os launcher start                      # démarre ce qui manque, dans l'ordre, en attendant la santé réelle de chaque maillon
+.venv\Scripts\python.exe -m trading_os launcher stop --dry-run             # dit ce qui serait arrêté, n'arrête rien, n'écrit rien
+.venv\Scripts\python.exe -m trading_os launcher stop                       # arrête cockpit, puis cœur, puis la base si c'est le lanceur qui l'a démarrée
+.venv\Scripts\python.exe -m trading_os launcher adopt core                 # fait d'un cœur lancé à la main un processus que le lanceur possède (idem : cockpit)
+```
+
+- **`start`** : base (`docker start`, ou `docker compose up -d timescaledb` si le conteneur n'existe pas ; le volume reste externe), schéma (`db status` ; **sauvegarde `pg_dump` vers `exports/backups/` avant toute migration en attente**, jamais de migration sans elle ni par-dessus un schéma dérivé), cœur (depuis `04_code\python`, fenêtre masquée, sortie dans `var/launcher/logs/core-*.log`), cockpit (`npm run dev`, `cockpit-*.log`). Chaque maillon est ré-observé juste avant d'être démarré : ce qui est déjà sain n'est ni relancé ni dupliqué. Un maillon en échec bloque ceux qui en dépendent, et eux seuls. Ce qu'il lance est écrit dans `var/launcher/state.json` **avant** d'être attendu. Il n'arme rien, ne rattache aucun compte, ne touche pas à MT5 : après un démarrage, rattacher la démo reste un geste à toi.
+- **`stop`** : seulement ce que le registre dit que le lanceur a démarré, vérifié par pid **et** heure de création (un pid recyclé n'est pas à lui). Le cœur reçoit d'abord un Ctrl+Break (uvicorn s'arrête en ordre et termine ses workers, ADR 0037), puis, après 30 s, l'arbre est terminé. Un cœur ou un cockpit lancé à la main est signalé « pas à moi » : fermer sa fenêtre, ou `adopt` puis `stop` — **l'arrêt poli est tenté d'abord ; si le processus ne le prend pas, l'arrêt est forcé et le rapport le dit** (mesuré le 2026-11-08 : le cœur adopté s'est arrêté par la demande polie, le cockpit a dû être arrêté de force). La base n'est arrêtée que si le lanceur l'a démarrée (ou avec `--include-database`), et jamais sous un cœur qui tourne encore. MetaTrader 5 et son agent ne sont pas touchés, aucune position n'est fermée, aucun ordre n'est envoyé. Après l'arrêt du cœur, un worker MT5 resté seul est signalé, pas tué.
+- **Verrou** : `var/launcher/launcher.lock` empêche deux lanceurs à la fois ; un verrou dont le propriétaire a disparu (ou dont le pid a été recyclé) est remplacé. Journal des événements : `var/launcher/events-AAAAMMJJ.jsonl`. Le dossier `var/` est ignoré par Git.
+- **Codes de sortie** : 0 fait · 1 une étape bloquée, refusée ou en échec (ou un autre lanceur tourne) · 2 observation impossible.
+- `scripts\start.ps1` reste en repli, inchangé.
+
+### `TradingOS.bat`, les modes et `doctor` (ADR 0039, I2b)
+
+Un seul point d'entrée, depuis n'importe quel dossier (double-clic, ou un terminal) : `04_code\TradingOS.bat [Mode] [options]`. Il lance `scripts\TradingOS.Launcher.ps1` (PowerShell 7 s'il existe, sinon Windows PowerShell 5.1 ; `-ExecutionPolicy Bypass` vaut pour ce processus seulement, aucune politique n'est modifiée), qui fixe le dossier courant à `04_code\python` (le venv éditable cassé, A10, ne s'importe que de là) et appelle `python -m trading_os launcher …`. Rien d'autre : il ne lit pas `.env`, n'appelle pas Docker, ne termine aucun processus, ne touche pas à MT5.
+
+```powershell
+.\TradingOS.bat Status                  # launcher status  — lecture seule
+.\TradingOS.bat Doctor                  # launcher doctor  — lecture seule, explique et ne répare rien
+.\TradingOS.bat Doctor -Json            # idem, sortie JSON (aucun autre texte)
+.\TradingOS.bat Stop -DryRun            # launcher stop --dry-run — dit ce qui serait arrêté
+.\TradingOS.bat Infrastructure          # launcher start  — démarre ce qui manque (base, schéma, cœur, cockpit)
+.\TradingOS.bat                         # = Full : l'infrastructure, puis le plan de préparation de MetaTrader 5 (lecture seule)
+```
+
+| Mode | Sous-commande | Aujourd'hui |
+|---|---|---|
+| `Status` | `launcher status` | lecture seule |
+| `Doctor` | `launcher doctor` | lecture seule, **sans verrou, sans écriture** |
+| `Stop` (`-DryRun`, `-IncludeDatabase`) | `launcher stop` | seulement ce que le lanceur a démarré ou adopté |
+| `Infrastructure` | `launcher start` | base, schéma (avec sauvegarde avant toute migration), cœur, cockpit |
+| `Full` (défaut) | `launcher start`, puis `launcher mt5 plan` si le démarrage a réussi | le plan MT5 est en lecture seule ; avec `-Json`, seule l'infrastructure est rapportée (une note va sur la sortie d'erreur) |
+| `MT5` | `launcher mt5 plan` | détecte les terminaux, dit ce qui est enregistré et ce qui reste à faire ; lecture seule |
+
+`-Apply` est accepté mais **sans effet** : le déploiement, le preset et le lancement de MetaTrader 5 n'existent pas encore (I4 à I7). `-DryRun` et `-IncludeDatabase` n'ont de sens que pour `Stop` (ignorés ailleurs, avec une note). Variable `TRADINGOS_NOPAUSE=1` : le `.bat` n'attend pas une touche à la fin (sinon, lancé par double-clic, il garde la fenêtre ouverte). **Codes de sortie** : ceux du lanceur — 0 rien d'anormal · 1 un problème, un refus ou un échec · 2 la machine n'a pas pu être observée (le script ajoute : 2 si le Python du cœur est introuvable).
+
+**`doctor`** explique ce que le lanceur sait observer et quoi faire : l'environnement (Docker, Python du cœur, présence de `.env` — jamais son contenu —, npm), les composants (état, propriétaire de chaque port, base / cœur / cockpit), l'état du lanceur (verrou périmé ou tenu, registre illisible, processus possédés) et la santé que le cœur déclare (statut, signalements, agents EA connectés, workers MT5 contre « un compte à la fois »). Chaque constat porte un code, une gravité (`OK`, `INFO`, `ATTENTION`, `PROBLÈME`, `?`), une explication et, pour tout problème ou avertissement, une action. Seul un `PROBLÈME` donne le code de sortie 1. **Côté MetaTrader 5 il dit ce qui est trouvé** (installations, instances, jonction de l'agent, dossier `Presets`, EA tiers installés, terminaux non enregistrés ou introuvables, opérations en cours ou périmées) **mais pas l'état de l'EA, du preset ni du graphique : ils ne sont pas encore inspectés** (une ligne « ? » le dit) — il n'invente aucun état. Un cœur qui ne rapporte pas ses agents ou ses workers n'est pas accusé (« non rapporté », pas zéro).
+
+### Trouver, enregistrer et planifier les terminaux MetaTrader 5 (ADR 0039, I3)
+
+```powershell
+.venv\Scripts\python.exe -m trading_os launcher mt5 detect          # installations, dossiers de données, instances en cours — lecture seule (--json)
+.venv\Scripts\python.exe -m trading_os launcher mt5 list            # terminaux enregistrés et ce qui reste à déclarer — lecture seule
+.venv\Scripts\python.exe -m trading_os launcher mt5 plan            # ce que la préparation ferait ensuite — lecture seule (= TradingOS.bat MT5)
+.venv\Scripts\python.exe -m trading_os launcher mt5 register --terminal <identifiant> [--label …] [--account-id …] [--expected-login …] `
+    [--symbol … --period …] [--magic …] [--allowed-symbols a,b] [--provider …] [--product …]
+.venv\Scripts\python.exe -m trading_os launcher mt5 register --install-path <dossier> --data-path <dossier>   # à la main, quand la détection échoue
+.venv\Scripts\python.exe -m trading_os launcher mt5 register --install-path <dossier> --portable             # terminal portable : données dans son dossier
+```
+
+- **Détection** : trois sources (liste des programmes installés, dossiers `*MetaTrader*` de Program Files, processus `terminal64.exe`) plus les chemins déjà enregistrés ; un chemin n'est cru que si `terminal64.exe` y est. Un dossier de données est rattaché à une installation par son seul `origin.txt` (`Common` et `Community` n'en ont pas : ce ne sont pas des terminaux). **Plusieurs terminaux : tous listés, aucun choisi** — le choix se fait avec `--terminal`. Un terminal portable *arrêté* n'est pas détecté automatiquement : `--portable`.
+- **Ce qui n'est jamais lu ni gardé** : le contenu de `common.ini` (non lu dans cet incrément), le fichier de liaison de l'agent (sa présence seulement), la ligne de commande d'un `terminal64.exe` (elle peut porter `/login:` et un mot de passe : il n'en sort que `/portable` et `/config:`).
+- **`register`** n'écrit qu'**un** fichier, le sien : `var/launcher/terminals.json` (plus un événement). Rien dans un dossier de MetaTrader. Il ne demande ni mot de passe ni jeton — aucune option n'en existe. Une déclaration est vérifiée : numéro magique de 1 à 2 147 483 647, login en chiffres, période parmi `M1 … MN1`, symboles aux noms du courtier, symbole du graphique dans la liste des symboles autorisés. **Un numéro magique, un compte Trading OS et un login attendu ne peuvent appartenir qu'à un seul terminal.** Re-enregistrer un terminal ne change que ce qui est donné ; l'ancien fichier est gardé en `terminals.json.bak-…`, un fichier illisible en `terminals.json.corrupt-…`. Un enregistrement à la main est refusé si `origin.txt` ne désigne pas l'installation donnée (« identité ambiguë »).
+- **Codes de sortie** : 0 fait · 1 refusé ou en échec (déclaration invalide, terminal inconnu, registre tenu par un autre lanceur) · 2 la machine n'a pas pu être lue.
+
 ## Démarrer et arrêter depuis le cockpit (ADR 0034)
 
 `start.ps1` (ou les commandes à la main ci-dessus) lance l'application : base, cœur, cockpit. Rien d'autre. Depuis le cockpit :
 
 - **Command Center → « DÉMARRER LE SYSTÈME »** (ou l'écran **Démarrage**) : vérifie treize étapes, force une lecture du terminal et une réconciliation, connecte le compte sélectionné **sans mot de passe** s'il ne l'est pas, puis monte `OFF → OBSERVE`. Ne monte jamais au-dessus de `CONFIRM` ; n'envoie aucun ordre. Si une étape bloquante échoue (base, terminal, compte), le système reste `OFF` et dit laquelle.
 - **Écran Démarrage → « AUTORISER LE TRADING AUTOMATIQUE »** : geste séparé, un échelon, vingt-deux conditions vertes à cet instant ; un compte réel exige une case cochée. Un redémarrage du cœur retombe **toujours** à `OFF`.
-- **« FERMER TOUTES LES POSITIONS »** (Command Center, Positions) : prévisualisation, confirmation explicite, un `CLOSE` par position, suivi en direct, réconciliation, rapport. Marche dans tous les modes, `HALTED` compris. Tant que l'agent est compilé `OBSERVE`, il répond `SIMULATED` et rien n'est fermé chez le courtier : le cockpit le dit.
+- **« FERMER TOUTES LES POSITIONS »** (Command Center, Positions) : prévisualisation, confirmation explicite, un `CLOSE` par position, suivi en direct, réconciliation, rapport. Marche dans tous les modes, `HALTED` compris. Tant que l'agent est compilé `OBSERVE`, il refuse (`AGENT_OBSERVE`) et rien n'est fermé chez le courtier : le cockpit le dit.
 - **Arrêts** : « Arrêter les nouvelles entrées » (→ `OBSERVE`), « Arrêter les moteurs de stratégie » (→ `OFF`), arrêt d'urgence (barre latérale : `HALTED`, ne ferme rien). Quatre gestes distincts : `autonomy-modes.md`.
 
 Ces boutons ne se cliquent pas pendant le développement par Claude (`.claude/CLAUDE.md`) : l'essai sur la démo est fait par l'utilisateur.
@@ -175,3 +244,23 @@ Ces boutons ne se cliquent pas pendant le développement par Claude (`.claude/CL
 - **Fins de ligne** — le dépôt a été cloné avec des fins de ligne CRLF alors que l'index git est en LF. `git config core.autocrlf true` dans ce clone ; si un `git status` affiche à nouveau tout le dépôt comme modifié, c'est ce réglage qu'il faut vérifier en premier — **surtout ne pas commiter la différence**.
 - **Les jetons ne se relisent qu'au démarrage** : un jeton ajouté à `.env` n'est pas vu par un cœur déjà lancé (le relancer) ; un cockpit déjà ouvert relit `.env` seul.
 - **Vérifié sur le vrai terminal (2026-11-03, démo Exness)** : l'attache sans mot de passe, la lecture du compte, des spécifications, des ticks, des bougies, des positions et des ordres, le refus d'un mauvais serveur, le détachement puis le rattachement, l'inaccessibilité des fonctions d'ordre, le dimensionnement avec les chiffres du courtier (14 tests de contrat, `MT5_LIVE_TESTS=1`), et la lecture continue du flux par le cœur (mesures L1). **Jamais vérifié chez un courtier** : l'agent, les commandes, les accusés, les remplissages, la réconciliation avec des positions réelles, la reconnexion après coupure.
+
+## Préparer, déployer et lancer l'agent dans MetaTrader 5 (ADR 0039, I4 à I10)
+
+Tout se lance depuis `04_code\python` (`.venv\Scripts\python.exe -m trading_os launcher mt5 …`) ou par `TradingOS.bat MT5`. **Aucune de ces commandes ne prend un mot de passe ou un jeton, aucune ne rattache ni ne détache un compte, aucune ne relève un mode ; le lanceur s'arrête à l'attachement de l'agent** (jamais `CONFIRM`, `ARMED` ni `AUTONOMOUS`).
+
+| Étape | Commande | Ce qui est écrit |
+|---|---|---|
+| Trouver | `mt5 detect`, `mt5 plan` | rien |
+| Enregistrer | `mt5 register --terminal ID --account-id … --expected-login … --symbol … --period … --magic … --allowed-symbols … --provider … --product …` | `var/launcher/terminals.json` ; **le produit est ta déclaration** : sans lui, `EA_READY` reste bloqué `PRODUCT_UNDECLARED` |
+| Compiler | `mt5 build --terminal ID` | une copie de travail (supprimée), puis `var/launcher/mt5/builds/<version>-<empreinte>/` (`.ex5`, manifeste, journal) ; refuse un agent non compilé en `OBSERVE` |
+| Déployer | `mt5 deploy --terminal ID [--dry-run]` | le seul `.ex5` de l'agent (à travers la jonction existante), l'ancien est gardé dans `var/launcher/backups/<terminal>/` ; échoue proprement si le fichier est utilisé (détacher l'agent ou fermer le terminal) |
+| Préparer | `mt5 prepare --terminal ID [--dry-run]` | `MQL5\Presets\TradingOS-<terminal>.set` et `var/launcher/mt5/<terminal>/startup.ini` |
+| Lancer | `mt5 start --terminal ID --dry-run`, puis `mt5 start --terminal ID [--confirm-close]` | rien dans MetaTrader : il le lance (ou, s'il est ouvert, le ferme **poliment** puis le relance) avec `/config:` |
+| Lire | `mt5 status`, `mt5 verify --terminal ID`, page **System Center** (`/system`) | `status` journalise un changement d'état ; le reste est en lecture seule |
+
+**Fermer un terminal ouvert** : `start --dry-run` montre huit portes (identité du terminal, agent déployé conforme, preset préparé conforme, **0 position, 0 ordre en attente** lus sur le terminal, login conforme, **aucun worker du cœur attaché**). Si une seule est rouge, rien n'est fermé. Pour passer : `start --confirm-close`, puis **taper** `FERMER <identifiant du terminal>` — il n'y a pas d'option `--yes`, et la phrase est la tienne. Détacher le compte du cœur avant (Settings) si un worker y est attaché (R16 : un worker qui trouve MetaTrader fermé le relance sans l'agent).
+
+**Avant de lancer** : les experts doivent être autorisés dans MetaTrader (Outils > Options > Experts — le lanceur n'écrit jamais ce réglage) et `127.0.0.1` listé pour WebRequest (il ne peut pas le lire). Sans cela, `start` se termine en `EA_ERROR(MT5_EA_NOT_REPORTING)` avec ce qu'il a pu établir (`MT5_EXPERTS_DISABLED` quand `common.ini` le dit).
+
+**Retour arrière** : le `.ex5` précédent est dans `var/launcher/backups/<terminal>/` ; pour revenir à l'agent 1.13, copier ce fichier à la place de `tools\mt5-execution-agent\TradingOsAgent.ex5` (agent détaché). `common.ini` n'est jamais modifié par le lanceur ; sa copie de précaution avant l'essai `/config` est `var/launcher/backups/<terminal>/common.ini.before-r1-trial`.

@@ -112,9 +112,13 @@ class Market:
 
 
 async def rig(
-    h: Harness, top: AutonomyMode = AutonomyMode.PAPER, *, quote: bool = True, **market_kwargs: list[Candle]
+    h: Harness, top: AutonomyMode = AutonomyMode.CONFIRM, *, quote: bool = True, **market_kwargs: list[Candle]
 ) -> tuple[Core, Market, StrategyService]:
     core = await make_ready_core(h, top=top, calendar=True)
+    if (
+        top is not AutonomyMode.OBSERVE
+    ):  # above OBSERVE an order goes through the agent: one that can place a limit order
+        await core.register_agent(capabilities=("ping", "halt", "dead_man", "limit", "modify", "close", "cancel"))
     market = Market(core, **market_kwargs)
     core.c.market.recent_candles = market.candles  # type: ignore[method-assign]
     core.c.strategy.config = CONFIG
@@ -293,26 +297,26 @@ async def test_in_observe_the_intent_and_the_refusal_are_recorded_and_nothing_is
     assert await commands(core) == [] and core.link.lines == []  # OBSERVE sends nothing, and no command is even created
 
 
-async def test_in_paper_an_approved_proposal_becomes_a_simulated_limit_order(h: Harness) -> None:
-    core, _, strategy = await rig(h, AutonomyMode.PAPER)
+async def test_in_confirm_an_approved_proposal_waits_for_a_human_as_a_limit_order(h: Harness) -> None:
+    core, _, strategy = await rig(h, AutonomyMode.CONFIRM)
     await evaluated(core, strategy)
     decisions = await core.c.repos.risk.recent_decisions(core.account.id, 10)  # type: ignore[union-attr]
     assert [d.approved for d in decisions] == [True], decisions[0].reasons
     (command,) = await commands(core)
     assert (
-        command.state is CommandState.SIMULATED and command.reject_code is None
-    )  # ADR 0023: the limit order is carried
+        command.state is CommandState.PENDING and command.reject_code is None
+    )  # ADR 0023: the limit order is carried — and waits for the human's confirmation
     assert command.request.order_type.value == "limit" and command.request.price == pytest.approx(price(99.85))
     assert command.request.risk_decision_id == decisions[0].decision_id
     assert command.request.volume == decisions[0].approved_volume
     assert core.recorder.of(TradeRejected) == []
-    assert core.link.lines == []  # paper sends nothing to the agent
+    assert core.link.lines == []  # nothing is sent before the human confirms
 
 
 async def test_a_setup_is_handled_once_whatever_the_mode_does_afterwards(h: Harness) -> None:
     core, market, strategy = await rig(h, AutonomyMode.OBSERVE)
     await evaluated(core, strategy)  # refused in OBSERVE
-    await core.c.autonomy.arm(AutonomyMode.PAPER)  # the human climbs while the same setup is still in the window
+    await core.c.autonomy.arm(AutonomyMode.CONFIRM)  # the human climbs while the same setup is still in the window
     market.advance()
     await evaluated(core, strategy)
     assert len(core.recorder.of(TradeIntentCreated)) == 1  # a stale setup is not resurrected by a higher mode
@@ -321,7 +325,7 @@ async def test_a_setup_is_handled_once_whatever_the_mode_does_afterwards(h: Harn
 
 
 async def test_a_proposal_that_is_too_old_is_a_measurement_not_an_order(h: Harness) -> None:
-    core, _, strategy = await rig(h, AutonomyMode.PAPER)
+    core, _, strategy = await rig(h, AutonomyMode.CONFIRM)
     core.h.clock.advance(minutes=10)  # the displacement is ten minutes old when the service finally looks at it
     evaluation = await evaluated(core, strategy)
     assert evaluation is not None and evaluation.status == "proposed"

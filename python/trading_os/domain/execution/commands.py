@@ -37,7 +37,6 @@ class CommandState(StrEnum):
     REJECTED = "REJECTED"  # refused before any broker call (terminal)
     EXPIRED = "EXPIRED"
     CANCELLED = "CANCELLED"
-    SIMULATED = "SIMULATED"  # paper broker, or an agent compiled OBSERVE: validated end to end, no broker order exists
 
 
 class ExecutionRequest(DomainModel):

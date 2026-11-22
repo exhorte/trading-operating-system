@@ -9,8 +9,6 @@ Its only way out is reconciliation (UNKNOWN → RECONCILING → RECONCILED). The
                  ─POSITION_CONFIRMED▶ RECONCILED
     refusals     SENT ─ACK_REJECTED▶ REJECTED · ─ACK_EXPIRED▶ EXPIRED
                  PENDING ─SEND_FAILED▶ FAILED · ─EXPIRED▶ EXPIRED · ─CANCEL_REQUESTED▶ CANCELLED
-    simulated    SENT|ACKNOWLEDGED ─REPORT_SIMULATED▶ SIMULATED   (agent compiled OBSERVE)
-                 PENDING ─SIMULATED_LOCALLY▶ SIMULATED                    (OBSERVE / PAPER: nothing is ever sent)
     failed       ACKNOWLEDGED ─REPORT_FAILED▶ FAILED
     in doubt     SENT|ACKNOWLEDGED ─LINK_LOST▶ UNKNOWN ─RECONCILIATION_STARTED▶ RECONCILING ─RECONCILED▶ RECONCILED
                  (RECONCILING ─RECONCILIATION_PENDING▶ RECONCILING: inconclusive, stays, never guesses)
@@ -35,8 +33,6 @@ class CommandEvent(StrEnum):
     ACK_REJECTED = "ACK_REJECTED"
     ACK_EXPIRED = "ACK_EXPIRED"
     REPORT_EXECUTED = "REPORT_EXECUTED"
-    REPORT_SIMULATED = "REPORT_SIMULATED"
-    SIMULATED_LOCALLY = "SIMULATED_LOCALLY"  # OBSERVE or PAPER: validated end to end here, nothing leaves the process
     REPORT_FAILED = "REPORT_FAILED"  # a definite refusal only — ambiguous retcodes are LINK_LOST/UNKNOWN
     LINK_LOST = "LINK_LOST"  # silence or ambiguity after the send: the outcome is not known
     POSITION_CONFIRMED = "POSITION_CONFIRMED"
@@ -54,17 +50,14 @@ _TABLE: dict[tuple[S, CommandEvent], S] = {
     (S.PENDING, E.SEND_FAILED): S.FAILED,
     (S.PENDING, E.EXPIRED): S.EXPIRED,
     (S.PENDING, E.CANCEL_REQUESTED): S.CANCELLED,
-    (S.PENDING, E.SIMULATED_LOCALLY): S.SIMULATED,
     (S.SENT, E.ACK_ACCEPTED): S.ACKNOWLEDGED,
     (S.SENT, E.ACK_REJECTED): S.REJECTED,
     (S.SENT, E.ACK_EXPIRED): S.EXPIRED,
     (S.SENT, E.LINK_LOST): S.UNKNOWN,
     # A final report replayed after a reconnection can overtake a lost ack: the report itself proves acceptance.
     (S.SENT, E.REPORT_EXECUTED): S.EXECUTED,
-    (S.SENT, E.REPORT_SIMULATED): S.SIMULATED,
     (S.SENT, E.REPORT_FAILED): S.FAILED,
     (S.ACKNOWLEDGED, E.REPORT_EXECUTED): S.EXECUTED,
-    (S.ACKNOWLEDGED, E.REPORT_SIMULATED): S.SIMULATED,
     (S.ACKNOWLEDGED, E.REPORT_FAILED): S.FAILED,
     (S.ACKNOWLEDGED, E.LINK_LOST): S.UNKNOWN,
     (S.EXECUTED, E.POSITION_CONFIRMED): S.RECONCILED,
@@ -74,14 +67,14 @@ _TABLE: dict[tuple[S, CommandEvent], S] = {
     (S.RECONCILING, E.RECONCILED): S.RECONCILED,
 }
 
-TERMINAL_STATES = frozenset({S.RECONCILED, S.FAILED, S.REJECTED, S.EXPIRED, S.CANCELLED, S.SIMULATED})
+TERMINAL_STATES = frozenset({S.RECONCILED, S.FAILED, S.REJECTED, S.EXPIRED, S.CANCELLED})
 
 # States in which a broker order may exist or may have been placed — a restart must never replay these.
 IN_DOUBT_STATES = frozenset({S.SENT, S.ACKNOWLEDGED, S.UNKNOWN, S.RECONCILING})
 
 # States that say nothing was placed at the broker (or that it failed for good). A position or order carrying the trace
 # of such a command contradicts the record — the most serious thing reconciliation can find.
-NO_POSITION_STATES = frozenset({S.PENDING, S.FAILED, S.REJECTED, S.EXPIRED, S.CANCELLED, S.SIMULATED})
+NO_POSITION_STATES = frozenset({S.PENDING, S.FAILED, S.REJECTED, S.EXPIRED, S.CANCELLED})
 
 
 def next_state(state: S, event: CommandEvent) -> S:

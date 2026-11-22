@@ -22,7 +22,6 @@ const counts = (changes: Partial<CloseAllCounts> = {}): CloseAllCounts => ({
   verifying: 0,
   alreadyClosed: 0,
   rejected: 0,
-  simulated: 0,
   unknown: 0,
   mismatch: 0,
   notClosable: 0,
@@ -62,7 +61,6 @@ const report = (changes: Partial<CloseAllReport> = {}): CloseAllReport => ({
   reconciliationCritical: 0,
   snapshotFresh: true,
   otherOpenPositions: [],
-  simulatedOnly: false,
   ...changes,
 });
 
@@ -83,7 +81,7 @@ describe("the words the trader must read exactly", () => {
         expect(label.toLowerCase()).not.toMatch(/^fermée/);
       }
     }
-    expect(ITEM_LABELS.SIMULATED).toContain("rien n'a été fermé");
+    expect(Object.keys(ITEM_LABELS)).not.toContain("SIMULATED"); // ADR 0041: an order is done or refused with a code
   });
 });
 
@@ -111,9 +109,9 @@ describe("progressLine", () => {
     expect(line).not.toContain("0");
   });
 
-  it("names the simulated and the not closable", () => {
-    const line = progressLine(report({ counts: counts({ detected: 2, simulated: 1, notClosable: 1 }) }));
-    expect(line).toContain("1 simulée");
+  it("names the refused and the not closable", () => {
+    const line = progressLine(report({ counts: counts({ detected: 2, rejected: 1, notClosable: 1 }) }));
+    expect(line).toContain("1 refusée");
     expect(line).toContain("1 non fermable par l'agent");
   });
 });
@@ -128,7 +126,7 @@ describe("summary", () => {
           alreadyClosed: 1,
           rejected: 1,
           unknown: 1,
-          simulated: 1,
+          mismatch: 1,
           positionsStillOpen: 3,
         }),
       }),
@@ -152,12 +150,13 @@ describe("texts", () => {
     expect(itemTone("REJECTED")).toBe("loss");
     expect(itemTone("MISMATCH")).toBe("loss");
     expect(itemTone("UNKNOWN")).toBe("warning");
-    expect(itemTone("SIMULATED")).toBe("warning");
     expect(itemTone("IN_PROGRESS")).toBe("info");
   });
 
   it("explains the reject codes it knows and falls back on the core's own words", () => {
     expect(reasonText("TARGET_NOT_OURS")).toContain("numéro magique");
+    expect(reasonText("AGENT_OBSERVE")).toContain("compilé en OBSERVE");
+    expect(reasonText("MODE_NOT_PERMITTING")).toContain("n'envoie aucun ordre");
     expect(reasonText("SOMETHING_NEW", "the broker said no")).toBe("SOMETHING_NEW — the broker said no");
   });
 
@@ -165,6 +164,7 @@ describe("texts", () => {
     expect(actionText("RECONCILE")).toContain("Ne la renvoyez jamais");
     expect(actionText("CLOSE_IN_MT5")).toContain("MT5");
     expect(actionText("ENABLE_AGENT")).toContain("aucun ordre n'a atteint le courtier");
+    expect(actionText("ENABLE_AGENT")).not.toMatch(/simul|PAPER/i);
   });
 
   it("uses its own words for a known warning and the core's sentence for an unknown one", () => {

@@ -18,6 +18,18 @@ _CLOCK_FIELDS = frozenset({"core_silent_ms", "last_heartbeat_ms"})
 _AGENT_MAGIC = re.compile(r"-(\d+)$")
 
 
+class AgentProtections(DomainModel):
+    """What the agent says it loaded — an echo for the preparation to compare with the preset, never a setting."""
+
+    max_volume_per_order: float | None = None
+    max_open_positions: int | None = None
+    max_slippage_points: int | None = None
+    max_spread: dict[str, float] | None = None
+    allowed_symbols: list[str] | None = None
+    dead_man_seconds: int | None = None
+    pending_max_minutes: int | None = None
+
+
 class AgentStatus(DomainModel):
     account_login: str  # the MT5 login as the agent states it (its registry key)
     agent_id: str
@@ -48,6 +60,15 @@ class AgentStatus(DomainModel):
     capabilities: list[str] = Field(default_factory=list)
     core_silent_ms: int | None = None  # how long the agent has gone without hearing from the core
     last_heartbeat_ms: int | None = None
+    # Agent 1.14 (ADR 0040): what it reports of itself. None = not reported (a 1.13) — never filled with a supposed value.
+    protocol_version: int | None = None
+    chart_symbol: str | None = None
+    chart_period: str | None = None
+    instance_id: str | None = None
+    terminal_build: int | None = None
+    init_state: str | None = None
+    init_issues: list[str] = Field(default_factory=list)
+    local_protections: AgentProtections | None = None
 
     def can(self, capability: str) -> bool:
         return capability in self.capabilities

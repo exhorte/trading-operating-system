@@ -78,13 +78,6 @@ def _mode_reason(mode: AutonomyMode, halted_reason: str | None) -> Reason | None
             source="mode", code="mode_observe", detail="mode OBSERVE: the core evaluates and records, no order leaves it",
             blocking=True,
         )  # fmt: skip
-    if mode is AutonomyMode.PAPER:
-        return Reason(
-            source="mode",
-            code="mode_paper",
-            detail="mode PAPER: orders are simulated, none reaches the broker",
-            blocking=True,
-        )
     if mode is AutonomyMode.CONFIRM:
         return Reason(
             source="mode",

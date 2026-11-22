@@ -6,9 +6,8 @@
     export-history              export candles from the running MT5 terminal (read-only)
     list-symbols                the broker symbols behind canonical names (read-only)
     spread-history              the spread per New York window from the broker's tick history (read-only)
-    weekly-review               a Markdown review of a week, from the journal
-    live-report                 the live measures of a window (spreads, tick rate, command timings) from the database (ADR 0035)
     validate                   the validation bench: one strategy, one frozen configuration, one past period (ADR 0026)
+    launcher plan | status      look at the machine and plan a start-up (read-only, ADR 0038)
     mcp                         the read-only MCP server (needs the ``mcp`` extra)
     gen-types                   generate the cockpit's TypeScript types from the core's own schemas
 
@@ -21,11 +20,11 @@ import argparse
 import asyncio
 import sys
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from trading_os.domain.primitives import Timeframe
+from trading_os.launcher.cli import register as register_launcher
 from trading_os.shared.errors import TradingOsError, ValidationFailed
 
 if TYPE_CHECKING:
@@ -91,24 +90,6 @@ def build_parser() -> argparse.ArgumentParser:
     spreads.add_argument("--server-offset", type=float, default=0.0, help="server clock minus UTC, hours (Exness: 0)")
     spreads.set_defaults(handler=_spread_history)
 
-    review = commands.add_parser("weekly-review", help="a Markdown review of a week, from the journal")
-    review.add_argument("--account", help="default: ACTIVE_ACCOUNT_ID")
-    review.add_argument("--from", dest="start", help="UTC date or time; default: a week before --to")
-    review.add_argument("--to", dest="end", help="UTC date or time; default: now")
-    review.add_argument("--out-dir", type=Path, default=Path("weekly-reviews"))
-    review.set_defaults(handler=_weekly_review)
-
-    live = commands.add_parser(
-        "live-report", help="the live measures of a window from the stored ticks and commands (read-only, ADR 0035)"
-    )
-    live.add_argument("--account", help="default: ACTIVE_ACCOUNT_ID")
-    live.add_argument("--symbols", nargs="+", default=["EURUSDm", "XAUUSDm"], help="broker names")
-    live.add_argument("--from", dest="start", help="UTC date or time; default: --minutes before --to")
-    live.add_argument("--to", dest="end", help="UTC date or time, exclusive; default: now")
-    live.add_argument("--minutes", type=int, default=60, help="the window when --from is not given")
-    live.add_argument("--out-dir", type=Path, default=Path("exports/live"))
-    live.set_defaults(handler=_live_report)
-
     check = commands.add_parser(
         "validate", help="measure one strategy, as written, on a past period — it never searches (ADR 0026)"
     )
@@ -130,6 +111,8 @@ def build_parser() -> argparse.ArgumentParser:
     check.set_defaults(handler=_validate)
 
     commands.add_parser("mcp", help="the read-only MCP server on stdio").set_defaults(handler=_mcp)
+
+    register_launcher(commands)
 
     types = commands.add_parser("gen-types", help="generate the cockpit's TypeScript types (lib/api/generated.ts)")
     types.add_argument("--out", type=Path, help="default: lib/api/generated.ts at the repository root")
@@ -356,78 +339,6 @@ def _spread_history(args: argparse.Namespace) -> int:
                 print("\n".join(render(report)))
 
     run(go())
-    return 0
-
-
-def _weekly_review(args: argparse.Namespace) -> int:
-    from datetime import UTC, datetime
-
-    from trading_os.app.config import get_settings
-    from trading_os.app.container import build_container
-    from trading_os.cli.history import parse_utc
-    from trading_os.cli.weekly_review import compute_weekly_stats, render_weekly_review
-
-    settings = get_settings()
-    account_id = args.account or settings.active_account_id
-    if account_id is None:
-        raise ValidationFailed("name the account with --account, or set ACTIVE_ACCOUNT_ID", code="no_account")
-    end = parse_utc(args.end) if args.end else datetime.now(UTC)
-    start = parse_utc(args.start) if args.start else end - timedelta(days=7)
-
-    async def go() -> str:
-        container = build_container(settings)
-        await container.db.open()
-        try:
-            trades = await container.journal.trades(account_id, start, end)
-            summary = await container.journal.compliance(account_id, start, end)
-        finally:
-            await container.db.close()
-        stats = compute_weekly_stats(start, end, trades, summary)
-        print(
-            f"weekly review computed: {stats.trade_count} trade(s), compliance {stats.compliance_rate:.0%}",
-            file=sys.stderr,
-        )
-        return render_weekly_review(stats)
-
-    markdown = run(go())
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    target = args.out_dir / f"{end:%Y-%m-%d}.md"
-    target.write_text(markdown, encoding="utf-8")
-    print(f"written to {target}", file=sys.stderr)
-    return 0
-
-
-def _live_report(args: argparse.Namespace) -> int:
-    from datetime import UTC, datetime
-
-    from trading_os.app.config import get_settings
-    from trading_os.cli.history import parse_utc
-    from trading_os.cli.live_report import render_live_report
-    from trading_os.services.accounts import ACTIVE_ACCOUNT_KEY
-    from trading_os.services.live_metrics import stored_commands, stored_quotes
-
-    end = parse_utc(args.end) if args.end else datetime.now(UTC)
-    start = parse_utc(args.start) if args.start else end - timedelta(minutes=args.minutes)
-    if start >= end:
-        raise ValidationFailed("--from must be before --to", code="bad_window")
-
-    async def work(repos: Any) -> str:
-        account_id = args.account or get_settings().active_account_id
-        if account_id is None:  # the account the cockpit last selected, which the core keeps in its state table
-            stored = await repos.state.get(ACTIVE_ACCOUNT_KEY)
-            account_id = stored.get("id") if isinstance(stored, dict) else None
-        if account_id is None:
-            raise ValidationFailed("name the account with --account, or set ACTIVE_ACCOUNT_ID", code="no_account")
-        quotes = await stored_quotes(repos, args.symbols, start, end)
-        commands = await stored_commands(repos, account_id, start, end)
-        return render_live_report(account_id=account_id, start=start, end=end, quotes=quotes, commands=commands)
-
-    markdown = _with_repositories(work)
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    target = args.out_dir / f"live-{end:%Y%m%dT%H%M%S}Z.md"
-    target.write_text(markdown, encoding="utf-8")
-    print(markdown)
-    print(f"written to {target}", file=sys.stderr)
     return 0
 
 

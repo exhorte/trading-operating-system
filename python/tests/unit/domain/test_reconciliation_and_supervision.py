@@ -183,7 +183,7 @@ class TestReconciliationByTrace:
     def test_a_position_for_a_command_recorded_as_not_placed_is_critical_whatever_the_magic(self) -> None:
         for state in (
             CommandState.FAILED, CommandState.REJECTED, CommandState.EXPIRED, CommandState.CANCELLED,
-            CommandState.SIMULATED, CommandState.PENDING,
+            CommandState.PENDING,
         ):  # fmt: skip
             found = run(
                 expected=[], actual=[self.stray("cmd-dead", magic_number=0)], command_states={"cmd-dead": state}

@@ -209,9 +209,6 @@ async def test_an_agent_is_only_expected_where_orders_go_through_it(h: Harness) 
     core.link.statuses.clear()  # no agent at all: fine in OBSERVE
     await step(core, 40, agent_beats=False)  # (and long enough for the connection to be past its start-up grace)
     assert "agent_heartbeat_stale" not in codes(core)
-    await core.c.autonomy.arm(M.PAPER)
-    await step(core, agent_beats=False)
-    assert "agent_heartbeat_stale" not in codes(core), "PAPER fills in process"
     await core.c.autonomy.arm(M.CONFIRM)
     await step(core, agent_beats=False)
     assert "agent_heartbeat_stale" in codes(core), "CONFIRM sends through the agent: its absence is a fault"

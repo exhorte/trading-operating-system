@@ -15,6 +15,7 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from trading_os.domain.market.sessions import parse_trading_windows
+from trading_os.domain.market.symbols import KNOWN_CANONICAL
 from trading_os.domain.risk.n8 import percent_to_units
 from trading_os.shared.logging.redaction import register_secret
 
@@ -28,7 +29,6 @@ class TradingMode(StrEnum):
 
     OFF = "OFF"
     OBSERVE = "OBSERVE"
-    PAPER = "PAPER"
     CONFIRM = "CONFIRM"
     ARMED = "ARMED"
     AUTONOMOUS = "AUTONOMOUS"
@@ -61,6 +61,13 @@ class Settings(BaseSettings):
     # stops the core at start: it is never guessed.
     strategy_s01_windows: str = ""
     strategy_s02_windows: str = ""
+    # S01's symbols, canonical names separated by commas (ADR 0043): ``EURUSD,BTCUSD``. Empty = S01's own default (EURUSD). A name the core does
+    # not know stops it at start: it is never guessed.
+    strategy_s01_symbols: str = ""
+    # The pilot (ADR 0043): at start-up it attaches the active account (no password), starts the system and climbs one rung at a time to this
+    # mode as soon as every condition is green — and climbs back after the readiness recovers. OFF = it does nothing (the default). A human who
+    # disarms or halts pauses it until the next start. It never pilots a real-money (LIVE) account.
+    autopilot_target: Literal["OFF", "OBSERVE", "CONFIRM", "ARMED", "AUTONOMOUS"] = "OFF"
 
     # Account Guardian (ADR 0032). OFF by default — a new automatic behaviour, the user's to switch on: the core's resting orders on a symbol whose
     # spread is over the cap he wrote for it (``max_spread_by_symbol``) are cancelled. Positions are never closed for a spread.
@@ -103,6 +110,15 @@ class Settings(BaseSettings):
     # How many M1 bars are read from the terminal when an account connects (about a day: the strategy needs context at once).
     market_backfill_bars: int = Field(default=1500, ge=10, le=20_000)
 
+    @field_validator("trading_mode", mode="before")
+    @classmethod
+    def _paper_is_gone(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip().upper() == "PAPER":
+            raise ValueError(
+                "TRADING_MODE=PAPER n'existe plus (ADR 0041 : plus aucune exécution simulée) — écrivez OBSERVE (aucun ordre) ou CONFIRM"
+            )
+        return value
+
     @field_validator("allowed_origins")
     @classmethod
     def _strip(cls, value: str) -> str:
@@ -114,6 +130,19 @@ class Settings(BaseSettings):
         if value.strip():
             parse_trading_windows(value)  # raises ValueError, which pydantic reports against the setting's name
         return value.strip()
+
+    @field_validator("strategy_s01_symbols")
+    @classmethod
+    def _symbols_are_known(cls, value: str) -> str:
+        names = [part.strip().upper() for part in value.split(",") if part.strip()]
+        unknown = [name for name in names if name not in KNOWN_CANONICAL]
+        if unknown:
+            raise ValueError(f"unknown symbol(s) {', '.join(unknown)}: known are {', '.join(sorted(KNOWN_CANONICAL))}")
+        return ",".join(names)
+
+    @property
+    def s01_symbols(self) -> tuple[str, ...]:
+        return tuple(part for part in self.strategy_s01_symbols.split(",") if part)
 
     @field_validator("risk_n8_minimum_percent")
     @classmethod

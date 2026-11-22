@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from trading_os.app.audit import AuditTrail
 from trading_os.app.config import REPO_ROOT, Settings
@@ -32,7 +32,7 @@ from trading_os.infrastructure.database.pool import Database
 from trading_os.infrastructure.database.repositories import Repositories
 from trading_os.infrastructure.mt5.client import Mt5Client
 from trading_os.infrastructure.mt5.ea_link import EaLinkServer, NullHandler
-from trading_os.infrastructure.mt5.transport import SubprocessTransport
+from trading_os.infrastructure.mt5.transport import WORKERS, SubprocessTransport
 from trading_os.infrastructure.news.fred import FredCalendarClient
 from trading_os.infrastructure.security.credentials import CredentialStore, build_credential_store
 from trading_os.runtime.heartbeat import Heartbeat
@@ -40,6 +40,7 @@ from trading_os.runtime.scheduler import Scheduler
 from trading_os.runtime.supervisor import Supervisor
 from trading_os.services.accounts import AccountService, Mt5Factory
 from trading_os.services.autonomy import AutonomyService
+from trading_os.services.autopilot import Autopilot
 from trading_os.services.close_all import CloseAllService
 from trading_os.services.execution import AgentLinkPort, ExecutionService
 from trading_os.services.guardian import AccountGuardianService
@@ -54,9 +55,10 @@ from trading_os.services.providers import ProviderService
 from trading_os.services.readiness import AccountCheck, ReadinessCollector
 from trading_os.services.reconciliation import ReconciliationService
 from trading_os.services.risk import RiskService
-from trading_os.services.senders import AgentSender, ObserveSender, PaperSender
+from trading_os.services.senders import AgentSender
 from trading_os.services.startup import StartupService
 from trading_os.services.strategy import StrategyDefinition, StrategyService
+from trading_os.services.system_center import SystemCenterService
 from trading_os.services.why import WhyNoTradeService
 from trading_os.shared.errors import ValidationFailed
 from trading_os.shared.events.dispatcher import EventDispatcher
@@ -102,10 +104,12 @@ class Container:
     close_all: CloseAllService
     live_metrics: LiveMetricsService
     startup: StartupService
+    autopilot: Autopilot
     scheduler: Scheduler
     heartbeat: Heartbeat
     supervisor: Supervisor
     readiness: ReadinessCollector
+    system_center: SystemCenterService
 
 
 def default_mt5_factory(settings: Settings, clock: Clock) -> Mt5Factory:
@@ -151,7 +155,7 @@ def build_container(
     tick_writer = TickWriter(repos.market)
     market = MarketDataService(
         accounts=accounts, repos=repos, events=events, clock=clock, tick_writer=tick_writer,
-        backfill_bars=settings.market_backfill_bars,
+        backfill_bars=settings.market_backfill_bars, watch=settings.s01_symbols or S01Config().symbols,
     )  # fmt: skip
     positions = PositionService(accounts=accounts, repos=repos, events=events, clock=clock, market=market)
     accounts.set_open_positions_provider(positions.total_open_count)
@@ -180,8 +184,6 @@ def build_container(
     execution = ExecutionService(
         accounts=accounts, repos=repos, events=events, clock=clock, link=agent_link,
         senders={
-            ExecutionRoute.NONE: ObserveSender(),
-            ExecutionRoute.PAPER: PaperSender(market),
             ExecutionRoute.CONFIRM: agent_sender,
             ExecutionRoute.AUTOMATIC: agent_sender,
         },
@@ -214,11 +216,12 @@ def build_container(
         repos=repos, events=events, clock=clock, accounts=accounts, positions=positions, market=market
     )
 
-    s01_config = (
-        S01Config(trading_windows=parse_trading_windows(settings.strategy_s01_windows))
-        if settings.strategy_s01_windows
-        else S01Config()
-    )
+    s01_options: dict[str, Any] = {}
+    if settings.strategy_s01_windows:
+        s01_options["trading_windows"] = parse_trading_windows(settings.strategy_s01_windows)
+    if settings.s01_symbols:
+        s01_options["symbols"] = settings.s01_symbols
+    s01_config = S01Config(**s01_options)
     s02_config = (
         S02Config(trading_windows=parse_trading_windows(settings.strategy_s02_windows))
         if settings.strategy_s02_windows
@@ -290,9 +293,23 @@ def build_container(
         heartbeat=heartbeat, db=db, events=events, clock=clock,
     )  # fmt: skip
 
+    autopilot = Autopilot(
+        target=AutonomyMode(settings.autopilot_target),
+        accounts=accounts,
+        autonomy=autonomy,
+        startup=startup,
+        clock=clock,
+    )
+
     live_metrics = LiveMetricsService(
         accounts=accounts, market=market, execution=execution, repos=repos, events=events, clock=clock
     )
+
+    system_center = SystemCenterService(
+        execution=execution, accounts=accounts, providers=providers, reconciliation=reconciliation, autonomy=autonomy,
+        clock=clock, core_status=supervisor.status, workers_alive=lambda: WORKERS.alive,
+        registry_path=REPO_ROOT / "var" / "launcher" / "terminals.json", events_dir=REPO_ROOT / "var" / "launcher",
+    )  # fmt: skip
 
     autonomy.wire(readiness=readiness, halt_agents=execution.halt_agents)
     risk.wire(
@@ -303,6 +320,6 @@ def build_container(
         settings=settings, clock=clock, db=db, repos=repos, events=events, audit=audit, credentials=credentials,
         accounts=accounts, tick_writer=tick_writer, market=market, positions=positions, news=news, autonomy=autonomy,
         agent_link=agent_link, ea_server=ea_server, execution=execution, risk=risk, providers=providers, reconciliation=reconciliation,
-        journal=journal, strategy=strategy, strategy_s02=strategy_s02, position_manager=position_manager, guardian=guardian, promotion=promotion, why=why, close_all=close_all, live_metrics=live_metrics, startup=startup, scheduler=scheduler, heartbeat=heartbeat,
-        supervisor=supervisor, readiness=readiness,
+        journal=journal, strategy=strategy, strategy_s02=strategy_s02, position_manager=position_manager, guardian=guardian, promotion=promotion, why=why, close_all=close_all, live_metrics=live_metrics, startup=startup, autopilot=autopilot, scheduler=scheduler, heartbeat=heartbeat,
+        supervisor=supervisor, readiness=readiness, system_center=system_center,
     )  # fmt: skip

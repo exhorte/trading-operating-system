@@ -31,7 +31,7 @@ FAST = {
 }
 JOBS = {
     "heartbeat", "positions", "ticks", "candles", "risk", "strategy", "position_manager", "guardian", "execution",
-    "reconciliation", "autonomy", "supervisor", "tick_writer", "news",
+    "reconciliation", "autonomy", "autopilot", "supervisor", "tick_writer", "news",
 }  # fmt: skip
 
 

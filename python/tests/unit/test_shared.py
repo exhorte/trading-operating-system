@@ -157,10 +157,10 @@ class TestSettings:
 
     def test_env_aliases(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("TRADINGOS_COCKPIT_TOKEN", "cockpit-tok")
-        monkeypatch.setenv("TRADING_MODE", "PAPER")
+        monkeypatch.setenv("TRADING_MODE", "CONFIRM")
         s = Settings(_env_file=None)
         assert s.trading_os_cockpit_token is not None and s.trading_os_cockpit_token.get_secret_value() == "cockpit-tok"
-        assert s.trading_mode is TradingMode.PAPER
+        assert s.trading_mode is TradingMode.CONFIRM
 
     def test_origins_are_split_and_trimmed(self) -> None:
         s = Settings(_env_file=None, allowed_origins=" http://a:1 , http://b:2 ,")

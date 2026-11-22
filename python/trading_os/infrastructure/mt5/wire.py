@@ -15,9 +15,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AliasChoices, BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
+from trading_os.domain.execution.retcodes import NOT_SENT_MARKER
 from trading_os.domain.primitives import Side
 from trading_os.shared.time import from_epoch_ms
 
@@ -47,6 +48,29 @@ class WireMessage(BaseModel):
     @property
     def at(self) -> datetime:
         return from_epoch_ms(self.time)
+
+
+class WireModel(BaseModel):
+    """A nested object of a wire message: unknown keys ignored, camelCase on the wire."""
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True, alias_generator=to_camel)
+
+
+class ChartReport(WireModel):
+    symbol: str
+    period: str
+
+
+class LocalProtectionsReport(WireModel):
+    """The values the agent actually loaded (after clamping) — an echo, never a setting (ADR 0040 § 1)."""
+
+    max_volume_per_order: float | None = None
+    max_open_positions: int | None = None
+    max_slippage_points: int | None = None
+    max_spread: dict[str, float] | None = None
+    allowed_symbols: list[str] | None = None
+    dead_man_seconds: int | None = None
+    pending_max_minutes: int | None = None
 
 
 class AgentHello(WireMessage):
@@ -83,6 +107,14 @@ class AgentHello(WireMessage):
     closable: bool | None = None
     halted: bool | None = None
     attached_experts: list[str] | None = None
+    # Agent 1.14 (ADR 0040): read-only telemetry. A 1.13 sends none of it, and that is accepted: a missing field is a warning, never a guess.
+    protocol_version: int | None = None
+    chart: ChartReport | None = None
+    instance_id: str | None = None  # the last segment of the terminal's data folder — never a full path
+    terminal_build: int | None = None
+    init_state: Literal["READY", "DEGRADED"] | None = None
+    init_issues: list[str] | None = None
+    local_protections: LocalProtectionsReport | None = None
 
 
 class AgentHeartbeat(WireMessage):
@@ -122,12 +154,15 @@ class ExecutionAck(WireMessage):
 SUCCESS_REPORT_STATUSES = frozenset({"FILLED", "PARTIALLY_FILLED", "SUBMITTED", "MODIFIED", "CLOSED", "CANCELLED"})
 
 
+# An agent built before 1.15 answers a command it will not send (compiled in OBSERVE) with a report the core no longer has an outcome for (ADR 0041).
+# The core reads it for what it says — nothing reached the broker — and nowhere else in the core does the old word appear. Drop this once every agent is 1.15.
+_OLDER_AGENT_OBSERVE_STATUS = "SIMULATED"
+
+
 class ExecutionReport(WireMessage):
     type: Literal["execution.report"] = "execution.report"
     command_id: str
-    status: Literal[
-        "SIMULATED", "SUBMITTED", "FILLED", "PARTIALLY_FILLED", "MODIFIED", "CLOSED", "CANCELLED", "FAILED", "REJECTED"
-    ]
+    status: Literal["SUBMITTED", "FILLED", "PARTIALLY_FILLED", "MODIFIED", "CLOSED", "CANCELLED", "FAILED", "REJECTED"]
     symbol: str = ""
     side: Literal["BUY", "SELL"] | None = None
     broker_order_id: WireText = None
@@ -137,6 +172,20 @@ class ExecutionReport(WireMessage):
     broker_retcode: WireText = None
     detail: str = ""
     replayed: bool = False  # a final report sent again after a reconnection, with its original time
+
+    @model_validator(mode="before")
+    @classmethod
+    def _older_agent_that_says_simulated(cls, data: Any) -> Any:
+        """A 1.14 agent compiled in OBSERVE reports ``SIMULATED``. It is read as the refusal it is: ``FAILED``, coded ``AGENT_OBSERVE``, worded so that
+        it is a definite refusal (« order NOT sent ») — never UNKNOWN, never a fill."""
+        if isinstance(data, dict) and data.get("status") == _OLDER_AGENT_OBSERVE_STATUS:
+            said = str(data.get("detail") or "").strip()
+            return {
+                **data,
+                "status": "FAILED",
+                "detail": f"AGENT_OBSERVE: the agent is compiled in OBSERVE and answered with a simulated report (an agent before 1.15) — {NOT_SENT_MARKER}. {said}".strip(),
+            }
+        return data
 
 
 class ExecutionReconciled(WireMessage):

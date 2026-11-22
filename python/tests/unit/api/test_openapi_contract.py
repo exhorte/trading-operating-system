@@ -58,6 +58,10 @@ SURFACE: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/system/startup/authorize-automatic"),
         # live measures (ADR 0035, L1): read-only
         ("GET", "/api/system/live-metrics"),
+        # System Center (ADR 0039 § 8, I8): reads of the registered MetaTrader terminals and of their agents — they send nothing
+        ("GET", "/api/system/center"), ("GET", "/api/system/mt5/terminals"),
+        # the pilot (ADR 0043): a read
+        ("GET", "/api/system/autopilot"),
         # market
         ("GET", "/api/market/calendar"), ("GET", "/api/market/quotes"), ("GET", "/api/market/{symbol}"),
         ("GET", "/api/market/{symbol}/candles"), ("GET", "/api/market/{symbol}/context"),

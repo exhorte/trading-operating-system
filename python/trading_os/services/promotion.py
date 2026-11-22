@@ -54,7 +54,7 @@ class PromotionService:
         mode = overview.effective_mode
         if account_id is None:
             facts = PromotionFacts(
-                limits_configured=False, evaluation_days=0, paper_commands=0, confirmed_orders=0, commands_in_doubt=0,
+                limits_configured=False, evaluation_days=0, confirmed_orders=0, commands_in_doubt=0,
                 critical_incidents=0, readiness_ready=None,
             )  # fmt: skip
         else:
@@ -70,7 +70,6 @@ class PromotionService:
         days = {e.event_at.astimezone(NY_TIME_ZONE).date() for e in evaluations if e.strategy_id == "S01"}
         commands = await self._repos.execution.recent(account_id, 500)
         opens = [c for c in commands if c.request.kind is CommandKind.OPEN]
-        paper = [c for c in opens if c.route is ExecutionRoute.PAPER and c.state is CommandState.SIMULATED]
         confirmed = [
             c for c in opens if c.route in (ExecutionRoute.CONFIRM, ExecutionRoute.AUTOMATIC) and c.state in EXECUTED
         ]
@@ -82,7 +81,7 @@ class PromotionService:
         ]
         trades, breach = self._latest_validation()
         return PromotionFacts(
-            limits_configured=account.risk_profile.configured, evaluation_days=len(days), paper_commands=len(paper),
+            limits_configured=account.risk_profile.configured, evaluation_days=len(days),
             confirmed_orders=len(confirmed), commands_in_doubt=len(doubtful), critical_incidents=len(critical),
             readiness_ready=ready, validation_trades=trades, validation_p_total_breach=breach,
             armed_days_without_halt=None,  # the history of transitions is not read here: not measured, so not met

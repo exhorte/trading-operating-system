@@ -128,6 +128,7 @@ class ExecutionService:
         self._halted = halted
         self._locks: dict[str, asyncio.Lock] = {}
         self._last_beat: dict[str, datetime] = {}
+        self._registered_at: dict[str, datetime] = {}
         self._login_to_account: dict[str, str] = {}
         self.last_error: str | None = None
 
@@ -137,6 +138,10 @@ class ExecutionService:
 
     def last_heartbeat(self, login: str) -> datetime | None:
         return self._last_beat.get(login)
+
+    def registered_since(self, login: str) -> datetime | None:
+        """When the agent of this login last registered with the core — the instant a reconciliation must be newer than for the attachment to be reconciled (ADR 0039 § 5)."""
+        return self._registered_at.get(login)
 
     async def _account_for_login(self, login: str) -> str | None:
         known = self._login_to_account.get(login)
@@ -173,6 +178,16 @@ class ExecutionService:
         mode = self._effective_mode(account) if account else AutonomyMode.OFF
         route = self._route_for(mode, request, automatic=automatic)
         problems = await self._validate(request, account, route, automatic=automatic, now=now)
+        if route is ExecutionRoute.NONE:
+            # OFF, OBSERVE and HALTED send no order (ADR 0041): the command is refused with a code and recorded as refused,
+            # never as if it had been done. The other reasons, if any, still follow it.
+            problems.insert(
+                0,
+                Rejection(
+                    code=RejectCode.MODE_NOT_PERMITTING,
+                    detail=f"the mode is {mode.value}: no order leaves the core — raise it to CONFIRM first",
+                ),
+            )
         ttl = (
             timedelta(seconds=account.execution_profile.limits.command_ttl_seconds)
             if account
@@ -221,9 +236,9 @@ class ExecutionService:
 
     @staticmethod
     def _route_for(mode: AutonomyMode, request: ExecutionRequest, *, automatic: bool) -> ExecutionRoute:
-        """The route a command takes. A closing or a cancelling issued by a human gesture goes to the agent in **every** mode — OFF, OBSERVE,
-        PAPER and HALTED included — like a human exit in CONFIRM: the gesture is the confirmation (ADR 0033, 0034). The way out is never
-        closed by the mode. Everything else, and everything automatic, follows the mode: OBSERVE and OFF record and send nothing."""
+        """The route a command takes. A closing or a cancelling issued by a human gesture goes to the agent in **every** mode — OFF, OBSERVE
+        and HALTED included — like a human exit in CONFIRM: the gesture is the confirmation (ADR 0033, 0034). The way out is never
+        closed by the mode. Everything else, and everything automatic, follows the mode: OBSERVE and OFF refuse it with ``MODE_NOT_PERMITTING``."""
         if request.kind.reduces_risk_only and not automatic:
             return ExecutionRoute.CONFIRM
         return route_for(mode)
@@ -288,8 +303,9 @@ class ExecutionService:
             halted=self._halted() or bool(status and status.halted),
             decision=decision,
         )
-        if route is ExecutionRoute.NONE or route is ExecutionRoute.PAPER:
-            # nothing is sent in these routes, so the whole protocol can be validated end to end (ADR 0023)
+        if route is ExecutionRoute.NONE:
+            # No agent is asked in these modes, and the order is refused for it (``submit``): the rest of the request is still read as if
+            # it could go, so the trader hears every reason and not only the mode (ADR 0023 for the capabilities, ADR 0041 for the refusal)
             context = context.model_copy(
                 update={"agent_capabilities": frozenset({"modify", "close", "cancel", LIMIT_CAPABILITY})}
             )
@@ -351,10 +367,16 @@ class ExecutionService:
         return cancelled or command
 
     async def _dispatch(self, command: ExecutionCommand, account: Account) -> ExecutionCommand:
-        sender = self._senders.get(command.route) or self._senders[ExecutionRoute.NONE]
-        if command.route in (ExecutionRoute.NONE, ExecutionRoute.PAPER):
-            result = await sender.send(command, account)
-            return await self._after_local(command, result)
+        sender = self._senders.get(command.route)
+        if (
+            sender is None
+        ):  # no way out in this route: nothing is sent, and it is said (``submit`` and ``confirm`` refuse before this)
+            return await self._failed_unsent(
+                command,
+                SendResult(
+                    kind="not_sent", detail=f"no way out for a command in route {command.route.value}: nothing was sent"
+                ),
+            )
         result = await sender.send(command, account)
         if result.kind != "sent":
             return await self._failed_unsent(command, result)
@@ -366,27 +388,6 @@ class ExecutionService:
             )
         )  # fmt: skip
         return sent
-
-    async def _after_local(self, command: ExecutionCommand, result: SendResult) -> ExecutionCommand:
-        request = command.request
-        if result.kind == "simulated":
-            done = await self._move(
-                command.command_id,
-                CommandEvent.SIMULATED_LOCALLY,
-                detail=result.detail,
-                filled_volume=result.filled_volume,
-                average_price=result.average_price,
-            )
-            final = done or command
-            await self._events.publish(
-                ExecutionReported(
-                    account_id=request.account_id, correlation_id=request.command_id, command_id=request.command_id,
-                    outcome="simulated", symbol=request.symbol, side=request.side, filled_volume=result.filled_volume,
-                    average_price=result.average_price, detail=result.detail,
-                )
-            )  # fmt: skip
-            return final
-        return await self._failed_unsent(command, result)
 
     async def _failed_unsent(self, command: ExecutionCommand, result: SendResult) -> ExecutionCommand:
         failed = await self._move(
@@ -430,11 +431,13 @@ class ExecutionService:
     # ------------------------------------------------------------------------------------------ the agent talks back
     async def on_registered(self, status: AgentStatus) -> None:
         self._last_beat[status.account_login] = self._clock.now()
+        self._registered_at[status.account_login] = self._clock.now()
         account_id = await self._account_for_login(status.account_login)
         await self._events.publish(AgentConnected(account_id=account_id, status=status))
 
     async def on_unregistered(self, login: str) -> None:
         self._last_beat.pop(login, None)
+        self._registered_at.pop(login, None)
         await self._events.publish(
             AgentDisconnected(account_id=await self._account_for_login(login), agent_login=login)
         )
@@ -523,10 +526,7 @@ class ExecutionService:
             return
         if report.status in SUCCESS_REPORT_STATUSES:
             if await self._move(report.command_id, CommandEvent.REPORT_EXECUTED, **fill) is not None:
-                await self._publish_executed(account_id, report, "executed")
-        elif report.status == "SIMULATED":
-            if await self._move(report.command_id, CommandEvent.REPORT_SIMULATED, **fill) is not None:
-                await self._publish_executed(account_id, report, "simulated")
+                await self._publish_executed(account_id, report)
         elif report.status in ("FAILED", "REJECTED"):
             await self._report_failure(account_id, report, fill)
 
@@ -535,7 +535,12 @@ class ExecutionService:
     ) -> None:
         verdict = classify_failed_report(report.broker_retcode, report.detail)
         if verdict is RetcodeClass.FAILURE:
-            if await self._move(report.command_id, CommandEvent.REPORT_FAILED, **fill) is not None:
+            code = (
+                {"reject_code": RejectCode.AGENT_OBSERVE.value}
+                if report.detail.startswith(RejectCode.AGENT_OBSERVE.value)
+                else {}
+            )
+            if await self._move(report.command_id, CommandEvent.REPORT_FAILED, **fill, **code) is not None:
                 await self._events.publish(
                     ExecutionFailed(
                         account_id=account_id, correlation_id=report.command_id, command_id=report.command_id,
@@ -548,11 +553,11 @@ class ExecutionService:
             report.command_id, f"ambiguous broker return {report.broker_retcode or 'none'}: {report.detail}"
         )
 
-    async def _publish_executed(self, account_id: str | None, report: ExecutionReport, outcome: str) -> None:
+    async def _publish_executed(self, account_id: str | None, report: ExecutionReport) -> None:
         await self._events.publish(
             ExecutionReported(
                 account_id=account_id, correlation_id=report.command_id, command_id=report.command_id,
-                outcome="executed" if outcome == "executed" else "simulated", symbol=report.symbol,
+                outcome="executed", symbol=report.symbol,
                 side=side_from_wire(report.side) if report.side else None, filled_volume=report.filled_volume,
                 average_price=report.average_price, broker_order_id=report.broker_order_id,
                 broker_position_id=report.broker_position_id, detail=report.detail, replayed=report.replayed,
@@ -570,7 +575,7 @@ class ExecutionService:
         detail = f"reconciled from the agent's late report: {report.status} — {report.detail}"
         await self._move(command.command_id, CommandEvent.RECONCILED, **{**fill, "detail": detail})
         if executed:
-            await self._publish_executed(command.account_id, report, "executed")
+            await self._publish_executed(command.account_id, report)
 
     async def on_reconciled(self, login: str, reconciled: ExecutionReconciled) -> None:
         account_id = await self._account_for_login(login) or login

@@ -49,6 +49,7 @@ async def renew(c: Core) -> AutonomyState:
 
 @router.post("/disarm", response_model=AutonomyState, summary="Step down — always allowed, immediate")
 async def disarm(body: DisarmRequest, c: Core) -> AutonomyState:
+    c.autopilot.pause("a person disarmed the system")  # ADR 0043: a human step down is never undone by the pilot
     return await c.autonomy.disarm(body.target, acknowledge=body.acknowledge, reason=body.reason)
 
 
@@ -57,6 +58,7 @@ async def disarm(body: DisarmRequest, c: Core) -> AutonomyState:
     summary="Emergency stop: cut the state, the entries and the execution agent's kill switch, and lock the active account",
 )  # fmt: skip
 async def halt(body: HaltRequest, c: Core) -> HaltResult:
+    c.autopilot.pause("a person halted the system")
     halted = await c.autonomy.halt(body.reason, actor="user")
     lockout = None
     warnings: list[str] = []

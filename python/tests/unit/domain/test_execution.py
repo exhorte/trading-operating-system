@@ -62,10 +62,11 @@ class TestLifecycle:
         assert next_state(S.PENDING, E.CANCEL_REQUESTED) is S.CANCELLED
         assert next_state(S.ACKNOWLEDGED, E.REPORT_FAILED) is S.FAILED
 
-    def test_a_simulated_outcome_is_its_own_terminal_never_an_execution(self) -> None:
-        assert next_state(S.ACKNOWLEDGED, E.REPORT_SIMULATED) is S.SIMULATED
-        assert next_state(S.SENT, E.REPORT_SIMULATED) is S.SIMULATED
-        assert is_terminal(S.SIMULATED)
+    def test_an_agent_that_sends_no_order_ends_the_command_as_a_refusal_never_an_execution(self) -> None:
+        # ADR 0041: no « simulated » outcome. AGENT_OBSERVE is an ack rejection (1.15) or, from an older agent, a definite failed report.
+        assert next_state(S.SENT, E.ACK_REJECTED) is S.REJECTED
+        assert next_state(S.ACKNOWLEDGED, E.REPORT_FAILED) is S.FAILED
+        assert is_terminal(S.REJECTED) and is_terminal(S.FAILED)
 
     def test_a_replayed_final_report_can_overtake_a_lost_ack(self) -> None:
         assert next_state(S.SENT, E.REPORT_EXECUTED) is S.EXECUTED
@@ -101,7 +102,7 @@ class TestLifecycle:
                 next_state(S.ACKNOWLEDGED, event)
 
     def test_terminal_states_have_no_exit(self) -> None:
-        assert {S.RECONCILED, S.FAILED, S.REJECTED, S.EXPIRED, S.CANCELLED, S.SIMULATED} == set(TERMINAL_STATES)
+        assert {S.RECONCILED, S.FAILED, S.REJECTED, S.EXPIRED, S.CANCELLED} == set(TERMINAL_STATES)
         for state in TERMINAL_STATES:
             for event in CommandEvent:
                 with pytest.raises(IllegalTransition):

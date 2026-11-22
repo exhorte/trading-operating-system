@@ -4,7 +4,7 @@ A command is the only way an order exists, and it exists first as a *row*: persi
 caller's ``commandId`` (one id, at most one execution — a replay returns the original). Its fate is the engine's, not the
 route's: a refusal is not an HTTP error but an **outcome** (``rejections`` + a ``REJECTED`` command on record, so the audit
 trail holds what was asked and why it was not done). What the engine accepts depends on the mode the account is really in
-(``GET /state``): in OFF/OBSERVE it is recorded only, in PAPER simulated, in CONFIRM and above it goes to the EA — which, while
+(``GET /state``): in OFF/OBSERVE it is recorded only, in CONFIRM and above it goes to the EA — which, while
 it is compiled in OBSERVE, still executes nothing.
 
 The reconciliation endpoints are the other half: they compare the database's beliefs with what the broker shows.
@@ -122,7 +122,7 @@ async def run_reconciliation(c: Core, account_id: AccountQuery = None) -> Reconc
 
 # ------------------------------------------------------------------------------------------------------ close all (ADR 0034)
 # One human gesture, through the path above: each position is an ordinary CLOSE command with a deterministic id, submitted as a
-# human exit — which is what lets it through HALTED, OFF, OBSERVE and PAPER. There is no second mechanism.
+# human exit — which is what lets it through HALTED, OFF and OBSERVE. There is no second mechanism.
 
 
 @router.get(

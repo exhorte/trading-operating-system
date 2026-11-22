@@ -10,7 +10,7 @@ PLAN = PromotionPlan()
 
 def facts(**changes: object) -> PromotionFacts:
     base: dict[str, object] = {
-        "limits_configured": True, "evaluation_days": 6, "paper_commands": 25, "confirmed_orders": 30,
+        "limits_configured": True, "evaluation_days": 6, "confirmed_orders": 30,
         "commands_in_doubt": 0, "critical_incidents": 0, "readiness_ready": True, "validation_trades": 150,
         "validation_p_total_breach": 0.02, "armed_days_without_halt": 7,
     }  # fmt: skip
@@ -29,7 +29,6 @@ def status(step_, criterion_id: str) -> str:  # type: ignore[no-untyped-def]
 def test_every_climb_is_met_when_everything_asked_was_done() -> None:
     steps = promotion_steps(facts(), PLAN, AutonomyMode.OBSERVE)
     assert [s.to_mode for s in steps] == [
-        AutonomyMode.PAPER,
         AutonomyMode.CONFIRM,
         AutonomyMode.ARMED,
         AutonomyMode.AUTONOMOUS,
@@ -38,18 +37,18 @@ def test_every_climb_is_met_when_everything_asked_was_done() -> None:
 
 
 def test_only_the_step_the_system_stands_on_is_current() -> None:
-    steps = promotion_steps(facts(), PLAN, AutonomyMode.PAPER)
-    assert [s.current for s in steps] == [False, True, False, False]
+    steps = promotion_steps(facts(), PLAN, AutonomyMode.OBSERVE)
+    assert [s.current for s in steps] == [True, False, False]
 
 
 def test_a_fresh_system_meets_nothing() -> None:
     empty = facts(
-        limits_configured=False, evaluation_days=0, paper_commands=0, confirmed_orders=0, readiness_ready=False,
+        limits_configured=False, evaluation_days=0, confirmed_orders=0, readiness_ready=False,
         validation_trades=None, validation_p_total_breach=None, armed_days_without_halt=None,
     )  # fmt: skip
     steps = promotion_steps(empty, PLAN, AutonomyMode.OBSERVE)
     assert not any(s.met for s in steps)
-    assert status(step(steps, AutonomyMode.PAPER), "limits_configured") == "not_met"
+    assert status(step(steps, AutonomyMode.CONFIRM), "limits_configured") == "not_met"
 
 
 def test_not_measured_is_never_met() -> None:
@@ -70,25 +69,23 @@ def test_not_measured_is_never_met() -> None:
 def test_the_thresholds_are_the_ones_posed() -> None:
     assert (
         status(
-            step(promotion_steps(facts(evaluation_days=4), PLAN, AutonomyMode.OBSERVE), AutonomyMode.PAPER),
+            step(promotion_steps(facts(evaluation_days=4), PLAN, AutonomyMode.OBSERVE), AutonomyMode.CONFIRM),
             "evaluation_days",
         )
         == "not_met"
     )
     assert (
         status(
-            step(promotion_steps(facts(evaluation_days=5), PLAN, AutonomyMode.OBSERVE), AutonomyMode.PAPER),
+            step(promotion_steps(facts(evaluation_days=5), PLAN, AutonomyMode.OBSERVE), AutonomyMode.CONFIRM),
             "evaluation_days",
         )
         == "met"
     )
-    confirm = step(promotion_steps(facts(paper_commands=19), PLAN, AutonomyMode.PAPER), AutonomyMode.CONFIRM)
-    assert status(confirm, "paper_commands") == "not_met" and not confirm.met
 
 
 def test_a_command_in_doubt_or_a_critical_incident_stops_the_climb() -> None:
-    assert not step(promotion_steps(facts(commands_in_doubt=1), PLAN, AutonomyMode.PAPER), AutonomyMode.CONFIRM).met
-    assert not step(promotion_steps(facts(critical_incidents=1), PLAN, AutonomyMode.OBSERVE), AutonomyMode.PAPER).met
+    assert not step(promotion_steps(facts(commands_in_doubt=1), PLAN, AutonomyMode.CONFIRM), AutonomyMode.ARMED).met
+    assert not step(promotion_steps(facts(critical_incidents=1), PLAN, AutonomyMode.OBSERVE), AutonomyMode.CONFIRM).met
 
 
 def test_no_criterion_is_about_profit() -> None:

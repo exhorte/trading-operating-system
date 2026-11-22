@@ -26,7 +26,6 @@ export const ITEM_LABELS: Record<CloseAllItemStatus, string> = {
   CONFIRMED: "Fermée — confirmée par MT5",
   ALREADY_CLOSED: "Déjà fermée",
   REJECTED: "Refusée",
-  SIMULATED: "Simulée — rien n'a été fermé",
   UNKNOWN: "Inconnue — à réconcilier",
   MISMATCH: "Incohérence — MT5 la montre encore ouverte",
   NOT_CLOSABLE: "Non fermable par l'agent — à fermer dans MT5",
@@ -56,7 +55,7 @@ const ACTIONS: Record<CloseAllAction, string> = {
     "Une commande est dans le doute. Cliquez « Vérifier avec MT5 » : la réconciliation tranche. Ne la renvoyez jamais à la main.",
   CLOSE_IN_MT5: "Fermez les positions restantes directement dans MT5.",
   ENABLE_AGENT:
-    "L'agent d'exécution simule seulement (compilé en OBSERVE, ou mode PAPER) : aucun ordre n'a atteint le courtier. Fermez dans MT5, ou recompilez l'agent en CONFIRM — c'est votre décision.",
+    "L'agent d'exécution est compilé en OBSERVE : il refuse les commandes (AGENT_OBSERVE), aucun ordre n'a atteint le courtier. Fermez dans MT5, ou recompilez l'agent en CONFIRM — c'est votre décision.",
   REVIEW_REJECTIONS: "Lisez les motifs de refus ci-dessous avant de relancer.",
   CHECK_MT5: "L'agent dit avoir fermé, MT5 montre encore la position : vérifiez dans MT5.",
   RERUN: "Des positions sont apparues après votre confirmation : elles n'ont pas été touchées. Relancez la fermeture pour les inclure.",
@@ -79,7 +78,8 @@ const REASONS: Record<string, string> = {
   DEAD_MAN: "L'agent n'entend plus le cœur (interrupteur d'homme mort).",
   IDENTITY_REFUSED: "L'agent refuse : identité du compte non conforme.",
   UNKNOWN: "Résultat inconnu : la commande reste à réconcilier, elle n'est jamais renvoyée.",
-  SIMULATED: "Simulé : aucun ordre réel n'a été envoyé au courtier.",
+  AGENT_OBSERVE: "L'agent est compilé en OBSERVE : il n'envoie aucun ordre au courtier et refuse la commande.",
+  MODE_NOT_PERMITTING: "Le mode actuel (OFF, OBSERVE ou HALTED) n'envoie aucun ordre : la commande est refusée.",
   NOT_CLOSABLE: "Position non fermable par l'agent (placée à la main ou par un autre EA).",
   MISMATCH: "Exécutée selon l'agent, toujours ouverte selon MT5.",
 };
@@ -95,8 +95,8 @@ export function reasonText(reason: string, detail = ""): string {
 const WARNINGS: Record<string, string> = {
   market_price:
     "Les positions seront fermées au prix disponible au moment où chaque ordre atteint le courtier : le résultat final peut différer du P&L latent affiché.",
-  agent_simulates:
-    "L'agent d'exécution n'est pas en mode CONFIRM : il validera les ordres mais n'en enverra aucun au courtier (SIMULATED). Rien ne sera fermé chez le courtier.",
+  agent_observe:
+    "L'agent d'exécution n'est pas en mode CONFIRM : il refusera tous les ordres (AGENT_OBSERVE) et n'en enverra aucun au courtier. Rien ne sera fermé chez le courtier.",
   agent_cannot_cancel: "L'agent n'annonce pas « cancel » : l'annulation des ordres en attente serait refusée.",
   stale_snapshot: "Le terminal n'a pas pu être lu à l'instant : la liste peut ne pas être à jour.",
   foreign_positions:
@@ -143,7 +143,6 @@ export function progressLine(report: CloseAllReport): string {
   if (c.verifying) parts.push(`${c.verifying} en vérification`);
   if (c.rejected) parts.push(plural(c.rejected, "refusée", "refusées"));
   if (c.unknown) parts.push(plural(c.unknown, "inconnue", "inconnues"));
-  if (c.simulated) parts.push(plural(c.simulated, "simulée", "simulées"));
   if (c.mismatch) parts.push(plural(c.mismatch, "incohérence", "incohérences"));
   if (c.notClosable) parts.push(plural(c.notClosable, "non fermable par l'agent", "non fermables par l'agent"));
   return parts.join(" · ");
@@ -161,7 +160,7 @@ export function summary(report: CloseAllReport): Summary {
   return {
     closed: c.confirmed + c.alreadyClosed,
     stillOpen: c.positionsStillOpen,
-    rejectedOrUnknown: c.rejected + c.unknown + c.simulated + c.mismatch + c.notClosable,
+    rejectedOrUnknown: c.rejected + c.unknown + c.mismatch + c.notClosable,
   };
 }
 

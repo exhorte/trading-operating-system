@@ -96,8 +96,10 @@ class MarketDataService:
         tick_writer: TickWriter | None = None,
         timeframes: tuple[Timeframe, ...] = (Timeframe.M1,),
         backfill_bars: int = BACKFILL_M1,
+        watch: tuple[str, ...] = DEFAULT_CANONICAL_WATCH,
     ) -> None:
         self._accounts = accounts
+        self._watch = watch  # canonical names: the strategies' symbols in production (ADR 0043)
         self._repos = repos
         self._events = events
         self._clock = clock
@@ -110,11 +112,10 @@ class MarketDataService:
         self._extra: dict[str, set[str]] = {}
 
     # ------------------------------------------------------------------------------------------ what to watch
-    @staticmethod
-    def default_watchlist(account: Account) -> tuple[str, ...]:
+    def default_watchlist(self, account: Account) -> tuple[str, ...]:
         if account.trading_rules.allowed_symbols:
             return account.trading_rules.allowed_symbols
-        return tuple(f"{symbol}{account.symbol_suffix}" for symbol in DEFAULT_CANONICAL_WATCH)
+        return tuple(f"{symbol}{account.symbol_suffix}" for symbol in self._watch)
 
     def watch_also(self, account_id: str, symbols: set[str]) -> None:
         """Symbols with an open position are always watched, whatever the watchlist says."""

@@ -305,7 +305,6 @@ async def test_the_days_requests_are_the_commands_that_reached_the_server(h: Har
         (
             CommandState.EXECUTED,
             CommandState.ACKNOWLEDGED,
-            CommandState.SIMULATED,
             CommandState.REJECTED,
             CommandState.PENDING,
         )

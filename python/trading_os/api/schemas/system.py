@@ -107,7 +107,7 @@ class EventRecord(DomainModel):
 
 
 class StartRequest(StrictRequest):
-    """« Démarrer le système » (ADR 0034). Starting climbs to ``target`` (OBSERVE by default; PAPER or CONFIRM when asked) and never
+    """« Démarrer le système » (ADR 0034). Starting climbs to ``target`` (OBSERVE by default; CONFIRM when asked) and never
     higher; a real account needs ``acknowledgeRealAccount`` to start up to CONFIRM."""
 
     target: AutonomyMode = AutonomyMode.OBSERVE

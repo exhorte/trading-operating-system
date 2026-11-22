@@ -5,7 +5,7 @@ The core already starts all its engines when the process starts (``runtime/engin
 is not a second launcher: it **verifies** each component in the order of the mission (application, services, database, terminal,
 account, agent, reconciliation, market data, strategy, guardian, risk, autonomy), forces the two things that are only cheap to do on
 purpose — a fresh read of the terminal and a reconciliation — and then climbs the autonomy ladder from OFF to OBSERVE (or, when asked,
-PAPER / CONFIRM). It never climbs further: authorising automatic trading is :meth:`authorize_automatic`, a separate gesture.
+CONFIRM). It never climbs further: authorising automatic trading is :meth:`authorize_automatic`, a separate gesture.
 
 Nothing here sends an order, connects with a password, or arms by itself on a restart. The only connection it attempts is the one the
 terminal already holds (no secret), for the account the trader selected.
@@ -131,7 +131,7 @@ class StartupService:
         a run is going on returns that run — a double click starts nothing twice."""
         if target not in START_TARGETS:
             raise ValidationFailed(
-                f"starting climbs to OBSERVE, PAPER or CONFIRM at most, not {target.value}: authorising automatic trading is a separate gesture",
+                f"starting climbs to OBSERVE or CONFIRM at most, not {target.value}: authorising automatic trading is a separate gesture",
                 code="invalid_target",
             )
         if self._run is not None and self._run.state is StartupRunState.RUNNING:
@@ -285,7 +285,7 @@ class StartupService:
         # 12. the autonomy ladder, one rung at a time, never beyond CONFIRM
         self._at("autonomy")
         reached = self._autonomy.mode
-        for rung in (AutonomyMode.OBSERVE, AutonomyMode.PAPER, AutonomyMode.CONFIRM):
+        for rung in (AutonomyMode.OBSERVE, AutonomyMode.CONFIRM):
             if rank(rung) > rank(target) or rank(rung) <= rank(reached):
                 continue
             if rung is AutonomyMode.CONFIRM:  # the first rung that can send an order: every condition of § 2.2

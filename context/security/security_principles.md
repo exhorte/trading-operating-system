@@ -17,7 +17,7 @@
 ## Contrôle d'accès
 
 - Les droits d'exécution sont plus stricts que ceux de la lecture : un jeton de cockpit pour toute l'API, un jeton d'agent pour le lien MT5, et rien d'autre ne peut ordonner.
-- L'assistant de développement (Claude) ne déclenche jamais un ordre, un armement ou l'autonomie, et ne voit jamais de mot de passe réel.
+- L'assistant de développement (Claude) a un feu vert général depuis l'ADR 0042 (2026-11-14) : il peut démarrer, monter les modes et passer des ordres de test **sur la démo** ; il ne passe jamais d'ordre, d'armement ni de mode automatique sur un compte en argent réel, et ne voit jamais de mot de passe réel.
 
 ## Surface locale
 

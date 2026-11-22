@@ -48,24 +48,24 @@ class TestLadder:
         with pytest.raises(IllegalTransition) as caught:
             arm(state, M.CONFIRM, ceiling=M.AUTONOMOUS, now=NOW, ready=True)
         assert caught.value.code == "skipped_rung"
-        state = climb(state, M.OBSERVE, M.PAPER, M.CONFIRM)
+        state = climb(state, M.OBSERVE, M.CONFIRM)
         assert state.mode is M.CONFIRM and state.last_transition is not None
-        assert state.last_transition.from_mode is M.PAPER and state.last_transition.to_mode is M.CONFIRM
+        assert state.last_transition.from_mode is M.OBSERVE and state.last_transition.to_mode is M.CONFIRM
 
     def test_the_ladder_is_the_one_of_the_mission(self) -> None:
-        assert [m.value for m in LADDER] == ["OFF", "OBSERVE", "PAPER", "CONFIRM", "ARMED", "AUTONOMOUS"]
+        assert [m.value for m in LADDER] == ["OFF", "OBSERVE", "CONFIRM", "ARMED", "AUTONOMOUS"]
         assert rank(M.HALTED) < rank(M.OFF)
         assert lowest(M.AUTONOMOUS, M.OBSERVE) is M.OBSERVE
 
     def test_cannot_climb_above_the_ceiling_and_the_default_ceiling_is_observe(self) -> None:
         state = climb(initial_state(NOW), M.OBSERVE, ceiling=M.OBSERVE)
         with pytest.raises(Forbidden) as caught:
-            arm(state, M.PAPER, ceiling=M.OBSERVE, now=NOW, ready=True)
+            arm(state, M.CONFIRM, ceiling=M.OBSERVE, now=NOW, ready=True)
         assert caught.value.code == "above_ceiling"
 
     def test_stepping_sideways_or_backwards_through_arm_is_refused(self) -> None:
-        state = climb(initial_state(NOW), M.OBSERVE, M.PAPER)
-        for target in (M.PAPER, M.OBSERVE, M.OFF):
+        state = climb(initial_state(NOW), M.OBSERVE)
+        for target in (M.OBSERVE, M.OFF):
             with pytest.raises(IllegalTransition) as caught:
                 arm(state, target, ceiling=M.AUTONOMOUS, now=NOW, ready=True)
             assert caught.value.code == "not_a_step_up"
@@ -75,17 +75,17 @@ class TestLadder:
 
 class TestReadinessGatesTheAutomaticModes:
     def test_cannot_arm_when_not_ready(self) -> None:
-        state = climb(initial_state(NOW), M.OBSERVE, M.PAPER, M.CONFIRM)
+        state = climb(initial_state(NOW), M.OBSERVE, M.CONFIRM)
         with pytest.raises(Forbidden) as caught:
             arm(state, M.ARMED, ceiling=M.AUTONOMOUS, now=NOW, ready=False)
         assert caught.value.code == "not_ready"
 
     def test_human_in_the_loop_modes_do_not_need_readiness(self) -> None:
-        state = climb(initial_state(NOW), M.OBSERVE, M.PAPER, M.CONFIRM, ready=False)
+        state = climb(initial_state(NOW), M.OBSERVE, M.CONFIRM, ready=False)
         assert state.mode is M.CONFIRM
 
     def test_autonomous_needs_readiness_too(self) -> None:
-        armed = climb(initial_state(NOW), M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED)
+        armed = climb(initial_state(NOW), M.OBSERVE, M.CONFIRM, M.ARMED)
         with pytest.raises(Forbidden):
             arm(armed, M.AUTONOMOUS, ceiling=M.AUTONOMOUS, now=NOW, ready=False)
         assert arm(armed, M.AUTONOMOUS, ceiling=M.AUTONOMOUS, now=NOW, ready=True).mode is M.AUTONOMOUS
@@ -93,7 +93,7 @@ class TestReadinessGatesTheAutomaticModes:
 
 class TestLease:
     def armed(self) -> AutonomyState:
-        return climb(initial_state(NOW), M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED)
+        return climb(initial_state(NOW), M.OBSERVE, M.CONFIRM, M.ARMED)
 
     def test_armed_has_a_lease(self) -> None:
         assert self.armed().lease_until == NOW + timedelta(minutes=30)
@@ -118,7 +118,7 @@ class TestLease:
 
 class TestHaltAndDisarm:
     def autonomous(self) -> AutonomyState:
-        return climb(initial_state(NOW), M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED, M.AUTONOMOUS)
+        return climb(initial_state(NOW), M.OBSERVE, M.CONFIRM, M.ARMED, M.AUTONOMOUS)
 
     def test_a_critical_error_halts_from_autonomous(self) -> None:
         halted = halt(self.autonomous(), reason="reconciliation failed", now=NOW)
@@ -159,17 +159,16 @@ class TestHaltAndDisarm:
         assert disarm(self.autonomous(), now=NOW).last_transition.reason == "disarmed to OBSERVE"  # type: ignore[union-attr]
 
     def test_lowering_the_ceiling_pulls_a_running_mode_down(self) -> None:
-        paper = climb(initial_state(NOW), M.OBSERVE, M.PAPER)
-        assert clamp_to_ceiling(paper, M.OBSERVE, NOW).mode is M.OBSERVE
-        assert clamp_to_ceiling(paper, M.CONFIRM, NOW) is paper
-        halted = halt(paper, reason="x", now=NOW)
+        confirm = climb(initial_state(NOW), M.OBSERVE, M.CONFIRM)
+        assert clamp_to_ceiling(confirm, M.OBSERVE, NOW).mode is M.OBSERVE
+        assert clamp_to_ceiling(confirm, M.CONFIRM, NOW) is confirm
+        halted = halt(confirm, reason="x", now=NOW)
         assert clamp_to_ceiling(halted, M.OFF, NOW) is halted
 
 
 class TestRoutes:
     def test_what_each_mode_does_with_an_approved_intent(self) -> None:
         assert route_for(M.OFF) is route_for(M.OBSERVE) is route_for(M.HALTED) is ExecutionRoute.NONE
-        assert route_for(M.PAPER) is ExecutionRoute.PAPER
         assert route_for(M.CONFIRM) is ExecutionRoute.CONFIRM
         assert route_for(M.ARMED) is route_for(M.AUTONOMOUS) is ExecutionRoute.AUTOMATIC
 

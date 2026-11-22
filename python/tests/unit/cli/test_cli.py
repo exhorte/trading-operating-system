@@ -59,7 +59,6 @@ def test_every_command_is_documented_in_the_help(capsys: pytest.CaptureFixture[s
         "export-history",
         "list-symbols",
         "spread-history",
-        "weekly-review",
         "mcp",
     ):
         assert command in text, command
@@ -79,11 +78,11 @@ def test_the_defaults_are_the_ones_the_tools_always_had() -> None:
     assert parser.parse_args(["list-symbols"]).canonical == ["EURUSD", "GBPUSD", "XAUUSD"]
     spreads = parser.parse_args(["spread-history", "--start", "2026-08-31", "--end", "2026-09-26"])
     assert spreads.symbols == ["EURUSDm", "XAUUSDm"] and spreads.server_offset == 0.0
-    assert str(parser.parse_args(["weekly-review"]).out_dir) == "weekly-reviews"
 
 
 def test_an_unknown_command_or_a_missing_argument_is_a_usage_error() -> None:
     for argv in (
+        ["weekly-review"],  # deleted (ADR 0043): an unknown command now
         ["fly"],
         [],
         ["db"],

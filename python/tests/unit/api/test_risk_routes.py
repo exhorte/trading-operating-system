@@ -46,7 +46,9 @@ async def test_can_i_trade_answers_with_every_check_and_every_reason(api: Api) -
 
 
 async def test_a_sound_trade_is_approved_with_a_size_and_the_decision_is_on_record(h: Harness) -> None:
-    async with open_api(h, top=AutonomyMode.PAPER) as api:
+    async with open_api(
+        h, top=AutonomyMode.CONFIRM
+    ) as api:  # OBSERVE approves nothing (the next test): a rung that may send an order
         await quoted(api)
         response = await api.post("/api/risk/evaluate", review_body(api))
         decision = response.json()

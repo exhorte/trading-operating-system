@@ -4,13 +4,12 @@ Statut : accepté le 2026-11-02 (ADR 0034). Complète `safety.md` (barrières), 
 
 ## 1. L'échelle du dépôt et celle du plan (§18)
 
-Le dépôt monte `OFF → OBSERVE → PAPER → CONFIRM → ARMED → AUTONOMOUS` (+ `HALTED`), **un échelon à la fois**, jamais au-dessus du plafond (`min(TRADING_MODE, max_mode du compte)`, `OBSERVE` par défaut). Le plan nomme six modes. C'est la même échelle, vue avec l'environnement du compte :
+Le dépôt monte `OFF → OBSERVE → CONFIRM → ARMED → AUTONOMOUS` (+ `HALTED`), **un échelon à la fois**, jamais au-dessus du plafond (`min(TRADING_MODE, max_mode du compte)`, `OBSERVE` par défaut). Le plan nommait six modes ; **`PAPER` est retiré** (ADR 0041, 2026-11-13 : plus aucune exécution simulée — un ordre part chez le courtier ou il est refusé avec un code ; un `TRADING_MODE=PAPER` ancien est refusé avec un message). C'est la même échelle, vue avec l'environnement du compte :
 
 | Plan | Dépôt | Environnement | Ce que le mode permet |
 |---|---|---|---|
 | (arrêté) | `OFF` | tous | rien ne tourne côté stratégie ; aucun ordre |
-| `OBSERVE` | `OBSERVE` | tous | le système analyse et journalise les setups ; **aucun ordre** |
-| `PAPER` | `PAPER` | tous | ordres **simulés** dans le cœur ; aucun ordre au courtier |
+| `OBSERVE` | `OBSERVE` | tous | le système analyse et journalise les setups ; **aucun ordre** : tout ordre demandé est refusé (`MODE_NOT_PERMITTING`) |
 | `CONFIRM` | `CONFIRM` | `DEMO`, `SIMULATED` | chaque ordre attend la confirmation de l'humain, puis part vers l'agent |
 | `DEMO_AUTO` | `ARMED`, `AUTONOMOUS` | `DEMO`, `SIMULATED` | le système prend des positions seul, si la préparation est verte (continuellement) |
 | `LIVE_CONFIRM` | `CONFIRM` | `LIVE` | idem `CONFIRM`, argent réel |
@@ -26,7 +25,7 @@ Garde-fous qui ne changent pas : le système démarre **toujours `OFF`** (un red
 | Geste | Où | Ce qu'il fait | Ce qu'il ne fait jamais |
 |---|---|---|---|
 | **A — Démarrer l'application** | `scripts/start.ps1` (base, schéma, cœur, cockpit) | lance les processus ; le cockpit s'affiche | autoriser le moindre ordre ; se connecter à un courtier ; armer |
-| **B — « DÉMARRER LE SYSTÈME »** | cockpit (Command Center, écran Démarrage) → `POST /api/system/startup` | vérifie treize étapes, force une lecture du terminal et une **réconciliation**, tente de connecter le compte sélectionné **sans mot de passe**, puis monte `OFF → OBSERVE` (ou `PAPER`/`CONFIRM` si demandé) | monter plus haut que `CONFIRM` ; envoyer un ordre ; armer |
+| **B — « DÉMARRER LE SYSTÈME »** | cockpit (Command Center, écran Démarrage) → `POST /api/system/startup` | vérifie treize étapes, force une lecture du terminal et une **réconciliation**, tente de connecter le compte sélectionné **sans mot de passe**, puis monte `OFF → OBSERVE` (ou `CONFIRM` si demandé) | monter plus haut que `CONFIRM` ; envoyer un ordre ; armer |
 | **C — « AUTORISER LE TRADING AUTOMATIQUE »** | cockpit (écran Démarrage) → `POST /api/system/startup/authorize-automatic` | un échelon (`CONFIRM → ARMED`, `ARMED → AUTONOMOUS`) avec la préparation verte évaluée pour cet appel, le plafond du compte respecté | se faire déduire d'un démarrage ou d'un redémarrage |
 
 Le bouton ne peut pas lancer un cœur qui n'écoute pas (il n'est pas là pour recevoir le clic) : les étapes 1 à 3 *vérifient* l'application, ses services et la base. Les moteurs (marché, risque, stratégie, Guardian, Position Manager, exécution, superviseur) sont lancés par le cœur lui-même au démarrage du processus ; « démarrer le système » les vérifie et fait avancer l'autonomie.
@@ -65,8 +64,8 @@ Une **commande de sortie humaine**, par le chemin existant `cockpit → API → 
 3. `POST /api/execution/close-all` (`confirmation: "CLOSE_ALL"`, `positionIds` vus dans la prévisualisation) : une commande `CLOSE` par position, `commandId = ca-<batch>-<positionId>`, soumise avec `automatic=False`. Les ordres en attente ne sont annulés (`CANCEL`, `ca-<batch>-o<orderId>`) que si l'option est cochée. Un double clic, un rejeu : mêmes identifiants, rien n'est exécuté deux fois.
 4. `GET …/{batchId}` suit le lot ; `POST …/{batchId}/verify` lit le terminal et réconcilie (lecture seule). Le rapport est **dérivé** des commandes enregistrées et de l'événement `execution.close_all_requested` : il survit à un redémarrage.
 
-Chaque élément passe par `IN_PROGRESS`, `VERIFYING`, puis **`CONFIRMED` seulement si la commande est exécutée ET que MT5 ne montre plus la position**. `SIMULATED` (agent compilé `OBSERVE`, mode `PAPER`) ne ferme rien et est dit tel quel. `UNKNOWN` n'est jamais renvoyé : la réconciliation tranche. Le lot n'est `COMPLETE` qu'après une réconciliation lisible terminée depuis le dernier règlement. Sinon `INCOMPLETE`, avec les motifs et l'action recommandée.
+Chaque élément passe par `IN_PROGRESS`, `VERIFYING`, puis **`CONFIRMED` seulement si la commande est exécutée ET que MT5 ne montre plus la position**. Un agent compilé `OBSERVE` **refuse** l'ordre (`REJECTED`, code `AGENT_OBSERVE`) : rien n'est fermé et c'est dit tel quel, avec l'action « fermer dans MT5 ». `UNKNOWN` n'est jamais renvoyé : la réconciliation tranche. Le lot n'est `COMPLETE` qu'après une réconciliation lisible terminée depuis le dernier règlement. Sinon `INCOMPLETE`, avec les motifs et l'action recommandée.
 
 **Limite.** L'agent ne ferme que ce qu'il a lui-même placé (`TARGET_NOT_OURS`, numéro magique). Une position ouverte à la main dans MT5 ou par un autre EA est marquée `NOT_CLOSABLE`, comptée parmi les « positions encore ouvertes », avec l'action « fermer dans MT5 ». Lever cette barrière demande de modifier l'unique `OrderSend` : accord et ADR séparés.
 
-**Et tant que l'agent est compilé `OBSERVE`**, toute fermeture répond `SIMULATED` : le cockpit l'écrit et ne dit jamais « fermé ».
+**Et tant que l'agent est compilé `OBSERVE`**, toute fermeture est refusée avec `AGENT_OBSERVE` (un agent avant 1.15 répondait `SIMULATED`, lu comme le même refus) : le cockpit l'écrit et ne dit jamais « fermé ».

@@ -107,9 +107,9 @@ export function StartSystemButton({ size = "default", className }: { size?: "def
             )}
             {status ? <StatusBody status={status} /> : <Skeleton className="h-64 rounded-xl" />}
             <Button asChild variant="outline" size="sm" className="self-start">
-              <Link href="/demarrage" onClick={() => setOpen(false)}>
+              <Link href="/system" onClick={() => setOpen(false)}>
                 <ExternalLink aria-hidden="true" />
-                Écran Démarrage : conditions, compte, autorisation
+                Écran Système : conditions, compte, autorisation
               </Link>
             </Button>
           </div>
@@ -235,7 +235,7 @@ function AccountCard({ status }: { status: StartupStatus }) {
 function Actions({ status, onChanged }: { status: StartupStatus; onChanged: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [target, setTarget] = useState<"OBSERVE" | "PAPER" | "CONFIRM">("OBSERVE");
+  const [target, setTarget] = useState<"OBSERVE" | "CONFIRM">("OBSERVE");
   const [acknowledge, setAcknowledge] = useState(false);
   const running = status.run?.state === "RUNNING";
 
@@ -269,7 +269,6 @@ function Actions({ status, onChanged }: { status: StartupStatus; onChanged: () =
             onChange={(event) => setTarget(event.target.value as typeof target)}
           >
             <option value="OBSERVE">OBSERVE (recommandé)</option>
-            <option value="PAPER">PAPER</option>
             <option value="CONFIRM">{status.realAccount ? "LIVE_CONFIRM" : "CONFIRM"}</option>
           </select>
         </label>

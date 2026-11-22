@@ -24,7 +24,7 @@ import logging
 import time
 from typing import Protocol
 
-from trading_os.domain.execution.agent import AgentStatus
+from trading_os.domain.execution.agent import AgentProtections, AgentStatus
 from trading_os.infrastructure.mt5.wire import (
     AgentHeartbeat,
     AgentHello,
@@ -74,6 +74,16 @@ def build_status(hello: AgentHello, beat: AgentHeartbeat | None) -> AgentStatus:
         capabilities=list(hello.capabilities or []),
         core_silent_ms=beat.core_silent_ms if beat else None,
         last_heartbeat_ms=beat.time if beat else None,
+        protocol_version=hello.protocol_version,
+        chart_symbol=hello.chart.symbol if hello.chart else None,
+        chart_period=hello.chart.period if hello.chart else None,
+        instance_id=hello.instance_id,
+        terminal_build=hello.terminal_build,
+        init_state=hello.init_state,
+        init_issues=list(hello.init_issues or []),
+        local_protections=(
+            AgentProtections(**hello.local_protections.model_dump()) if hello.local_protections else None
+        ),
     )
 
 

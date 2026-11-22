@@ -1,5 +1,12 @@
 # Architecture d'information du cockpit
 
+> **Amendement du 2026-11-14 (ADR 0043 — algorithme de Musk).** Le cockpit sert un système qui trade seul une fois lancé : **six écrans**
+> (Command Center, Risque, Stratégie, Journal, Compte, Système) + Réglages. Supprimés : `/positions` (même tableau que le Command Center),
+> `/preflight` (doublon de la préparation), `/market-context` (lecture de marché pour un trader à la main), `/analyse` (ventilations du journal),
+> `/demarrage` et `/agents` (réunis dans Système : démarrage et conditions, terminaux et agents, commandes envoyées). Retirés aussi : le verdict
+> de séance du Command Center, la chaîne « Liaison MT5 » de Compte, le second formulaire d'ajout de compte et l'aide de Réglages. Les sections
+> ci-dessous sont l'histoire de la conception ; le détail des écrans actuels est dans `components/shell/nav.ts`.
+
 > **Amendement du 2026-10-09 (ADR 0016, 0017, 0018).** Ce document est l'archive de la conception des écrans ; les sections datées décrivent
 > le cockpit tel qu'il était à leur date. Depuis la migration Python-native : le cockpit lit le cœur (`lib/api`, `lib/realtime`), il n'y a plus de
 > préversion mock (`NEXT_PUBLIC_MOCK_ACCOUNT_ID` n'existe plus : pour regarder le cockpit sans courtier on lance le cœur en mode simulé,

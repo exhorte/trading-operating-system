@@ -18,9 +18,12 @@ async def test_the_window_is_read_and_nothing_is_sent_to_the_agent(api: Api) -> 
     account = api.core.account
     assert account is not None
     assert body["windowMinutes"] == 30 and body["accountId"] == account.id
-    assert {q["symbol"] for q in body["quotes"]} == {"EURUSDm", "XAUUSDm"}
+    assert {q["symbol"] for q in body["quotes"]} == {
+        "EURUSDm"
+    }  # the market watches the strategy's symbols (ADR 0043): S01 = EURUSD by default
     assert set(body["quotes"][0]) >= {"ticks", "spread", "receiptLagS", "lastTickAgeS", "marketOpen"}
-    assert set(body["commands"]) >= {"ackS", "fillS", "totalS", "brokerRetcodes", "simulated", "inconsistent"}
+    assert set(body["commands"]) >= {"ackS", "fillS", "totalS", "brokerRetcodes", "rejectCodes", "inconsistent"}
+    assert "simulated" not in body["commands"]  # ADR 0041: there is no simulated command to count
     assert body["caveats"] and body["notMeasured"]
     assert api.core.link.lines == []  # a measure is not a command
 

@@ -11,7 +11,7 @@ command and its state) — with the agent's scan as a second source. Three cases
 
 * in transit (SENT, ACKNOWLEDGED, UNKNOWN, RECONCILING) — the fill is real but the report has not landed: not unexpected,
   and compared once the command settles;
-* recorded as not placed (PENDING, FAILED, REJECTED, EXPIRED, CANCELLED, SIMULATED) — the position contradicts the record:
+* recorded as not placed (PENDING, FAILED, REJECTED, EXPIRED, CANCELLED) — the position contradicts the record:
   **critical**, whatever the magic number says;
 * executed — compared with the command in the usual way.
 """

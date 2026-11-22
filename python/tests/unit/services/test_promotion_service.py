@@ -41,12 +41,8 @@ async def command(core: Core, name: str, *, route: ExecutionRoute, state: Comman
 
 
 async def test_the_report_counts_what_the_core_recorded(h: Harness, tmp_path: Path) -> None:
-    core = await make_ready_core(h, top=AutonomyMode.PAPER)
+    core = await make_ready_core(h, top=AutonomyMode.OBSERVE)
     core.c.promotion._validation_dir = tmp_path  # type: ignore[misc]
-    for i in range(3):
-        await command(
-            core, f"cmd-paper-{i}", route=ExecutionRoute.PAPER, state=CommandState.SIMULATED, mode=AutonomyMode.PAPER
-        )
     await command(
         core, "cmd-real-1", route=ExecutionRoute.CONFIRM, state=CommandState.RECONCILED, mode=AutonomyMode.CONFIRM
     )
@@ -54,13 +50,16 @@ async def test_the_report_counts_what_the_core_recorded(h: Harness, tmp_path: Pa
         core, "cmd-doubt-1", route=ExecutionRoute.AUTOMATIC, state=CommandState.UNKNOWN, mode=AutonomyMode.ARMED
     )
     report = await core.c.promotion.report(core.account.id)  # type: ignore[union-attr]
-    assert report.advisory and report.mode is AutonomyMode.PAPER and report.account_id == core.account.id  # type: ignore[union-attr]
+    assert report.advisory and report.mode is AutonomyMode.OBSERVE and report.account_id == core.account.id  # type: ignore[union-attr]
     confirm = next(s for s in report.steps if s.to_mode is AutonomyMode.CONFIRM)
     evidence = {c.criterion_id: c.evidence for c in confirm.criteria}
-    assert evidence["paper_commands"].startswith("3 order(s)") and evidence["no_doubt"].startswith("1 command")
+    assert "paper_commands" not in evidence and "evaluation_days" in evidence
     assert confirm.current and not confirm.met
     armed = next(s for s in report.steps if s.to_mode is AutonomyMode.ARMED)
-    assert {c.criterion_id: c.evidence for c in armed.criteria}["confirmed_orders"].startswith("1 order(s)")
+    armed_evidence = {c.criterion_id: c.evidence for c in armed.criteria}
+    assert armed_evidence["confirmed_orders"].startswith("1 order(s)") and armed_evidence["no_doubt"].startswith(
+        "1 command"
+    )
 
 
 async def test_limits_written_by_the_user_are_read_from_the_account(h: Harness, tmp_path: Path) -> None:

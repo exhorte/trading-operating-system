@@ -163,6 +163,40 @@ export interface AgentLinkMetrics {
   connected: boolean;
   lastHeartbeatAgeS: number | null;
 }
+export interface AgentLiveView {
+  login: string;
+  agentId: string;
+  agentVersion: string;
+  mode: string;
+  modeCeiling: string | null;
+  identity: string | null;
+  heartbeatAgeS: number | null;
+  registeredSince: string | null;
+  capabilities: string[];
+  attachedExperts: string[];
+  halted: boolean | null;
+  tradable: boolean | null;
+  coreSilentMs: number | null;
+  server: string | null;
+  protocolVersion: number | null;
+  chartSymbol: string | null;
+  chartPeriod: string | null;
+  instanceId: string | null;
+  terminalBuild: number | null;
+  initState: string | null;
+  initIssues: string[];
+  localProtections: ProtectionsView | null;
+}
+/** What the agent says it loaded — an echo for the preparation to compare with the preset, never a setting. */
+export interface AgentProtections {
+  maxVolumePerOrder: number | null;
+  maxOpenPositions: number | null;
+  maxSlippagePoints: number | null;
+  maxSpread: Record<string, number> | null;
+  allowedSymbols: string[] | null;
+  deadManSeconds: number | null;
+  pendingMaxMinutes: number | null;
+}
 export interface AgentStatus {
   accountLogin: string;
   agentId: string;
@@ -190,6 +224,14 @@ export interface AgentStatus {
   capabilities: string[];
   coreSilentMs: number | null;
   lastHeartbeatMs: number | null;
+  protocolVersion: number | null;
+  chartSymbol: string | null;
+  chartPeriod: string | null;
+  instanceId: string | null;
+  terminalBuild: number | null;
+  initState: string | null;
+  initIssues: string[];
+  localProtections: AgentProtections | null;
 }
 export type AgreementClass = "PROPOSE_ET_PRIS" | "PROPOSE_ET_REFUSE" | "PRIS_SANS_PROPOSITION";
 export interface AgreementRow {
@@ -213,6 +255,10 @@ export interface AuditView {
   written: number;
   lost: number;
 }
+export interface AuthorizationView {
+  allowed: boolean;
+  reasons: string[];
+}
 /** « Autoriser le trading automatique »: a separate gesture from starting, one rung, with every condition green at that instant. */
 export interface AuthorizeAutomaticRequest {
   acknowledgeRealAccount?: boolean;
@@ -221,7 +267,7 @@ export interface AuthorizeAutomaticResult {
   mode: AutonomyMode;
   planMode: PlanMode;
 }
-export type AutonomyMode = "OFF" | "OBSERVE" | "PAPER" | "CONFIRM" | "ARMED" | "AUTONOMOUS" | "HALTED";
+export type AutonomyMode = "OFF" | "OBSERVE" | "CONFIRM" | "ARMED" | "AUTONOMOUS" | "HALTED";
 export interface AutonomyOverview {
   state: AutonomyState;
   ceiling: AutonomyMode;
@@ -235,6 +281,13 @@ export interface AutonomyState {
   leaseUntil: string | null;
   haltedReason: string | null;
   lastTransition: Transition | null;
+}
+export interface AutopilotStatus {
+  target: AutonomyMode;
+  active: boolean;
+  pausedReason: string | null;
+  lastStep: string;
+  lastStepAt: string | null;
 }
 export type Bias = "bullish" | "bearish" | "neutral";
 /** What the news gate reads. ``releases is None`` means *unknown* (never synced) — never an empty calendar. */
@@ -302,7 +355,6 @@ export interface CloseAllCounts {
   verifying: number;
   alreadyClosed: number;
   rejected: number;
-  simulated: number;
   unknown: number;
   mismatch: number;
   notClosable: number;
@@ -330,7 +382,7 @@ export interface CloseAllItem {
   detail: string;
   stillOpen: boolean;
 }
-export type CloseAllItemStatus = "IN_PROGRESS" | "VERIFYING" | "CONFIRMED" | "ALREADY_CLOSED" | "REJECTED" | "SIMULATED" | "UNKNOWN" | "MISMATCH" | "NOT_CLOSABLE";
+export type CloseAllItemStatus = "IN_PROGRESS" | "VERIFYING" | "CONFIRMED" | "ALREADY_CLOSED" | "REJECTED" | "UNKNOWN" | "MISMATCH" | "NOT_CLOSABLE";
 export interface CloseAllOrder {
   orderId: string;
   symbol: string;
@@ -389,7 +441,6 @@ export interface CloseAllReport {
   reconciliationCritical: number;
   snapshotFresh: boolean;
   otherOpenPositions: string[];
-  simulatedOnly: boolean;
 }
 /** The body of ``POST /api/execution/close-all`` (ADR 0034). Closing is a human gesture and the body says so in so many words: ``confirmation`` must be ``CLOSE_ALL`` (opening the dialog sends nothing), ``positionIds`` are the positions the trader saw in the preview — a position opened since is not closed, only reported — and the pending orders are cancelled only if asked for. */
 export interface CloseAllRequest {
@@ -419,7 +470,6 @@ export interface CommandMetrics {
   byState: Record<string, number>;
   rejectCodes: Record<string, number>;
   brokerRetcodes: Record<string, number>;
-  simulated: number;
   ackS: Distribution;
   fillS: Distribution;
   totalS: Distribution;
@@ -444,7 +494,7 @@ export interface CommandRequest {
   orderId?: string | null;
   expiresAt?: string | null;
 }
-export type CommandState = "PENDING" | "SENT" | "ACKNOWLEDGED" | "EXECUTED" | "FAILED" | "UNKNOWN" | "RECONCILING" | "RECONCILED" | "REJECTED" | "EXPIRED" | "CANCELLED" | "SIMULATED";
+export type CommandState = "PENDING" | "SENT" | "ACKNOWLEDGED" | "EXECUTED" | "FAILED" | "UNKNOWN" | "RECONCILING" | "RECONCILED" | "REJECTED" | "EXPIRED" | "CANCELLED";
 export interface CommissionReading {
   perLotRoundTrip: number;
   source: CommissionSource;
@@ -460,6 +510,13 @@ export interface ComplianceSummary {
   breachedCount: number;
   byType: Record<string, number>;
   byTrade: Record<string, Violation[]>;
+}
+export interface ConditionView {
+  code: string;
+  label: string;
+  light: string;
+  detail: string;
+  reasonCodes: string[];
 }
 export type Confidence = "CONFIRMED" | "PROBABLE" | "WEAK" | "CONFLICT" | "NONE";
 /** Optional: without a password the core attaches to the terminal as it is (already logged in), or reads the vault the user opted into (ADR 0013). A password given here is used for this call only. */
@@ -501,6 +558,22 @@ export interface DatabaseView {
   lastError: string | null;
   lastOkAt: string | null;
   lastErrorAt: string | null;
+}
+export interface DeclaredView {
+  accountId: string | null;
+  expectedLogin: string | null;
+  chartSymbol: string | null;
+  chartPeriod: string | null;
+  magic: number | null;
+  allowedSymbols: string[];
+  provider: string | null;
+  product: string | null;
+}
+export interface DeploymentView {
+  agentVersion: string;
+  deployedAt: string | null;
+  ex5Sha256: string | null;
+  expertPath: string | null;
 }
 /** Step down. From HALTED the only exit is ``acknowledge: true``, and it lands on OFF. */
 export interface DisarmRequest {
@@ -708,7 +781,7 @@ export interface ExecutionRequest {
   expiresAt: string | null;
 }
 /** What happens to an approved intent in a given mode. */
-export type ExecutionRoute = "none" | "paper" | "confirm" | "automatic";
+export type ExecutionRoute = "none" | "confirm" | "automatic";
 /** Everything the cockpit needs to know about executing on one account, in one read. */
 export interface ExecutionState {
   accountId: string;
@@ -910,6 +983,13 @@ export interface JournalTradeView {
   violations: Violation[];
   session: TradingSession | null;
 }
+export interface LauncherEventView {
+  occurredAt: string | null;
+  type: string;
+  severity: string;
+  instanceId: string | null;
+  diagnostic: string;
+}
 export interface LimitCandidate {
   source: LimitSource;
   value: number;
@@ -993,6 +1073,12 @@ export interface ModeRights {
   needsGreenReadiness: boolean;
   realMoney: boolean;
 }
+export interface Mt5TerminalView {
+  terminal: RegisteredTerminal;
+  helloReceived: boolean;
+  agent: AgentLiveView | null;
+  readiness: ReadinessView;
+}
 /** The MT5 worker processes this core started and ended (ADR 0037) — counts only. One alive per connected account is expected, one more while a reconnection is in flight; more, for long, is a leak. */
 export interface Mt5WorkersView {
   spawned: number;
@@ -1043,7 +1129,7 @@ export interface PendingOrder {
   comment: string;
   placedAt: string | null;
 }
-export type PlanMode = "OFF" | "OBSERVE" | "PAPER" | "CONFIRM" | "DEMO_AUTO" | "LIVE_CONFIRM" | "LIVE_AUTO" | "HALTED";
+export type PlanMode = "OFF" | "OBSERVE" | "CONFIRM" | "DEMO_AUTO" | "LIVE_CONFIRM" | "LIVE_AUTO" | "HALTED";
 /** One target of the batch as decided at the start: kept in the audit event so a report survives a restart. */
 export interface PlannedItem {
   target: "position" | "order";
@@ -1105,6 +1191,15 @@ export interface PromotionStep {
   met: boolean;
   current: boolean;
 }
+export interface ProtectionsView {
+  maxVolumePerOrder: number | null;
+  maxOpenPositions: number | null;
+  maxSlippagePoints: number | null;
+  maxSpread: Record<string, number> | null;
+  allowedSymbols: string[] | null;
+  deadManSeconds: number | null;
+  pendingMaxMinutes: number | null;
+}
 export type Provider = "EXNESS" | "FTMO";
 export interface ProviderLossState {
   status: "not_applicable" | "ok" | "unknown" | "breached";
@@ -1154,6 +1249,16 @@ export interface ReadinessReport {
   checks: ReadinessCheck[];
   evaluatedAt: string;
 }
+/** The reading of the conditions of ``shared/ea_readiness.py``: technical readiness, and — as a separate line — whether an order could be placed. */
+export interface ReadinessView {
+  verdict: string;
+  headerCode: string | null;
+  redCodes: string[];
+  pendingCodes: string[];
+  warningCodes: string[];
+  conditions: ConditionView[];
+  executionAuthorization: AuthorizationView;
+}
 export interface Reason {
   source: "mode" | "guardian" | "risk" | "readiness" | "strategy";
   code: string;
@@ -1172,7 +1277,19 @@ export interface ReconciliationReport {
   confirmed: number;
   mismatches: Mismatch[];
 }
-export type RejectCode = "ACCOUNT_MISMATCH" | "ACCOUNT_NOT_CONNECTED" | "NOT_ACTIVE_ACCOUNT" | "TRADING_DISABLED" | "MODE_NOT_PERMITTING" | "HALTED" | "KILL_SWITCH" | "AGENT_UNREACHABLE" | "AGENT_CAPABILITY_MISSING" | "DEAD_MAN" | "STORE_UNAVAILABLE" | "RISK_NOT_APPROVED" | "RISK_DECISION_EXPIRED" | "RISK_DECISION_MISMATCH" | "INVALID_REQUEST" | "STOP_REQUIRED" | "SYMBOL_MISMATCH" | "ORDER_TYPE_UNSUPPORTED" | "POSITION_NOT_FOUND" | "ORDER_NOT_FOUND" | "STOP_LOOSENED" | "VOLUME_INVALID" | "COMMAND_EXPIRED" | "DUPLICATE_CONFLICT";
+export interface RegisteredTerminal {
+  terminalId: string;
+  label: string;
+  installPath: string;
+  dataPath: string;
+  portable: boolean;
+  declared: DeclaredView;
+  deployment: DeploymentView | null;
+  operation: string | null;
+  lastState: string | null;
+  lastStateAt: string | null;
+}
+export type RejectCode = "ACCOUNT_MISMATCH" | "ACCOUNT_NOT_CONNECTED" | "NOT_ACTIVE_ACCOUNT" | "TRADING_DISABLED" | "MODE_NOT_PERMITTING" | "AGENT_OBSERVE" | "HALTED" | "KILL_SWITCH" | "AGENT_UNREACHABLE" | "AGENT_CAPABILITY_MISSING" | "DEAD_MAN" | "STORE_UNAVAILABLE" | "RISK_NOT_APPROVED" | "RISK_DECISION_EXPIRED" | "RISK_DECISION_MISMATCH" | "INVALID_REQUEST" | "STOP_REQUIRED" | "SYMBOL_MISMATCH" | "ORDER_TYPE_UNSUPPORTED" | "POSITION_NOT_FOUND" | "ORDER_NOT_FOUND" | "STOP_LOOSENED" | "VOLUME_INVALID" | "COMMAND_EXPIRED" | "DUPLICATE_CONFLICT";
 export interface Rejection {
   code: RejectCode;
   detail: string;
@@ -1353,7 +1470,7 @@ export interface SpreadReading {
   cap: number | null;
   exposed: boolean;
 }
-/** « Démarrer le système » (ADR 0034). Starting climbs to ``target`` (OBSERVE by default; PAPER or CONFIRM when asked) and never higher; a real account needs ``acknowledgeRealAccount`` to start up to CONFIRM. */
+/** « Démarrer le système » (ADR 0034). Starting climbs to ``target`` (OBSERVE by default; CONFIRM when asked) and never higher; a real account needs ``acknowledgeRealAccount`` to start up to CONFIRM. */
 export interface StartRequest {
   target?: AutonomyMode;
   acknowledgeRealAccount?: boolean;
@@ -1456,6 +1573,17 @@ export interface SymbolSpec {
   stopsLevelPoints: number;
   freezeLevelPoints: number;
   tradeAllowed: boolean;
+}
+export interface SystemCenterView {
+  observedAt: string;
+  coreStatus: string;
+  executionMode: string;
+  agentsConnected: number;
+  mt5WorkersAlive: number;
+  terminals: Mt5TerminalView[];
+  unregisteredAgents: AgentLiveView[];
+  registryProblem: string | null;
+  recentEvents: LauncherEventView[];
 }
 export interface SystemHealthView {
   status: Severity;
@@ -2140,6 +2268,22 @@ export interface Operations {
     body: undefined;
     response: StrategyEvaluation[];
   };
+  system_autopilot_status: {
+    method: "GET";
+    path: "/api/system/autopilot";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: undefined;
+    response: AutopilotStatus;
+  };
+  system_center: {
+    method: "GET";
+    path: "/api/system/center";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: undefined;
+    response: SystemCenterView;
+  };
   system_events: {
     method: "GET";
     path: "/api/system/events";
@@ -2171,6 +2315,14 @@ export interface Operations {
     query: { accountId?: string | null; minutes?: number; };
     body: undefined;
     response: LiveMetrics;
+  };
+  system_terminal_registry: {
+    method: "GET";
+    path: "/api/system/mt5/terminals";
+    pathParams: Record<string, never>;
+    query: Record<string, never>;
+    body: undefined;
+    response: Mt5TerminalView[];
   };
   system_readiness: {
     method: "GET";
@@ -2289,6 +2441,8 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   strategy_agreement: { method: "GET", path: "/api/strategy/agreement" },
   strategy_intents: { method: "GET", path: "/api/strategy/intents" },
   strategy_proposals: { method: "GET", path: "/api/strategy/proposals" },
+  system_autopilot_status: { method: "GET", path: "/api/system/autopilot" },
+  system_center: { method: "GET", path: "/api/system/center" },
   system_events: { method: "GET", path: "/api/system/events" },
   system_health: { method: "GET", path: "/api/system/health" },
   system_incidents: { method: "GET", path: "/api/system/incidents" },
@@ -2298,6 +2452,7 @@ export const OPERATIONS: { [K in OperationId]: { method: Operations[K]["method"]
   system_startup_begin: { method: "POST", path: "/api/system/startup" },
   system_startup_status: { method: "GET", path: "/api/system/startup" },
   system_status: { method: "GET", path: "/api/system/status" },
+  system_terminal_registry: { method: "GET", path: "/api/system/mt5/terminals" },
 };
 
 // ----------------------------------------------------------------------------------------------- events
@@ -2329,7 +2484,7 @@ export interface EventPayloads {
   "execution.failed": { commandId: string; detail: string; brokerRetcode: string | null; };
   "execution.reconciled": { commandId: string; outcome: "executed" | "rejected"; source: "agent" | "core"; brokerOrderId: string | null; brokerPositionId: string | null; filledVolume: number | null; averagePrice: number | null; detail: string; };
   "execution.rejected": { commandId: string; code: string; detail: string; };
-  "execution.reported": { commandId: string; outcome: "executed" | "simulated"; symbol: string; side: Side | null; filledVolume: number | null; averagePrice: number | null; brokerOrderId: string | null; brokerPositionId: string | null; detail: string; replayed: boolean; };
+  "execution.reported": { commandId: string; outcome: "executed"; symbol: string; side: Side | null; filledVolume: number | null; averagePrice: number | null; brokerOrderId: string | null; brokerPositionId: string | null; detail: string; replayed: boolean; };
   "execution.unknown": { commandId: string; detail: string; };
   "market.calendar_updated": { releases: UpcomingRelease[] | null; syncedAt: string | null; };
   "market.candle_closed": { candle: Candle; };

@@ -33,7 +33,7 @@ from trading_os.infrastructure.mt5.wire import ExecutionAck, ExecutionReconciled
 from trading_os.services.accounts import AccountService
 from trading_os.services.execution import ExecutionService
 from trading_os.services.market_data import MarketDataService
-from trading_os.services.senders import AgentSender, ObserveSender, PaperSender
+from trading_os.services.senders import AgentSender
 from trading_os.shared.errors import Conflict, Unavailable
 
 pytestmark = pytest.mark.db
@@ -123,10 +123,7 @@ async def make_rig(h: Harness, mode: AutonomyMode = AutonomyMode.CONFIRM) -> Rig
     ea = AgentSender(link, h.clock)
     execution = ExecutionService(
         accounts=accounts, repos=h.repos, events=h.events, clock=h.clock, link=link,
-        senders={
-            ExecutionRoute.NONE: ObserveSender(), ExecutionRoute.PAPER: PaperSender(market),
-            ExecutionRoute.CONFIRM: ea, ExecutionRoute.AUTOMATIC: ea,
-        },
+        senders={ExecutionRoute.CONFIRM: ea, ExecutionRoute.AUTOMATIC: ea},
         effective_mode=lambda account: holder["mode"], halted=lambda: halted["on"],
     )  # fmt: skip
     return Rig(h, accounts, execution, link, created, holder, halted)
@@ -135,26 +132,24 @@ async def make_rig(h: Harness, mode: AutonomyMode = AutonomyMode.CONFIRM) -> Rig
 # ------------------------------------------------------------------------------------------------------ routes
 
 
-async def test_observe_records_the_command_and_sends_nothing_anywhere(h: Harness) -> None:
-    rig = await make_rig(h, AutonomyMode.OBSERVE)
+@pytest.mark.parametrize("mode", [AutonomyMode.OBSERVE, AutonomyMode.OFF, AutonomyMode.HALTED])
+async def test_a_mode_that_sends_no_order_refuses_the_command_with_a_code_and_sends_nothing_anywhere(
+    h: Harness, mode: AutonomyMode
+) -> None:
+    rig = await make_rig(h, mode)
     decision = await rig.approved()
-    outcome = await rig.execution.submit(rig.request("cmd-obs-1", decision), automatic=True)
-    assert outcome.command.state is CommandState.SIMULATED and outcome.command.route is ExecutionRoute.NONE
-    assert "nothing was sent" in outcome.command.detail
+    for automatic in (True, False):  # the strategy pipeline and a human gesture alike (ADR 0041: no simulated outcome)
+        outcome = await rig.execution.submit(rig.request(f"cmd-obs-{automatic}", decision), automatic=automatic)
+        assert outcome.command.state is CommandState.REJECTED and outcome.command.route is ExecutionRoute.NONE
+        assert outcome.command.reject_code == RejectCode.MODE_NOT_PERMITTING.value
+        assert (
+            outcome.rejections[0].code is RejectCode.MODE_NOT_PERMITTING and mode.value in outcome.rejections[0].detail
+        )
+        history = await h.repos.execution.transitions(f"cmd-obs-{automatic}")
+        assert [r["to_state"] for r in history] == ["REJECTED"]  # refused at the door: never PENDING, never « done »
     assert rig.link.lines == []  # the agent socket was never touched
-    history = await h.repos.execution.transitions("cmd-obs-1")
-    assert [(r["from_state"], r["to_state"]) for r in history] == [(None, "PENDING"), ("PENDING", "SIMULATED")]
-    assert h.recorder.of(ExecutionCommandCreated) and h.recorder.of(ExecutionReported)[0].outcome == "simulated"
-
-
-async def test_paper_fills_at_the_live_quote_in_process(h: Harness) -> None:
-    rig = await make_rig(h, AutonomyMode.PAPER)
-    decision = await rig.approved()
-    outcome = await rig.execution.submit(rig.request("cmd-paper-1", decision), automatic=True)
-    command = outcome.command
-    assert command.state is CommandState.SIMULATED and command.route is ExecutionRoute.PAPER
-    assert command.filled_volume == 0.05 and command.average_price is not None and command.average_price > 1.0
-    assert rig.link.lines == []
+    assert [e.code for e in h.recorder.of(ExecutionRejected)] == ["MODE_NOT_PERMITTING"] * 2
+    assert not h.recorder.of(ExecutionReported) and not h.recorder.of(ExecutionCommandCreated)
 
 
 async def test_confirm_mode_holds_a_strategy_command_until_a_human_confirms(h: Harness) -> None:
@@ -398,9 +393,9 @@ async def test_the_agents_local_halt_does_not_stop_a_human_exit_either(h: Harnes
     assert automatic_close.command.state is CommandState.REJECTED
 
 
-@pytest.mark.parametrize("mode", [AutonomyMode.OFF, AutonomyMode.OBSERVE, AutonomyMode.PAPER])
-async def test_a_human_closing_reaches_the_agent_in_off_observe_and_paper_too(h: Harness, mode: AutonomyMode) -> None:
-    """ADR 0034: the way out is never closed by the mode. A closing issued by a human gesture goes to the agent in OFF, OBSERVE and PAPER
+@pytest.mark.parametrize("mode", [AutonomyMode.OFF, AutonomyMode.OBSERVE])
+async def test_a_human_closing_reaches_the_agent_in_off_and_observe_too(h: Harness, mode: AutonomyMode) -> None:
+    """ADR 0034: the way out is never closed by the mode. A closing issued by a human gesture goes to the agent in OFF and OBSERVE
     like in CONFIRM and HALTED; without an agent that can close it is refused for that reason — not silently recorded as if it had worked."""
     rig = await make_rig(h, mode)
     rig.link.capabilities = ["ping", "halt", "close", "cancel"]
@@ -424,7 +419,7 @@ async def test_a_human_closing_reaches_the_agent_in_off_observe_and_paper_too(h:
     assert RejectCode.AGENT_CAPABILITY_MISSING in {r.code for r in refused.rejections}
 
 
-@pytest.mark.parametrize("mode", [AutonomyMode.OFF, AutonomyMode.OBSERVE, AutonomyMode.PAPER])
+@pytest.mark.parametrize("mode", [AutonomyMode.OFF, AutonomyMode.OBSERVE])
 async def test_an_automatic_closing_still_follows_the_mode_only_the_human_gesture_opens_the_way(
     h: Harness, mode: AutonomyMode
 ) -> None:
@@ -438,7 +433,7 @@ async def test_an_automatic_closing_still_follows_the_mode_only_the_human_gestur
         automatic=True,
     )  # fmt: skip
     assert rig.link.lines == []
-    assert outcome.command.route in {ExecutionRoute.NONE, ExecutionRoute.PAPER}
+    assert outcome.command.route is ExecutionRoute.NONE
 
 
 async def test_the_disable_trading_switch_stops_risk_not_the_way_out(h: Harness) -> None:

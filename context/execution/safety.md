@@ -69,5 +69,7 @@ externes.
 | Instance unique (nouveau, I1) | variable globale temporaire du terminal + liste des graphiques ; la seconde instance se retire | — |
 
 Toutes ces barrières s'appliquent avant l'accusé `ACCEPTED`, en mode
-`observe` comme ailleurs : une commande refusée ne produit jamais de
-`SIMULATED`.
+`observe` comme ailleurs : une commande refusée est refusée avec son code.
+Depuis l'agent 1.15 (ADR 0041), l'agent compilé `OBSERVE` refuse lui aussi
+— `AGENT_OBSERVE`, après la validation et avant l'accusé : il n'existe plus
+de réponse « simulée ».

@@ -8,7 +8,7 @@ settle it. A batch is therefore *its commands*; what this service adds is the pr
 batch decided (an audit event, written before the first send), and the reading of the outcome (``domain/execution/close_all``).
 
 It is a **human** gesture and says so to the engine (``automatic=False``): that is what lets it through ``HALTED``, ``OFF``,
-``OBSERVE`` and ``PAPER`` (ADR 0033, 0034). The Guardian, the Position Manager and the strategies never come through here.
+``OBSERVE`` (ADR 0033, 0034). The Guardian, the Position Manager and the strategies never come through here.
 """
 
 from __future__ import annotations
@@ -186,8 +186,8 @@ class CloseAllService:
             if status.mode != "confirm":
                 warnings.append(
                     CloseAllReason(
-                        code="agent_simulates",
-                        detail=f"the execution agent runs in {status.mode} mode: it validates the order and reports SIMULATED — nothing is closed at the broker",
+                        code="agent_observe",
+                        detail=f"the execution agent runs in {status.mode} mode: it refuses every order (AGENT_OBSERVE) — nothing is closed at the broker",
                     )
                 )
         if not fresh:

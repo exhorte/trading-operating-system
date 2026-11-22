@@ -6,7 +6,7 @@
  * trading. The first authorises no order; the second never climbs past CONFIRM; the third is a gesture of its own.
  */
 
-import type { AutonomyMode, PlanMode, StartupStageState, StartupStatus } from "@/lib/api/generated";
+import type { AutonomyMode, AutopilotStatus, PlanMode, StartupStageState, StartupStatus } from "@/lib/api/generated";
 import type { Tone } from "./close-all";
 
 export const START_LABEL = "DÉMARRER LE SYSTÈME";
@@ -42,7 +42,6 @@ export function stateTone(state: StartupStageState): Tone {
 export const MODE_LABELS: Record<PlanMode, string> = {
   OFF: "OFF — arrêté",
   OBSERVE: "OBSERVE — analyse seule",
-  PAPER: "PAPER — ordres simulés",
   CONFIRM: "CONFIRM — confirmation humaine (démo)",
   DEMO_AUTO: "DEMO_AUTO — automatique sur démo",
   LIVE_CONFIRM: "LIVE_CONFIRM — confirmation humaine (réel)",
@@ -60,7 +59,6 @@ export function modeTone(mode: PlanMode): Tone {
     case "CONFIRM":
       return "warning";
     case "OBSERVE":
-    case "PAPER":
       return "info";
     default:
       return "muted";
@@ -71,7 +69,6 @@ export function modeTone(mode: PlanMode): Tone {
 export const MODE_RIGHTS: Record<PlanMode, string> = {
   OFF: "Rien ne tourne côté stratégie. Aucun ordre.",
   OBSERVE: "Le système analyse le marché et journalise les setups. Aucun ordre n'est envoyé.",
-  PAPER: "Les ordres sont simulés dans le cœur. Aucun ordre n'atteint le courtier.",
   CONFIRM: "Chaque ordre attend votre confirmation, puis part vers l'agent (compte démo).",
   DEMO_AUTO: "Le système peut prendre des positions seul sur le compte démo, tant que tout est vert.",
   LIVE_CONFIRM: "Chaque ordre réel attend votre confirmation. Argent réel.",
@@ -150,4 +147,15 @@ export function runLine(status: StartupStatus): string | null {
     case "BLOCKED":
       return `Démarrage bloqué : ${run.message}`;
   }
+}
+
+/** The pilot in one line (ADR 0043): what it aims for, whether a person paused it, and the last thing it did. */
+export function autopilotLine(pilot: AutopilotStatus): string {
+  if (pilot.target === "OFF") {
+    return "Pilote automatique : désactivé.";
+  }
+  if (pilot.pausedReason) {
+    return `Pilote automatique en pause (${pilot.pausedReason}) : « Démarrer le système » le relance.`;
+  }
+  return `Pilote automatique → ${pilot.target} · ${pilot.lastStep}`;
 }

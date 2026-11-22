@@ -191,6 +191,14 @@ export function agent(overrides: Partial<AgentStatus> = {}): AgentStatus {
     capabilities: [],
     coreSilentMs: 100,
     lastHeartbeatMs: 100,
+    protocolVersion: null,
+    chartSymbol: null,
+    chartPeriod: null,
+    instanceId: null,
+    terminalBuild: null,
+    initState: null,
+    initIssues: [],
+    localProtections: null,
     ...overrides,
   };
 }

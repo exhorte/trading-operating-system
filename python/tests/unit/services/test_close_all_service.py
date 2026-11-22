@@ -16,7 +16,7 @@ from trading_os.domain.execution.close_all import CloseAllAction, CloseAllItemSt
 from trading_os.domain.execution.commands import CommandState
 from trading_os.domain.execution.reasons import RejectCode
 from trading_os.infrastructure.database.pool import Database
-from trading_os.infrastructure.mt5.wire import ExecutionAck, ExecutionReconciled, ExecutionReport
+from trading_os.infrastructure.mt5.wire import ExecutionAck, ExecutionReconciled, ExecutionReport, decode_line
 from trading_os.shared.errors import ValidationFailed
 
 pytestmark = pytest.mark.db
@@ -113,14 +113,14 @@ async def test_the_preview_lists_what_the_broker_shows_and_sends_nothing(h: Harn
     assert await h.repos.execution.recent(core.account.id, 10) == []  # nor even recorded
 
 
-async def test_the_preview_says_when_the_agent_only_simulates_or_is_absent(h: Harness) -> None:
+async def test_the_preview_says_when_the_agent_refuses_every_order_or_is_absent(h: Harness) -> None:
     core = await make(h, agent_mode="observe")
     put(core, 101, "EURUSDm")
     assert core.account is not None
     preview = await core.c.close_all.preview(core.account.id)
-    assert "agent_simulates" in {
+    assert "agent_observe" in {
         w.code for w in preview.warnings
-    }  # the compiled-OBSERVE agent closes nothing at the broker
+    }  # the compiled-OBSERVE agent closes nothing at the broker: it refuses (ADR 0041)
 
     core.link.statuses.clear()
     preview = await core.c.close_all.preview(core.account.id)
@@ -291,22 +291,49 @@ async def test_a_disconnected_agent_refuses_every_command_and_nothing_is_called_
     assert report.counts.positions_still_open == 2 and CloseAllAction.CLOSE_IN_MT5 in report.actions
 
 
-async def test_an_agent_compiled_observe_simulates_and_the_batch_never_claims_a_closing(h: Harness) -> None:
+async def test_an_agent_compiled_observe_refuses_and_the_batch_never_claims_a_closing(h: Harness) -> None:
     core = await make(h, agent_mode="observe")
     put(core, 101, "EURUSDm")
     await read(core)
     await run(core, "batch000010", ["101"])
     login = core.login
+    # agent 1.15: it refuses before acknowledging, with the typed code (ADR 0041)
     await core.c.execution.on_ack(
-        login, ExecutionAck(account_id=login, command_id="ca-batch000010-101", status="ACCEPTED")
-    )
-    await core.c.execution.on_report(
-        login, ExecutionReport(account_id=login, command_id="ca-batch000010-101", status="SIMULATED", symbol="EURUSDm")
-    )
+        login,
+        ExecutionAck(
+            account_id=login, command_id="ca-batch000010-101", status="REJECTED",
+            reason="AGENT_OBSERVE: the agent is compiled in observe mode — it sends no order to the broker; order NOT sent",
+        ),
+    )  # fmt: skip
     report = await core.c.close_all.report(core.account.id, "batch000010")  # type: ignore[union-attr]
-    assert item_of(report, "101").status is CloseAllItemStatus.SIMULATED and item_of(report, "101").still_open
-    assert report.status is CloseAllStatus.INCOMPLETE and report.simulated_only
-    assert report.counts.confirmed == 0 and CloseAllAction.ENABLE_AGENT in report.actions
+    item = item_of(report, "101")
+    assert item.status is CloseAllItemStatus.REJECTED and item.reject_code == "AGENT_OBSERVE" and item.still_open
+    assert report.status is CloseAllStatus.INCOMPLETE and report.counts.confirmed == 0
+    assert CloseAllAction.ENABLE_AGENT in report.actions and CloseAllAction.CLOSE_IN_MT5 in report.actions
+
+
+async def test_an_agent_before_1_15_that_still_says_simulated_is_read_as_the_same_refusal(h: Harness) -> None:
+    core = await make(h, agent_mode="observe")
+    put(core, 101, "EURUSDm")
+    await read(core)
+    await run(core, "batch000012", ["101"])
+    login = core.login
+    await core.c.execution.on_ack(
+        login, ExecutionAck(account_id=login, command_id="ca-batch000012-101", status="ACCEPTED")
+    )
+    frame = decode_line(
+        json.dumps({
+            "type": "execution.report", "accountId": login, "commandId": "ca-batch000012-101", "status": "SIMULATED",
+            "symbol": "EURUSDm", "detail": "SIMULATED CLOSE (mode observe, no broker order)",
+        })
+    )  # fmt: skip
+    assert isinstance(frame.message, ExecutionReport)
+    await core.c.execution.on_report(login, frame.message)
+    command = await h.repos.execution.get("ca-batch000012-101")
+    assert command is not None and command.state is CommandState.FAILED and command.reject_code == "AGENT_OBSERVE"
+    report = await core.c.close_all.report(core.account.id, "batch000012")  # type: ignore[union-attr]
+    assert item_of(report, "101").status is CloseAllItemStatus.REJECTED and report.counts.confirmed == 0
+    assert CloseAllAction.ENABLE_AGENT in report.actions
 
 
 async def test_a_position_the_agent_did_not_place_is_not_closable_and_says_so(h: Harness) -> None:
@@ -329,9 +356,7 @@ async def test_a_position_the_agent_did_not_place_is_not_closable_and_says_so(h:
 # ------------------------------------------------------------------------------------------------------ every mode, and idempotence
 
 
-@pytest.mark.parametrize(
-    "mode", [None, AutonomyMode.OBSERVE, AutonomyMode.PAPER, AutonomyMode.CONFIRM, AutonomyMode.ARMED]
-)
+@pytest.mark.parametrize("mode", [None, AutonomyMode.OBSERVE, AutonomyMode.CONFIRM, AutonomyMode.ARMED])
 async def test_the_close_works_in_every_autonomy_mode(h: Harness, mode: AutonomyMode | None) -> None:
     """OFF is the state before anyone climbed: a human exit does not wait for the trading to be on."""
     core = await make(h, top=mode)

@@ -46,6 +46,9 @@ __pycache__/
 # never source, never committed.
 /exports/
 
+# The launcher's registry, events, logs and backups (ADR 0038) — local state, never committed.
+/var/
+
 # MQL5 compiled binaries and MetaEditor headless-compile logs (EA-05)
 tools/mt5-execution-agent/*.ex5
 # MT5 input presets saved through the terminal's junction (2026-09-24): they

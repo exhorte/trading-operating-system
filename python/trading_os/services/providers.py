@@ -72,7 +72,7 @@ _DEAL_ENTRY = {0: "in", 1: "out", 3: "out"}  # IN, OUT, OUT_BY (a reversal, INOU
 HISTORY_START = datetime(2000, 1, 1, tzinfo=UTC)
 
 # A command that never reached the trade server is not a request to it.
-_NOT_REQUESTS = frozenset({CommandState.SIMULATED, CommandState.REJECTED})
+_NOT_REQUESTS = frozenset({CommandState.REJECTED})
 
 # Where the provider's restricted-news calendar would come from: ``(events, currencies the calendar is complete for)``, or ``None`` when
 # nothing feeds it. Nothing does yet — a generic economic calendar may not authorise an action (ADR 0036) — so a product with a news

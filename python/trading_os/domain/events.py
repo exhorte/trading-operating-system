@@ -280,11 +280,11 @@ class CloseAllRequested(Event):
 
 
 class ExecutionReported(Event):
-    """The final result: executed at the broker, or simulated (paper broker / agent compiled OBSERVE)."""
+    """The final result: executed at the broker. (There is no « simulated » outcome any more — ADR 0041: an order is done or it is refused.)"""
 
     wire_type = "execution.reported"
     command_id: str
-    outcome: Literal["executed", "simulated"]
+    outcome: Literal["executed"]
     symbol: str
     side: Side | None = None
     filled_volume: float | None = None
@@ -397,7 +397,7 @@ class AutonomyDisarmed(Event):
 
 
 class SystemStartRequested(Event):
-    """A human pressed « Démarrer le système » (ADR 0034). Starting climbs to OBSERVE (or PAPER / CONFIRM when asked), never higher."""
+    """A human pressed « Démarrer le système » (ADR 0034). Starting climbs to OBSERVE (or CONFIRM when asked), never higher."""
 
     wire_type = "system.start_requested"
     run_id: str

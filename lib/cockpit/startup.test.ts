@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PlanMode, StartupStageState, StartupStatus } from "@/lib/api/generated";
 import {
+  autopilotLine,
   CHECK_LABELS,
   checkLabel,
   MODE_LABELS,
@@ -60,7 +61,7 @@ describe("the fixed words", () => {
 });
 
 describe("the modes of the plan", () => {
-  const modes: PlanMode[] = ["OFF", "OBSERVE", "PAPER", "CONFIRM", "DEMO_AUTO", "LIVE_CONFIRM", "LIVE_AUTO", "HALTED"];
+  const modes: PlanMode[] = ["OFF", "OBSERVE", "CONFIRM", "DEMO_AUTO", "LIVE_CONFIRM", "LIVE_AUTO", "HALTED"];
 
   it("names and describes every mode", () => {
     for (const mode of modes) {
@@ -131,5 +132,18 @@ describe("runLine", () => {
     expect(runLine(status({ run: { ...run, state: "BLOCKED", message: "no account" } }))).toBe("Démarrage bloqué : no account");
     expect(runLine(status({ run: { ...run, state: "PARTIAL", message: "held back" } }))).toContain("réserve");
     expect(runLine(status({ run: { ...run, state: "DONE", message: "running in OBSERVE" } }))).toBe("running in OBSERVE");
+  });
+});
+
+describe("autopilotLine", () => {
+  const pilot = { target: "AUTONOMOUS" as const, active: true, pausedReason: null, lastStep: "climbed to AUTONOMOUS", lastStepAt: null };
+  it("says what the pilot aims for and what it last did", () => {
+    expect(autopilotLine(pilot)).toBe("Pilote automatique → AUTONOMOUS · climbed to AUTONOMOUS");
+  });
+  it("says a person paused it, and how to resume", () => {
+    expect(autopilotLine({ ...pilot, active: false, pausedReason: "a person disarmed the system" })).toContain("en pause");
+  });
+  it("says when there is no pilot", () => {
+    expect(autopilotLine({ ...pilot, target: "OFF", active: false })).toBe("Pilote automatique : désactivé.");
   });
 });

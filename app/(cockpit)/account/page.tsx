@@ -6,7 +6,6 @@ import { useActiveProfile } from "@/lib/accounts/use-rules";
 import { useApi } from "@/lib/api/use-api";
 import { AccountMetrics } from "@/components/accounts/account-metrics";
 import { ConnectAccountForm } from "@/components/accounts/connect-account-form";
-import { ConnectionChain } from "@/components/accounts/connection-chain";
 import { ObjectivesCard } from "@/components/accounts/objectives-card";
 import { ProviderRulesCard } from "@/components/accounts/provider-rules-card";
 import { RegisteredAccountCard } from "@/components/accounts/registered-account-card";
@@ -15,7 +14,6 @@ import { PageHeader, SectionHeading } from "@/components/shell/page-header";
 import { screenAt } from "@/components/shell/nav";
 import { Callout } from "@/components/ui/callout";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Panel } from "@/components/ui/panel";
 import { SplitLayout } from "@/components/ui/split-layout";
 import { Wallet } from "lucide-react";
 
@@ -58,7 +56,6 @@ export default function AccountPage() {
         main={
           <>
             <PageHeader screen={screenAt("/account")} />
-            <ConnectionChain profile={profile} />
           </>
         }
         aside={<AccountMetrics profile={profile} />}
@@ -96,17 +93,7 @@ export default function AccountPage() {
       {profile && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <RulesCard profile={profile} commission={provider.data?.commission ?? null} />
-          {profile.challenge ? (
-            <ObjectivesCard profile={profile} />
-          ) : (
-            <Panel title="Objectifs">
-              <p className="text-sm text-muted-foreground">
-                Un compte en direct n&apos;a pas d&apos;objectifs imposés : ni objectif de profit ni nombre de jours
-                minimum. Seules les limites de gauche s&apos;appliquent — et personne d&apos;autre que toi ne les fait
-                respecter.
-              </p>
-            </Panel>
-          )}
+          {profile.challenge && <ObjectivesCard profile={profile} />}
         </div>
       )}
 

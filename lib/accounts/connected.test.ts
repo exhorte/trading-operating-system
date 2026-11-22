@@ -20,12 +20,12 @@ describe("connectedAccount", () => {
 });
 
 describe("needsConnectedAccount", () => {
-  it.each(["/", "/positions", "/risk", "/journal", "/journal/123", "/analyse", "/market-context", "/preflight", "/setups", "/agents"])(
+  it.each(["/", "/risk", "/journal", "/journal/123", "/setups"])(
     "%s reads an account's figures",
     (path) => expect(needsConnectedAccount(path)).toBe(true),
   );
 
-  it.each(["/account", "/settings", "/account/"])("%s is where an account is connected and set up", (path) => {
+  it.each(["/account", "/settings", "/account/", "/system"])("%s is readable without a connected account", (path) => {
     expect(needsConnectedAccount(path)).toBe(false);
   });
 
@@ -38,7 +38,7 @@ describe("showsConnectGate", () => {
   it("replaces a screen that needs an account when the core answered and none is connected", () => {
     expect(showsConnectGate(answered, "/")).toBe(true);
     expect(showsConnectGate({ ...answered, accounts: [account("a", "DISCONNECTED")] }, "/risk")).toBe(true);
-    expect(showsConnectGate({ ...answered, connection: "degraded" }, "/positions")).toBe(true);
+    expect(showsConnectGate({ ...answered, connection: "degraded" }, "/risk")).toBe(true);
   });
 
   it("leaves Account and Settings open — that is where the trader connects one", () => {

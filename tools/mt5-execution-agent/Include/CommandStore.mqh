@@ -245,7 +245,7 @@ int CommandStoreFindUnknown(CommandRecord &unknown[])
 //    resting at the broker), MODIFIED, CLOSED, CANCELLED (1.12), plus the refusals.
 bool CommandStoreIsFinalStatus(const string status)
 {
-   return status == "SIMULATED" || status == "FILLED" || status == "PARTIALLY_FILLED" ||
+   return status == "FILLED" || status == "PARTIALLY_FILLED" ||
           status == "SUBMITTED" || status == "MODIFIED" || status == "CLOSED" || status == "CANCELLED" ||
           status == "FAILED" || status == "REJECTED";
 }

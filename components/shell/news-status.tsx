@@ -71,7 +71,7 @@ export function NewsStatus({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <Link
-      href="/market-context"
+      href="/risk"
       onClick={onNavigate}
       title={`${line.title} — ${line.detail}`}
       className={cn(

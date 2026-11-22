@@ -1,18 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  BookOpen,
-  ChartCandlestick,
-  ChartColumnBig,
-  ClipboardCheck,
-  Cpu,
-  FlaskConical,
-  Layers,
-  LayoutDashboard,
-  Play,
-  Settings,
-  ShieldCheck,
-  Wallet,
-} from "lucide-react";
+import { BookOpen, FlaskConical, LayoutDashboard, MonitorCog, Settings, ShieldCheck, Wallet } from "lucide-react";
 
 export interface NavItem {
   label: string;
@@ -24,25 +11,18 @@ export interface NavItem {
 }
 
 /**
- * Eleven screens, all of which carry something.
+ * Six screens for a system that trades by itself once launched (ADR 0043, 2026-11-14 — Musk's algorithm: question every screen, delete).
  *
- * Until 2026-09-20 there were ten and five of them were "not built yet"
- * placeholders — a navigation that advertises screens with nothing behind
- * them costs a click every time to learn that again. Three of the five were
- * filled from what the Command Center was carrying (market context, risk,
- * agents); the two with nothing to receive were removed:
+ * Deleted that day, each because a screen that stays here already answers its question, or because an autonomous system does not need it:
  *
- *   /settings — no auth, no source switch, no strategy parameter to set
- *   /replay   — needs the analytics pipeline (ADR 0011), not started
+ *   /positions       — the Command Center lists what is open, with the same table and the « close all » button
+ *   /preflight       — the session verdict repeated the readiness the System screen and « why no trade » give
+ *   /market-context  — a reading of the market for a trader deciding by hand; the strategy reads the market itself
+ *   /analyse         — breakdowns of the journal; the journal keeps the results
+ *   /demarrage       — moved into System (start-up, conditions, the automatic gesture)
+ *   /agents          — moved into System (the commands the system sent); the machine health is the terminals' readiness there
  *
- * Both come back when they have content. /settings did, in two steps:
- * /comptes (T12, 2026-09-21) showed the account profile read-only; since
- * T12 incrément 2 (2026-09-23) that became Account (what is connected, under
- * which rules) and Settings (the account settings ledger and the connection
- * procedure). See context/frontend/information_architecture.md.
- *
- * Settings is pinned at the bottom of the sidebar (SETTINGS_ITEM), away from
- * the screens one operates from.
+ * Settings is pinned at the bottom of the sidebar (SETTINGS_ITEM), away from the screens one operates from.
  */
 export const NAV_ITEMS: NavItem[] = [
   {
@@ -50,82 +30,47 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/",
     icon: LayoutDashboard,
     section: "operate",
-    question: "Où j'en suis, là, maintenant",
+    question: "Où en est le système, là, maintenant",
   },
   {
-    label: "Démarrage",
-    href: "/demarrage",
-    icon: Play,
-    section: "operate",
-    question: "Le système peut-il prendre une position, et sinon qu'est-ce qui bloque",
-  },
-  {
-    label: "Pré-vol",
-    href: "/preflight",
-    icon: ClipboardCheck,
-    section: "operate",
-    question: "Tout ce que le système vérifie lui-même avant la séance",
-  },
-  {
-    label: "Market Context",
-    href: "/market-context",
-    icon: ChartCandlestick,
-    section: "operate",
-    question: "Pourquoi le marché est dans cet état",
-  },
-  {
-    label: "Positions",
-    href: "/positions",
-    icon: Layers,
-    section: "operate",
-    question: "Ce qui est ouvert, et si cela correspond à ce que le système a envoyé",
-  },
-  {
-    label: "Risque & Discipline",
+    label: "Risque",
     href: "/risk",
     icon: ShieldCheck,
     section: "operate",
-    question: "Où en est ma discipline, et combien il me reste avant le verrou",
+    question: "Combien il reste avant le verrou",
   },
   {
-    label: "Trades Journal",
-    href: "/journal",
-    icon: BookOpen,
-    section: "analyze",
-    question: "Ce que j'ai pris, et dans quel cadre",
-  },
-  {
-    label: "Analyse de compte",
-    href: "/analyse",
-    icon: ChartColumnBig,
-    section: "analyze",
-    question: "Ce que mes données disent de mon process",
-  },
-  {
-    label: "Setups (S01)",
+    label: "Stratégie",
     href: "/setups",
     icon: FlaskConical,
     section: "analyze",
-    question: "Ce que S01 a vu, et ce que j'ai pris",
+    question: "Ce que S01 voit et ce qu'elle a pris",
   },
   {
-    label: "Account",
+    label: "Journal",
+    href: "/journal",
+    icon: BookOpen,
+    section: "analyze",
+    question: "Ce que le système a pris, et ce que cela a donné",
+  },
+  {
+    label: "Compte",
     href: "/account",
     icon: Wallet,
     section: "system",
     question: "Quel compte est branché, sous quelles règles",
   },
   {
-    label: "Agents & Audit",
-    href: "/agents",
-    icon: Cpu,
+    label: "Système",
+    href: "/system",
+    icon: MonitorCog,
     section: "system",
-    question: "Ce que le système a fait, et s'il est en vie",
+    question: "Le système peut-il trader, et sinon qu'est-ce qui bloque",
   },
 ];
 
 export const SETTINGS_ITEM: NavItem = {
-  label: "Settings",
+  label: "Réglages",
   href: "/settings",
   icon: Settings,
   section: "system",

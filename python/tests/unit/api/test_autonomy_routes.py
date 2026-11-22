@@ -32,22 +32,22 @@ async def test_the_state_is_the_ladder_the_ceiling_and_what_the_account_is_reall
 
 
 async def test_the_ladder_is_climbed_one_rung_at_a_time(api: Api) -> None:
-    up = await api.post("/api/autonomy/arm", {"target": "PAPER"})
-    assert up.status_code == 200 and up.json()["mode"] == "PAPER"
+    up = await api.post("/api/autonomy/arm", {"target": "CONFIRM"})
+    assert up.status_code == 200 and up.json()["mode"] == "CONFIRM"
     assert up.json()["lastTransition"]["fromMode"] == "OBSERVE"
 
-    skipped = await api.post("/api/autonomy/arm", {"target": "ARMED"})
+    skipped = await api.post("/api/autonomy/arm", {"target": "AUTONOMOUS"})
     assert skipped.status_code == 409 and skipped.json()["code"] == "skipped_rung"
     backwards = await api.post("/api/autonomy/arm", {"target": "OBSERVE"})  # arming never steps down: disarm does
     assert backwards.status_code == 409 and backwards.json()["code"] == "not_a_step_up"
     halting = await api.post("/api/autonomy/arm", {"target": "HALTED"})  # the halt is a brake, not a rung
     assert halting.status_code == 409 and halting.json()["code"] == "invalid_target"
-    assert await mode_of(api) == "PAPER"
+    assert await mode_of(api) == "CONFIRM"
 
 
 @pytest.mark.parametrize(
     "body",
-    [{"target": "TURBO"}, {"target": "PAPER", "force": True}, {}, {"target": None}],
+    [{"target": "TURBO"}, {"target": "CONFIRM", "force": True}, {}, {"target": None}],
     ids=["unknown-mode", "unknown-field", "empty", "null"],
 )
 async def test_a_malformed_gesture_changes_nothing(api: Api, body: dict[str, Any]) -> None:
@@ -124,7 +124,7 @@ async def test_halting_twice_is_halting_once(api: Api) -> None:
 
 async def test_a_halt_is_left_only_by_an_explicit_acknowledgement_and_lands_on_off(api: Api) -> None:
     await api.post("/api/autonomy/halt", {})
-    assert (await api.post("/api/autonomy/arm", {"target": "PAPER"})).json()["code"] == "halted"
+    assert (await api.post("/api/autonomy/arm", {"target": "CONFIRM"})).json()["code"] == "halted"
     refused = await api.post("/api/autonomy/disarm", {})
     assert refused.status_code == 403 and refused.json()["code"] == "ack_required"
     left = await api.post("/api/autonomy/disarm", {"acknowledge": True})

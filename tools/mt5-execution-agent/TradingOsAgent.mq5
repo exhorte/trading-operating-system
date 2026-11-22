@@ -21,7 +21,7 @@
 //| code. The approvals of 2026-09-25/26 (ADR 0014 arming, EA-07,     |
 //| EA-08, ADR 0015) open that path increment by increment (study I4  |
 //| to I8) — not in this build. A command that passes every local     |
-//| barrier is still acknowledged and reported SIMULATED today.       |
+//| barrier is REFUSED today with AGENT_OBSERVE (1.15, ADR 0041).     |
 //|                                                                   |
 //| I1 (2026-09-26) hardens the agent without touching that barrier:  |
 //|  - identity from the terminal (ACCOUNT_LOGIN / ACCOUNT_SERVER), not|
@@ -48,23 +48,29 @@
 //| and CANCEL. Every handler builds a TradeCommand and goes through   |
 //| the same chain; ExecuteOrder stays the ONE function that sends, and|
 //| its first statement is unchanged. The mode is still a compiled     |
-//| constant at OBSERVE: all of this answers SIMULATED in this build.  |
+//| constant at OBSERVE: all of this is refused (AGENT_OBSERVE) here.  |
 //| 1.13 (ADR 0033, 2026-11-02): the local halt no longer refuses a    |
 //| command that only closes or cancels — it stops new risk, not the   |
 //| way out. Openings and stop moves are still refused while halted.   |
+//| 1.15 (ADR 0041, 2026-11-13): no more simulated answer and no more  |
+//| paper mode. A build compiled in OBSERVE refuses every command that |
+//| passed validation, BEFORE acknowledging it, with the typed code    |
+//| AGENT_OBSERVE (ack REJECTED + report REJECTED, "order NOT sent").  |
+//| An order leaves for the broker, or it is refused with a code.      |
 //|                                                                   |
 //| It still decides NOTHING: no strategy, no signal, no market       |
 //| analysis, no decision parameter. It does not know why it executes.|
 //+------------------------------------------------------------------+
 #property copyright "Trading Operating System — personal use only"
-#property version   "1.13"
+#property version   "1.15"
 #property description "EA-05 execution agent (ADR 0029) — OrderSend exists once, in ExecuteOrder, unreachable outside CONFIRM; this build is OBSERVE."
 
 #include "Include/JsonLite.mqh"
 #include "Include/CommandStore.mqh"
 #include "Include/TradeRequest.mqh"
 
-#define AGENT_VERSION      "1.13"
+#define AGENT_VERSION      "1.15"
+#define PROTOCOL_VERSION   1   // 1.14 (ADR 0040): the message set of ADR 0010, 0029 and 0033; it rises only for an incompatible change. 1.15 adds a refusal code, no message: still 1
 #define INSTANCE_LOCK      "TradingOsAgent.instance"
 #define HALT_BUTTON        "TradingOsAgent.halt"
 #define HALT_FILE_ALL      "tradingos_halt.flag"
@@ -89,13 +95,12 @@ input int    InpReconciliationLookbackDays = 7;  // EA-06: how far back HistoryS
 input int    InpReportReplayMinutes = 60;        // I1: final reports recorded this recently are sent again after a reconnection
 input int    InpDeadManSeconds    = 30;          // Python-native core: a NEW order is refused (DEAD_MAN) when no control.ping has arrived from the core for this long. 5..600; anything lower is read as 30 — it can be loosened, never switched off. A received order is not proof the core is alive; only the ping is. Stops already at the broker stay.
 
-//--- Execution mode ladder (ADR 0010): OBSERVE -> PAPER -> CONFIRM.
+//--- Execution mode ladder (ADR 0010, ADR 0041): OBSERVE -> CONFIRM. There is no paper mode any more.
 //    AUTO (ADR 0015) is not a value of this enum yet: it arrives with its
-//    own increment (I8), not as a fourth value slipped in here.
+//    own increment (I8), not as a third value slipped in here.
 enum ExecutionMode
 {
    MODE_OBSERVE,
-   MODE_PAPER,
    MODE_CONFIRM
 };
 
@@ -153,12 +158,17 @@ int OnInit()
    }
 
    ResolveIdentity();
+   ResolveInitState();
    CommandStoreInit(g_login, InpMagicNumber);
    CreateHaltButton();
    if(g_identity == "mismatch")
    {
       Print("TradingOsAgent: terminal is on login ", g_account_id, " but InpAccountId expects '", InpAccountId,
             "' — staying loaded, refusing every command until they agree.");
+   }
+   if(g_init_state == "DEGRADED")
+   {
+      Print("TradingOsAgent: initialisation DEGRADED (", g_init_issues, ") — staying loaded, reported in the hello.");
    }
 
    if(g_login > 0 && !ConnectToCore())
@@ -528,7 +538,6 @@ string GetAgentId()
 
 string ModeToWireString(ExecutionMode m)
 {
-   if(m == MODE_PAPER)   return "paper";
    if(m == MODE_CONFIRM) return "confirm";
    return "observe";
 }
@@ -668,6 +677,150 @@ string BuildId()
    return AGENT_VERSION + " " + TimeToString(__DATETIME__, TIME_DATE | TIME_MINUTES);
 }
 
+//+------------------------------------------------------------------+
+//| 1.14 (ADR 0040) — read-only telemetry carried by agent.hello.      |
+//| Everything below REPORTS what the agent is and what it loaded; it  |
+//| decides nothing, changes no input, adds no command and no order    |
+//| path. Never reported: the token, any password, any login other     |
+//| than the ones already in the hello, the magic number, and the      |
+//| lists of logins an order may reach.                                |
+//+------------------------------------------------------------------+
+string g_init_state  = "READY";   // READY, or DEGRADED with the issues below
+string g_init_issues = "";        // comma-separated codes, e.g. SYMBOL_NOT_AVAILABLE:XAUUSDm
+
+//--- The chart's period as MetaTrader names it ("M5"): EnumToString gives "PERIOD_M5".
+string PeriodLabel(const ENUM_TIMEFRAMES period)
+{
+   string raw = EnumToString(period);
+   return StringFind(raw, "PERIOD_") == 0 ? StringSubstr(raw, 7) : raw;
+}
+
+//--- The last segment of the terminal's data folder — never the full path (it holds the Windows user name).
+string InstanceId()
+{
+   string path = TerminalInfoString(TERMINAL_DATA_PATH);
+   while(StringLen(path) > 0 && StringGetCharacter(path, StringLen(path) - 1) == '\\')
+   {
+      path = StringSubstr(path, 0, StringLen(path) - 1);
+   }
+   int cut = -1;
+   for(int i = StringLen(path) - 1; i >= 0; i--)
+   {
+      if(StringGetCharacter(path, i) == '\\')
+      {
+         cut = i;
+         break;
+      }
+   }
+   return cut >= 0 ? StringSubstr(path, cut + 1) : path;
+}
+
+//--- Read once at start: does every symbol of the whitelist exist at this broker? A missing one degrades the agent; it never stops it.
+void ResolveInitState()
+{
+   g_init_state = "READY";
+   g_init_issues = "";
+   string parts[];
+   int n = StringSplit(InpAllowedSymbolsCsv, ',', parts);
+   if(n <= 0)
+   {
+      g_init_state = "DEGRADED";
+      g_init_issues = "NO_ALLOWED_SYMBOLS";
+      return;
+   }
+   for(int i = 0; i < n; i++)
+   {
+      string symbol = parts[i];
+      StringTrimLeft(symbol);
+      StringTrimRight(symbol);
+      if(symbol == "")
+      {
+         continue;
+      }
+      if(SymbolInfoInteger(symbol, SYMBOL_EXIST) == 0)
+      {
+         g_init_state = "DEGRADED";
+         g_init_issues += (g_init_issues == "" ? "" : ",") + "SYMBOL_NOT_AVAILABLE:" + symbol;
+      }
+   }
+}
+
+string InitIssuesJson()
+{
+   if(g_init_issues == "")
+   {
+      return "[]";
+   }
+   string parts[];
+   int n = StringSplit(g_init_issues, ',', parts);
+   string json = "[";
+   for(int i = 0; i < n; i++)
+   {
+      json += (i > 0 ? "," : "") + "\"" + JsonEscape(parts[i]) + "\"";
+   }
+   return json + "]";
+}
+
+string AllowedSymbolsJson()
+{
+   string parts[];
+   int n = StringSplit(InpAllowedSymbolsCsv, ',', parts);
+   string json = "[";
+   int written = 0;
+   for(int i = 0; i < n; i++)
+   {
+      string symbol = parts[i];
+      StringTrimLeft(symbol);
+      StringTrimRight(symbol);
+      if(symbol == "")
+      {
+         continue;
+      }
+      json += (written > 0 ? "," : "") + "\"" + JsonEscape(symbol) + "\"";
+      written++;
+   }
+   return json + "]";
+}
+
+//--- InpMaxSpreadCsv as an object: { "EURUSDm": 0.01, ... } — a symbol without an entry refuses every order, and is simply absent here.
+string MaxSpreadJson()
+{
+   string parts[];
+   int n = StringSplit(InpMaxSpreadCsv, ',', parts);
+   string json = "{";
+   int written = 0;
+   for(int i = 0; i < n; i++)
+   {
+      string entry = parts[i];
+      int eq = StringFind(entry, "=");
+      if(eq <= 0)
+      {
+         continue;
+      }
+      string name = StringSubstr(entry, 0, eq);
+      string value = StringSubstr(entry, eq + 1);
+      StringTrimLeft(name);
+      StringTrimRight(name);
+      json += (written > 0 ? "," : "") + "\"" + JsonEscape(name) + "\":" + DoubleToString(StringToDouble(value), 8);
+      written++;
+   }
+   return json + "}";
+}
+
+//--- The values actually in force (after the clamping the barriers do): an echo for the core to compare with the preset, never a setting.
+string LocalProtectionsJson()
+{
+   string json = "{";
+   json += "\"maxVolumePerOrder\":" + DoubleToString(InpMaxVolumePerOrder, 2) + ",";
+   json += "\"maxOpenPositions\":" + IntegerToString(InpMaxOpenPositions) + ",";
+   json += "\"maxSlippagePoints\":" + IntegerToString(InpMaxSlippagePoints) + ",";
+   json += "\"maxSpread\":" + MaxSpreadJson() + ",";
+   json += "\"allowedSymbols\":" + AllowedSymbolsJson() + ",";
+   json += "\"deadManSeconds\":" + IntegerToString(DeadManSeconds()) + ",";
+   json += "\"pendingMaxMinutes\":" + IntegerToString(PendingMaxMinutes());
+   return json + "}";
+}
+
 void SendHello()
 {
    string symbol = FirstAllowedSymbol();
@@ -718,6 +871,14 @@ void SendHello()
    json += "\"tradable\":" + JsonBool(g_tradable) + ",";
    json += "\"closable\":" + JsonBool(g_closable) + ",";
    json += "\"halted\":" + JsonBool(IsHalted()) + ",";
+   // 1.14 (ADR 0040): read-only telemetry — what the agent is and what it loaded. Nothing here is a setting or a decision.
+   json += "\"protocolVersion\":" + IntegerToString(PROTOCOL_VERSION) + ",";
+   json += "\"chart\":{\"symbol\":\"" + JsonEscape(_Symbol) + "\",\"period\":\"" + PeriodLabel((ENUM_TIMEFRAMES)_Period) + "\"},";
+   json += "\"instanceId\":\"" + JsonEscape(InstanceId()) + "\",";
+   json += "\"terminalBuild\":" + IntegerToString(TerminalInfoInteger(TERMINAL_BUILD)) + ",";
+   json += "\"initState\":\"" + g_init_state + "\",";
+   json += "\"initIssues\":" + InitIssuesJson() + ",";
+   json += "\"localProtections\":" + LocalProtectionsJson() + ",";
    json += "\"attachedExperts\":" + AttachedExpertsJson();
    json += "}";
    SendRawLine(json);
@@ -1497,7 +1658,7 @@ void RecordSuccess(const TradeCommand &cmd, const MqlTradeResult &result, const 
 //| The whole command path, for every kind of command:                 |
 //|   receive -> idempotency -> halt -> identity -> account check ->   |
 //|   expiry (AdmitCommand) -> validate (ValidateTradeCommand) ->      |
-//|   acknowledge -> ExecuteOrder (CONFIRM only) or report SIMULATED.  |
+//|   AGENT_OBSERVE refusal -> acknowledge -> ExecuteOrder (CONFIRM).  |
 //| The handlers below only read their message into a TradeCommand;    |
 //| none of them builds or sends a broker request.                     |
 //+------------------------------------------------------------------+
@@ -1595,7 +1756,7 @@ string DescribeCommand(const TradeCommand &cmd)
 
 //--- From a command read off the wire to its outcome. The mode fork: CONFIRM is the only branch that can reach a broker, and
 //    ExecuteOrder re-checks the mode itself — this test is convenience, that one is the barrier. In this build g_mode is
-//    const MODE_OBSERVE, so the SIMULATED path below is the only one that ever runs.
+//    const MODE_OBSERVE, so the AGENT_OBSERVE refusal below is the only path that ever runs (1.15, ADR 0041: no simulated answer).
 void ProcessCommand(const string json, TradeCommand &cmd)
 {
    if(cmd.commandId == "")
@@ -1616,6 +1777,16 @@ void ProcessCommand(const string json, TradeCommand &cmd)
       return;
    }
 
+   // 1.15 (ADR 0041): a build that cannot reach the broker says so, with a typed code, BEFORE it acknowledges anything. The core records a
+   // refusal (REJECTED, AGENT_OBSERVE) — never an order that looks done. The text ends with "order NOT sent", the marker of a definite refusal.
+   if(g_mode != MODE_CONFIRM)
+   {
+      RefuseCommand(cmd.commandId, cmd.symbol, cmd.side,
+                    "AGENT_OBSERVE: this agent is compiled in " + ModeToWireString(g_mode) + " mode and sends no order to the broker (" +
+                    DescribeCommand(cmd) + ") — order NOT sent");
+      return;
+   }
+
    SendAck(cmd.commandId, "ACCEPTED", "");
 
    if(g_mode == MODE_CONFIRM)
@@ -1631,9 +1802,6 @@ void ProcessCommand(const string json, TradeCommand &cmd)
       ExecuteOrder(cmd);
       return;
    }
-
-   RecordAndReport(cmd.commandId, "SIMULATED", cmd.symbol, cmd.side,
-                   "SIMULATED " + DescribeCommand(cmd) + " (mode " + ModeToWireString(g_mode) + ", no broker order)");
 }
 
 //--- execution.order: OPEN, at the market or resting (LIMIT).

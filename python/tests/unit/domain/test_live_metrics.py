@@ -6,7 +6,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from tests.support.builders import NOW, make_command
-from trading_os.cli.live_report import render_live_report
 from trading_os.domain.execution.commands import CommandState, ExecutionCommand
 from trading_os.domain.telemetry.live_metrics import (
     AgentLinkMetrics,
@@ -66,19 +65,18 @@ def test_a_rate_needs_two_ticks_and_a_span() -> None:
 # ------------------------------------------------------------------------------------------------------ commands
 
 
-def test_durations_come_from_the_brokers_answers_and_leave_simulated_commands_out() -> None:
+def test_durations_come_from_the_brokers_answers_and_a_refusal_before_the_send_has_none() -> None:
     answered = timed(CommandState.EXECUTED, sent=0.1, acknowledged=0.4, completed=0.9, broker_retcode="10009")
     slower = timed(
         CommandState.EXECUTED, sent=0.1, acknowledged=0.6, completed=1.6, command_id="cmd-b", broker_retcode="10009"
     )
-    refused = timed(CommandState.REJECTED, command_id="cmd-c", reject_code="STALE_PRICE")
-    simulated = timed(CommandState.SIMULATED, sent=0.1, acknowledged=5.0, completed=9.0, command_id="cmd-d")
-    metrics = command_metrics([answered, slower, refused, simulated])
+    refused = timed(CommandState.REJECTED, command_id="cmd-c", reject_code="MODE_NOT_PERMITTING")
+    metrics = command_metrics([answered, slower, refused])
 
-    assert metrics.total == 4 and metrics.simulated == 1
-    assert metrics.by_state == {"EXECUTED": 2, "REJECTED": 1, "SIMULATED": 1}
-    assert metrics.reject_codes == {"STALE_PRICE": 1} and metrics.broker_retcodes == {"10009": 2}
-    # the simulated command's 4.9 s acknowledgement is not counted
+    assert metrics.total == 3
+    assert metrics.by_state == {"EXECUTED": 2, "REJECTED": 1}
+    assert metrics.reject_codes == {"MODE_NOT_PERMITTING": 1} and metrics.broker_retcodes == {"10009": 2}
+    # the refusal never reached the broker: it was not sent, so it has no acknowledgement time
     assert (metrics.ack_s.n, metrics.ack_s.min, metrics.ack_s.max) == (2, 0.3, 0.5)
     assert (metrics.fill_s.min, metrics.fill_s.max) == (0.5, 1.0)
     assert (metrics.total_s.min, metrics.total_s.max) == (0.9, 1.6)
@@ -128,18 +126,8 @@ def test_an_account_the_core_is_not_connected_to_gives_no_quote_and_the_report_s
 
 
 def test_a_report_that_does_not_query_the_core_says_it_does_not_see_the_link() -> None:
-    gaps = not_measured([quote()], None, command_metrics([timed(CommandState.SIMULATED, command_id="cmd-s")]))
+    refused = timed(CommandState.REJECTED, command_id="cmd-s", reject_code="MODE_NOT_PERMITTING")
+    gaps = not_measured([quote()], None, command_metrics([refused]))
     text = " | ".join(gaps)
-    assert "not observed by this report" in text and "every command in the window was SIMULATED" in text
+    assert "not observed by this report" in text and "no command in the window was sent to the agent" in text
     assert "no tick stored" not in text  # what was measured is not reported missing
-
-
-def test_the_markdown_report_carries_its_numbers_its_holes_and_its_limits() -> None:
-    commands = command_metrics([timed(CommandState.EXECUTED, sent=0.1, acknowledged=0.4, completed=0.9)])
-    page = render_live_report(
-        account_id="exness-1", start=NOW - timedelta(hours=1), end=NOW, quotes=[quote()], commands=commands
-    )
-    assert page.startswith("# Live measures") and "| EURUSDm | 10 |" in page
-    assert "| Sent → acknowledged (core, agent, core) | 1 | 0.3 | 0.3 | 0.3 | 0.3 |" in page
-    assert "## Not measured" in page and "## Reading these figures" in page
-    assert "nothing was sent to a terminal or an agent" in page

@@ -10,6 +10,7 @@ The cost threshold and the commission do not live here: they come from the accou
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Self
 
 from pydantic import Field
 
@@ -17,10 +18,27 @@ from trading_os.domain.market.sessions import S01_TRADING_WINDOWS, TradingWindow
 from trading_os.domain.primitives import DomainModel, SymbolCode
 
 
+class SymbolScale(DomainModel):
+    """The thresholds of S01 written in price units, for one symbol whose price is not on the EURUSD's scale (ADR 0043). Posed, not derived
+    (ADR 0002): the same relative geometry as the EURUSD values below, nothing searched."""
+
+    equal_level_tolerance: float = Field(ge=0)
+    min_fvg_size: float = Field(gt=0)
+    spread_buffer: float = Field(ge=0)
+    level_decimals: int = Field(ge=0, le=8)
+
+
+# BTCUSD (ADR 0043, 2026-11-14): a price ≈ 58 600 × the EURUSD's, so 3 pips → 18 USD, 1 pip → 6 USD; the spread buffer is 1.25 × the 6.40 USD
+# spread measured on the demo (as 1 pip ≈ 1.25 × the EURUSD's 0.8-pip spread); levels rounded to the dollar.
+BTCUSD_SCALE = SymbolScale(equal_level_tolerance=18.0, min_fvg_size=6.0, spread_buffer=8.0, level_decimals=0)
+
+
 class S01Config(DomainModel):
-    # S01 v1 is scoped to EURUSD. GBPUSD was set aside on 2026-09-25 (user decision); XAUUSD stays out of scope until its thresholds
-    # are ATR-relative.
+    # S01 v1 was scoped to EURUSD (GBPUSD set aside on 2026-09-25, a user decision); BTCUSD joined it on 2026-11-14 (ADR 0043) with its own
+    # scale. XAUUSD stays out of scope until its thresholds are posed. The symbols are a setting: ``STRATEGY_S01_SYMBOLS``.
     symbols: tuple[SymbolCode, ...] = ("EURUSD",)
+    # Thresholds in price units, per symbol, for symbols not on the EURUSD's scale: the fields below are the EURUSD's.
+    symbol_scales: dict[SymbolCode, SymbolScale] = Field(default_factory=lambda: {"BTCUSD": BTCUSD_SCALE})
     swing_lookback: int = Field(default=2, ge=1)
     equal_level_tolerance: float = Field(default=0.0003, ge=0)  # 3 pips
     min_fvg_size: float = Field(default=0.0001, gt=0)  # 1 pip
@@ -50,3 +68,8 @@ class S01Config(DomainModel):
     # The hours the strategy looks for a setup, New York local time (DST-aware): S01's historical killzones. Posed, not derived. A
     # variant has its own (S02's are not these); the settings can replace them (``STRATEGY_S01_WINDOWS``).
     trading_windows: tuple[TradingWindow, ...] = S01_TRADING_WINDOWS
+
+    def for_symbol(self, canonical: SymbolCode | None) -> Self:
+        """The configuration one symbol is evaluated with: its own scale where one is posed, the EURUSD-scale values otherwise."""
+        scale = self.symbol_scales.get(canonical or "")
+        return self if scale is None else self.model_copy(update=scale.model_dump())

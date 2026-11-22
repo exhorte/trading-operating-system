@@ -460,7 +460,7 @@ function Progression({
                   <StatusPill tone={itemTone(item.status)}>{ITEM_LABELS[item.status]}</StatusPill>
                 </td>
                 <td className="px-3 py-2 text-xs text-muted-foreground">
-                  {item.rejectCode || ["UNKNOWN", "SIMULATED", "MISMATCH", "NOT_CLOSABLE"].includes(item.status)
+                  {item.rejectCode || ["UNKNOWN", "MISMATCH", "NOT_CLOSABLE"].includes(item.status)
                     ? reasonText(item.rejectCode ?? item.status, item.detail)
                     : ""}
                 </td>

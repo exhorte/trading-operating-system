@@ -4,9 +4,7 @@ import { useState } from "react";
 import { useCockpit } from "@/lib/realtime/provider";
 import { useRules } from "@/lib/accounts/use-rules";
 import { PROVIDER_NAMES } from "@/lib/accounts/profile";
-import { ConnectionHelp } from "@/components/accounts/connection-help";
 import { Field, inputClass } from "@/components/accounts/form-controls";
-import { RegisterAccountForm } from "@/components/accounts/register-account-form";
 import { RulesForm, type SavedNotice } from "@/components/accounts/rules-form";
 import { SettingsGuardBanner } from "@/components/accounts/settings-guard-banner";
 import { SettingsHistory } from "@/components/accounts/settings-history";
@@ -94,18 +92,8 @@ export default function SettingsPage() {
         aside={<SettingsMetrics account={selected} overview={overview} error={error} />}
       />
 
-      <RegisterAccountForm />
-
-      <ConnectionHelp />
-
       {selected && overview && <SettingsHistory versions={overview.versions} registeredRules={selected} />}
 
-      <Callout title="Important">
-        Rien ici ne demande de mot de passe : les comptes se connectent depuis Account, un seul à la fois (ADR 0013, 0021).
-        Chaque changement est inscrit dans un registre en ajout seul, et le cœur décide au moment d&apos;enregistrer s&apos;il
-        s&apos;applique tout de suite ou au prochain jour de trading — une limite ne se desserre jamais en pleine séance (ADR
-        0007). Le plafond d&apos;autonomie d&apos;un compte et ses fenêtres de trading ne se changent pas depuis cet écran.
-      </Callout>
     </div>
   );
 }

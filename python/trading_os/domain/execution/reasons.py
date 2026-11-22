@@ -15,7 +15,8 @@ class RejectCode(StrEnum):
     NOT_ACTIVE_ACCOUNT = "NOT_ACTIVE_ACCOUNT"  # an automatic command may only target the active account
     TRADING_DISABLED = "TRADING_DISABLED"  # the user's « Disable Trading » switch
     # Mode and plumbing
-    MODE_NOT_PERMITTING = "MODE_NOT_PERMITTING"  # the autonomy state / ceiling does not allow this route
+    MODE_NOT_PERMITTING = "MODE_NOT_PERMITTING"  # the autonomy state / ceiling sends no order (OFF, OBSERVE, HALTED): refused here, nothing recorded as done
+    AGENT_OBSERVE = "AGENT_OBSERVE"  # the agent is compiled in OBSERVE: it sends no order to the broker and says so, never « simulated » (ADR 0041)
     HALTED = "HALTED"
     KILL_SWITCH = "KILL_SWITCH"
     AGENT_UNREACHABLE = "AGENT_UNREACHABLE"

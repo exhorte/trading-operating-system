@@ -28,10 +28,12 @@ from trading_os.api.websocket.stream import CockpitStream
 from trading_os.app.container import Container
 from trading_os.app.dependencies import Core
 from trading_os.domain.autonomy.readiness import ReadinessReport
+from trading_os.domain.system.center import Mt5TerminalView, SystemCenterView
 from trading_os.domain.system.incidents import Incident
 from trading_os.domain.system.startup import StartupRun, StartupStatus
 from trading_os.domain.telemetry.live_metrics import MAX_WINDOW_MINUTES, LiveMetrics
 from trading_os.infrastructure.mt5.transport import WORKERS
+from trading_os.services.autopilot import AutopilotStatus
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -171,9 +173,10 @@ async def startup_status(c: Core) -> StartupStatus:
 
 @router.post(
     "/startup", response_model=StartupRun, status_code=202,
-    summary="Start the system: verify, reconcile, climb OFF → OBSERVE (PAPER / CONFIRM if asked). Never higher; no order is sent",
+    summary="Start the system: verify, reconcile, climb OFF → OBSERVE (CONFIRM if asked). Never higher; no order is sent",
 )  # fmt: skip
 async def startup_begin(body: StartRequest, c: Core) -> StartupRun:
+    c.autopilot.resume()  # a person starting the system lifts a pause of the pilot (ADR 0043)
     return await c.startup.begin(body.target, acknowledge_real_account=body.acknowledge_real_account)
 
 
@@ -184,3 +187,29 @@ async def startup_begin(body: StartRequest, c: Core) -> StartupRun:
 async def startup_authorize_automatic(body: AuthorizeAutomaticRequest, c: Core) -> AuthorizeAutomaticResult:
     mode, plan = await c.startup.authorize_automatic(acknowledge_real_account=body.acknowledge_real_account)
     return AuthorizeAutomaticResult(mode=mode, plan_mode=plan)
+
+
+@router.get(
+    "/autopilot", response_model=AutopilotStatus,
+    summary="The pilot (ADR 0043): its target, whether a person paused it, and the last thing it did. A read",
+)  # fmt: skip
+async def autopilot_status(c: Core) -> AutopilotStatus:
+    return c.autopilot.status()
+
+
+@router.get(
+    "/center",
+    response_model=SystemCenterView,
+    summary="The System Center: the MetaTrader terminals, their agents and whether each is technically ready (read-only)",
+)
+async def system_center(c: Core) -> SystemCenterView:
+    return await c.system_center.snapshot()
+
+
+@router.get(
+    "/mt5/terminals",
+    response_model=list[Mt5TerminalView],
+    summary="Each registered MetaTrader terminal with its agent and the reading of its readiness (read-only)",
+)
+async def terminal_registry(c: Core) -> list[Mt5TerminalView]:
+    return await c.system_center.terminals()

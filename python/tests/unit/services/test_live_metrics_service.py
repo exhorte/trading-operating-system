@@ -45,7 +45,9 @@ async def test_the_quotes_the_core_saw_are_measured_with_their_stored_spread(h: 
     core = await running(h)
     metrics = await core.c.live_metrics.snapshot(account_id(core), 60)
 
-    assert [q.symbol for q in metrics.quotes] == ["EURUSDm", "XAUUSDm"]
+    assert [q.symbol for q in metrics.quotes] == [
+        "EURUSDm"
+    ]  # the strategy's symbols (ADR 0043): S01 = EURUSD by default
     eur = metrics.quotes[0]
     assert eur.ticks >= 2 and eur.spread.n == eur.ticks and (eur.spread.median or 0) > 0
     assert eur.receipt_lag_s.n >= 2  # one per new quote, from the events
@@ -70,7 +72,7 @@ async def test_a_window_outside_the_limits_is_refused(h: Harness) -> None:
             await core.c.live_metrics.snapshot(account_id(core), minutes)
 
 
-async def test_commands_are_summarised_from_the_stored_rows_and_simulated_ones_are_not_the_brokers_answers(
+async def test_commands_are_summarised_from_the_stored_rows_and_refused_ones_are_not_the_brokers_answers(
     h: Harness,
 ) -> None:
     core = await running(h)
@@ -83,20 +85,23 @@ async def test_commands_are_summarised_from_the_stored_rows_and_simulated_ones_a
             "broker_retcode": "10009",
         }
     )  # fmt: skip
-    simulated = make_command("sim-1", account_id=account, state=CommandState.SIMULATED).model_copy(
-        update={"created_at": now - timedelta(seconds=8), "sent_at": now - timedelta(seconds=8),
-                "acknowledged_at": now - timedelta(seconds=1), "completed_at": now}
-    )  # fmt: skip
+    refused = make_command("ref-1", account_id=account, state=CommandState.REJECTED).model_copy(
+        update={
+            "created_at": now - timedelta(seconds=8),
+            "completed_at": now - timedelta(seconds=8),
+            "reject_code": "MODE_NOT_PERMITTING",
+        }
+    )  # fmt: skip  — refused at the door: never sent, so no broker answer to time
     old = make_command("old-1", account_id=account, state=CommandState.EXECUTED).model_copy(
         update={"created_at": now - timedelta(hours=3)}
     )  # outside the window
-    for command in (executed, simulated, old):
+    for command in (executed, refused, old):
         assert await core.h.repos.execution.insert(command, command.created_at)
 
     commands = (await core.c.live_metrics.snapshot(account, 60)).commands
-    assert commands.total == 2 and commands.simulated == 1  # the three-hour-old one is not in a one-hour window
-    assert commands.broker_retcodes == {"10009": 1}
-    assert (commands.ack_s.n, commands.ack_s.median) == (1, 0.3)  # the simulated 7 s acknowledgement is not counted
+    assert commands.total == 2  # the three-hour-old one is not in a one-hour window
+    assert commands.reject_codes == {"MODE_NOT_PERMITTING": 1} and commands.broker_retcodes == {"10009": 1}
+    assert (commands.ack_s.n, commands.ack_s.median) == (1, 0.3)  # the refused command has no acknowledgement to count
     assert commands.fill_s.median == 0.5 and commands.total_s.median == 1.0
 
 

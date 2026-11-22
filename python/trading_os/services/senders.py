@@ -1,12 +1,11 @@
-"""Order senders: where an approved, persisted command goes. Three of them exist because three execution routes are real:
+"""Order senders: where an approved, persisted command goes. One way out is real, so one sender exists (ADR 0041: no simulated outcome any more):
 
-* ``ObserveSender`` — OBSERVE / OFF: the command is validated and recorded, and **nothing is sent anywhere**;
-* ``PaperSender`` — PAPER: a simulated fill at the live quote, in this process, never MT5;
 * ``AgentSender`` — CONFIRM / ARMED / AUTONOMOUS: the one and only way an order leaves the core, over the local socket
   to the MetaTrader 5 execution agent, which holds the single ``OrderSend`` (and refuses anything its own barriers refuse).
 
-The core never calls an order function of the ``MetaTrader5`` package: there is none in its read-only worker. Making
-« OBSERVE sends nothing » a *test* rather than a promise is the reason for this seam.
+OFF, OBSERVE and HALTED have no sender: an order asked for in those modes is **refused with a code** (``MODE_NOT_PERMITTING``) and recorded as
+refused, never as if it had been done. The core never calls an order function of the ``MetaTrader5`` package: there is none in its read-only
+worker. Making « OBSERVE sends nothing » a *test* rather than a promise is the reason for this seam.
 """
 
 from __future__ import annotations
@@ -15,15 +14,13 @@ from typing import Literal, Protocol
 
 from trading_os.domain.accounts.models import Account
 from trading_os.domain.execution.commands import CommandKind, ExecutionCommand
-from trading_os.domain.primitives import DomainModel, Side
-from trading_os.domain.strategy.intent import OrderKind
+from trading_os.domain.primitives import DomainModel
 from trading_os.infrastructure.mt5.wire import cancel_line, close_line, modify_line, order_line
-from trading_os.services.market_data import MarketDataService
 from trading_os.shared.time import Clock, to_epoch_ms
 
 
 class SendResult(DomainModel):
-    kind: Literal["sent", "not_sent", "simulated"]
+    kind: Literal["sent", "not_sent"]
     detail: str = ""
     average_price: float | None = None
     filled_volume: float | None = None
@@ -39,44 +36,6 @@ class AgentLink(Protocol):
     """The part of the execution-agent socket a sender needs."""
 
     async def send_line(self, login: str, line: bytes) -> bool: ...
-
-
-class ObserveSender:
-    name = "observe"
-
-    async def send(self, command: ExecutionCommand, account: Account) -> SendResult:
-        return SendResult(kind="simulated", detail="OBSERVE: validated and recorded — nothing was sent anywhere")
-
-
-class PaperSender:
-    name = "paper"
-
-    def __init__(self, market: MarketDataService) -> None:
-        self._market = market
-
-    async def send(self, command: ExecutionCommand, account: Account) -> SendResult:
-        request = command.request
-        if request.kind is not CommandKind.OPEN:
-            # Management is recorded as simulated: the paper broker keeps no positions of its own, so there is nothing to move.
-            return SendResult(
-                kind="simulated",
-                detail=f"PAPER: {request.kind.value} accepted and recorded — no broker position exists",
-            )
-        if request.order_type is OrderKind.LIMIT:
-            return SendResult(
-                kind="simulated",
-                detail=f"PAPER: limit order at {request.price:g} recorded as resting — no fill is simulated, no broker order exists",
-            )
-        tick = self._market.tick(account.id, request.symbol)
-        if tick is None or request.side is None or request.volume is None:
-            return SendResult(kind="not_sent", detail="paper broker has no quote for the symbol: no simulated fill")
-        price = tick.ask if request.side is Side.BUY else tick.bid
-        return SendResult(
-            kind="simulated",
-            detail=f"PAPER: simulated fill at {price:g} (no broker order exists)",
-            average_price=price,
-            filled_volume=request.volume,
-        )
 
 
 class AgentSender:

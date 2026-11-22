@@ -175,7 +175,7 @@ class Core:
     async def climb(self, top: AutonomyMode) -> None:
         """Walk the autonomy ladder one rung at a time up to ``top`` (the readiness must be green for the automatic rungs)."""
         order = (
-            AutonomyMode.OBSERVE, AutonomyMode.PAPER, AutonomyMode.CONFIRM, AutonomyMode.ARMED, AutonomyMode.AUTONOMOUS,
+            AutonomyMode.OBSERVE, AutonomyMode.CONFIRM, AutonomyMode.ARMED, AutonomyMode.AUTONOMOUS,
         )  # fmt: skip
         for mode in order:
             await self.c.autonomy.arm(mode)

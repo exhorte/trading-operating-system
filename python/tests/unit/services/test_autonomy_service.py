@@ -107,10 +107,10 @@ async def make(h: Harness, *, max_mode: AutonomyMode = M.AUTONOMOUS, ceiling: Au
 async def test_it_starts_off_and_climbs_one_rung_at_a_time(h: Harness) -> None:
     rig = await make(h)
     assert mode_of(rig.autonomy) is M.OFF and not rig.autonomy.permits_entries() and not rig.autonomy.halted()
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM)
+    await rig.climb(M.OBSERVE, M.CONFIRM)
     assert mode_of(rig.autonomy) is M.CONFIRM and rig.autonomy.permits_entries()
     assert [(e.previous, e.current) for e in h.recorder.of(AutonomyModeChanged)] == [
-        (M.OFF, M.OBSERVE), (M.OBSERVE, M.PAPER), (M.PAPER, M.CONFIRM),
+        (M.OFF, M.OBSERVE), (M.OBSERVE, M.CONFIRM),
     ]  # fmt: skip
     stored = await h.repos.state.get(AUTONOMY_KEY)
     assert stored is not None and stored["mode"] == "CONFIRM"  # every climb is on record before it counts
@@ -126,7 +126,7 @@ async def test_skipping_a_rung_or_stepping_up_through_disarm_is_refused(h: Harne
 
 async def test_the_ceiling_is_the_lower_of_the_process_and_the_active_account(h: Harness) -> None:
     capped_account = await make(h, max_mode=M.CONFIRM)
-    await capped_account.climb(M.OBSERVE, M.PAPER, M.CONFIRM)
+    await capped_account.climb(M.OBSERVE, M.CONFIRM)
     with pytest.raises(Forbidden) as caught:
         await capped_account.autonomy.arm(M.ARMED)
     assert caught.value.code == "above_ceiling"
@@ -138,7 +138,7 @@ async def test_the_ceiling_is_the_lower_of_the_process_and_the_active_account(h:
     await capped_process.start()
     await capped_process.arm(M.OBSERVE)
     with pytest.raises(Forbidden) as again:
-        await capped_process.arm(M.PAPER)  # TRADING_MODE is a ceiling the account's setting cannot raise
+        await capped_process.arm(M.CONFIRM)  # TRADING_MODE is a ceiling the account's setting cannot raise
     assert again.value.code == "above_ceiling"
 
 
@@ -149,14 +149,14 @@ async def test_with_no_active_account_nothing_above_observe_is_reachable(h: Harn
     assert await autonomy.ceiling() is M.OBSERVE
     await autonomy.arm(M.OBSERVE)
     with pytest.raises(Forbidden):
-        await autonomy.arm(M.PAPER)
+        await autonomy.arm(M.CONFIRM)
 
 
 async def test_the_effective_mode_of_an_account_is_the_lower_of_the_state_and_its_ceiling(h: Harness) -> None:
-    rig = await make(h, max_mode=M.PAPER)
+    rig = await make(h, max_mode=M.CONFIRM)
     assert rig.autonomy.effective_mode(rig.account) is M.OFF
-    await rig.climb(M.OBSERVE, M.PAPER)
-    assert rig.autonomy.effective_mode(rig.account) is M.PAPER
+    await rig.climb(M.OBSERVE, M.CONFIRM)
+    assert rig.autonomy.effective_mode(rig.account) is M.CONFIRM
     other = rig.account.model_copy(
         update={"execution_profile": rig.account.execution_profile.model_copy(update={"max_mode": M.OBSERVE})}
     )
@@ -170,7 +170,7 @@ async def test_the_effective_mode_of_an_account_is_the_lower_of_the_state_and_it
 
 async def test_the_automatic_rungs_say_exactly_what_blocks_them(h: Harness) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM)
+    await rig.climb(M.OBSERVE, M.CONFIRM)
     rig.facts.broken = {"reconciliation": "2 critical findings", "heartbeat": "agent silent for 40 s"}
     with pytest.raises(Forbidden) as caught:
         await rig.autonomy.arm(M.ARMED)
@@ -201,7 +201,7 @@ async def test_a_readiness_that_cannot_be_gathered_is_never_green(h: Harness) ->
     rig.facts.explode = True
     report = await rig.autonomy.readiness(fresh=True)
     assert not report.ready and "python_core" in report.blockers
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM)
+    await rig.climb(M.OBSERVE, M.CONFIRM)
     with pytest.raises(Forbidden):
         await rig.autonomy.arm(M.ARMED)
 
@@ -220,7 +220,7 @@ async def test_the_cached_report_is_reused_for_a_moment(h: Harness) -> None:
 
 async def test_the_armed_window_is_renewed_by_the_human_and_lapses_into_confirm(h: Harness) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED)
+    await rig.climb(M.OBSERVE, M.CONFIRM, M.ARMED)
     armed_at = h.clock.now()
     assert rig.autonomy.state.lease_until == armed_at + timedelta(minutes=30)
     assert h.recorder.of(AutonomyArmed)[-1].lease_until == armed_at + timedelta(minutes=30)
@@ -243,7 +243,7 @@ async def test_the_armed_window_is_renewed_by_the_human_and_lapses_into_confirm(
 
 async def test_renewing_needs_a_green_readiness_too(h: Harness) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED)
+    await rig.climb(M.OBSERVE, M.CONFIRM, M.ARMED)
     rig.facts.broken = {"heartbeat": "silent"}
     with pytest.raises(Forbidden) as caught:
         await rig.autonomy.renew()
@@ -255,7 +255,7 @@ async def test_a_readiness_that_stays_red_steps_an_automatic_rung_down_to_confir
     h: Harness, top: AutonomyMode
 ) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED, *([M.AUTONOMOUS] if top is M.AUTONOMOUS else []))
+    await rig.climb(M.OBSERVE, M.CONFIRM, M.ARMED, *([M.AUTONOMOUS] if top is M.AUTONOMOUS else []))
     rig.facts.broken = {"heartbeat": "agent silent"}
     await rig.autonomy.tick()  # the clock starts
     h.clock.advance(seconds=10)
@@ -269,7 +269,7 @@ async def test_a_readiness_that_stays_red_steps_an_automatic_rung_down_to_confir
 
 async def test_a_flap_shorter_than_the_tolerance_changes_nothing(h: Harness) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED, M.AUTONOMOUS)
+    await rig.climb(M.OBSERVE, M.CONFIRM, M.ARMED, M.AUTONOMOUS)
     for _ in range(3):
         rig.facts.broken = {"heartbeat": "blip"}
         await rig.autonomy.tick()
@@ -282,7 +282,7 @@ async def test_a_flap_shorter_than_the_tolerance_changes_nothing(h: Harness) -> 
 
 async def test_human_in_the_loop_rungs_do_not_depend_on_readiness(h: Harness) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM)
+    await rig.climb(M.OBSERVE, M.CONFIRM)
     rig.facts.broken = {"database": "down"}
     h.clock.advance(minutes=5)
     await rig.autonomy.tick()
@@ -291,7 +291,7 @@ async def test_human_in_the_loop_rungs_do_not_depend_on_readiness(h: Harness) ->
 
 async def test_lowering_the_ceiling_under_a_running_mode_pulls_it_down(h: Harness) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM)
+    await rig.climb(M.OBSERVE, M.CONFIRM)
     h.clock.advance(seconds=1)  # two rule versions never share an instant
     await rig.accounts.request_rules(
         rig.account.id,
@@ -307,15 +307,15 @@ async def test_lowering_the_ceiling_under_a_running_mode_pulls_it_down(h: Harnes
 
 async def test_disarm_steps_down_immediately_and_records_who_and_why(h: Harness) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED)
-    state = await rig.autonomy.disarm(M.PAPER, reason="going to lunch", actor="user")
-    assert state.mode is M.PAPER and state.lease_until is None
+    await rig.climb(M.OBSERVE, M.CONFIRM, M.ARMED)
+    state = await rig.autonomy.disarm(M.CONFIRM, reason="going to lunch", actor="user")
+    assert state.mode is M.CONFIRM and state.lease_until is None
     assert h.recorder.of(AutonomyDisarmed)[-1].reason == "going to lunch (user)"
 
 
 async def test_halt_cuts_everything_and_leaving_it_takes_an_acknowledgement(h: Harness) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED)
+    await rig.climb(M.OBSERVE, M.CONFIRM, M.ARMED)
     state = await rig.autonomy.halt("reconciliation failed", actor="supervisor")
     assert state.mode is M.HALTED and rig.autonomy.halted() and not rig.autonomy.permits_entries()
     assert rig.halts == ["reconciliation failed"]  # the execution agents were told
@@ -340,7 +340,7 @@ async def test_halt_cuts_everything_and_leaving_it_takes_an_acknowledgement(h: H
 
 async def test_a_halt_survives_a_restart_and_anything_else_does_not(h: Harness) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER, M.CONFIRM, M.ARMED)
+    await rig.climb(M.OBSERVE, M.CONFIRM, M.ARMED)
     await rig.autonomy.halt("critical error")
     restarted = new_service(h, rig.accounts, rig.facts, [], M.AUTONOMOUS)
     await restarted.start()
@@ -351,7 +351,6 @@ async def test_a_halt_survives_a_restart_and_anything_else_does_not(h: Harness) 
     fresh = new_service(h, rig.accounts, rig.facts, [], M.AUTONOMOUS)
     await fresh.start()
     await fresh.arm(M.OBSERVE)
-    await fresh.arm(M.PAPER)
     await fresh.arm(M.CONFIRM)
     await fresh.arm(M.ARMED)
     after = new_service(h, rig.accounts, rig.facts, [], M.AUTONOMOUS)
@@ -369,7 +368,7 @@ async def test_a_step_up_that_cannot_be_recorded_is_refused_but_a_step_down_is_n
     h: Harness, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     rig = await make(h)
-    await rig.climb(M.OBSERVE, M.PAPER)
+    await rig.climb(M.OBSERVE)
 
     async def broken(key: str, value: object) -> None:
         raise Unavailable("database unavailable", code="database_unavailable")
@@ -377,9 +376,9 @@ async def test_a_step_up_that_cannot_be_recorded_is_refused_but_a_step_down_is_n
     monkeypatch.setattr(h.repos.state, "set", broken)
     with pytest.raises(Unavailable) as caught:
         await rig.autonomy.arm(M.CONFIRM)
-    assert caught.value.code == "store_unavailable" and mode_of(rig.autonomy) is M.PAPER  # not changed
+    assert caught.value.code == "store_unavailable" and mode_of(rig.autonomy) is M.OBSERVE  # not changed
 
-    assert (await rig.autonomy.disarm(M.OBSERVE)).mode is M.OBSERVE  # safety actions never wait for the database
+    assert (await rig.autonomy.disarm(M.OFF)).mode is M.OFF  # safety actions never wait for the database
     assert (await rig.autonomy.halt("db is down too")).mode is M.HALTED
 
 

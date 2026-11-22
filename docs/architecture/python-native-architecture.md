@@ -251,7 +251,7 @@ Aucune table ne contient de secret. Aucune migration destructive n'est appliqué
 | Identifiants MT5 | jamais dans le frontend, les journaux, la base, les événements, les exceptions ; `SecretStr` partout ; `CredentialStore` nul par défaut, coffre Windows en opt-in ; endpoint d'écriture seule |
 | Journaux | filtre de masquage (jetons, mots de passe) ; test avec « sentinelles » : un faux mot de passe est absent des journaux, réponses, événements, exceptions, tables |
 | EA | jeton d'agent (`MQL5\Files\tradingos_agent.token`) ; identité (`ACCOUNT_LOGIN`) ; magic > 0 ; instance unique ; plafond de mode compilé |
-| Assistant de développement | ne déclenche jamais ordre/armement/autonomie ; ne voit jamais de mot de passe réel (`.claude/CLAUDE.md`) |
+| Assistant de développement | feu vert général (ADR 0042) : démarrage, modes et ordres de test sur la démo ; jamais d'ordre, d'armement ni de mode automatique sur un compte en argent réel ; ne voit jamais de mot de passe réel (`.claude/CLAUDE.md`) |
 | Limite assumée | un logiciel malveillant sous le compte Windows de l'utilisateur lit `.env`, la mémoire et les fichiers MT5 : hors modèle de menace (ADR 0013) |
 
 ## 12. Gestion des pannes — le Supervisor

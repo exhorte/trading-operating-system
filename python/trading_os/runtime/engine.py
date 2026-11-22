@@ -164,6 +164,7 @@ class Engine:
             critical=True,
         )  # fmt: skip
         add("autonomy", c.autonomy.tick, interval_s=2.0, timeout_s=30)
+        add("autopilot", c.autopilot.tick, interval_s=5.0, timeout_s=90, initial_delay_s=5.0)  # ADR 0043
         add("supervisor", c.supervisor.tick, interval_s=s.supervisor_interval_s, timeout_s=30, critical=True)
         add("tick_writer", c.tick_writer.flush, interval_s=1.0, timeout_s=15)
         add(

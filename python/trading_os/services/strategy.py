@@ -7,12 +7,12 @@ Engine. It decides neither the risk nor the order (ADR 0007): Strategy → Trade
 * **It acts only as far as the mode lets it.** OFF and HALTED evaluate nothing. From OBSERVE up, a fresh proposal becomes a
   ``TradeIntent`` (persisted first) and the Risk Engine is asked for a decision (persisted too) — OBSERVE records that and sends
   nothing, the Risk Engine itself refuses entries there. Only an *approved* decision goes on to the execution engine, and the engine
-  decides what the mode does with it (paper fill, wait for a human, send). A setup is handled **once**: the intent's id is the
+  decides what the mode does with it (record only, wait for a human, send). A setup is handled **once**: the intent's id is the
   proposal's id, so a later candle that re-detects it — or a mode raised afterwards — never resurrects a stale setup.
 * **It never invents.** No spread, no specification, a missing timeframe or a feed that fails: the cycle is skipped and nothing is
   recorded (the original's behaviour), the failure is kept for the readiness check instead of being hidden.
 
-S01's entry is a **limit** at the CE of the point of interest. Since ADR 0023 the core carries limit orders: PAPER simulates them, and a
+S01's entry is a **limit** at the CE of the point of interest. Since ADR 0023 the core carries limit orders: OBSERVE records them, and a
 real agent receives one only if it announces the ``limit`` capability (agent 1.11 does not — the hand-off then ends in a recorded
 ``AGENT_CAPABILITY_MISSING`` rejection, which is the truth about the system and is shown as such).
 """
@@ -219,7 +219,9 @@ class StrategyService:
         return [c for c in await self._market.recent_candles(account_id, symbol, timeframe, count) if c.closed]
 
     async def _decide(self, account: Account, symbol: str) -> tuple[datetime, SetupOutcome] | None:
-        cfg = self.config
+        cfg = self.config.for_symbol(
+            to_canonical(symbol)
+        )  # a symbol off the EURUSD's price scale has its own thresholds (ADR 0043)
         m1 = await self._closed(account.id, symbol, Timeframe.M1, cfg.m1_bars)
         if not m1:
             return None

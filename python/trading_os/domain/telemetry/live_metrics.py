@@ -14,7 +14,7 @@ from datetime import datetime
 
 from pydantic import Field
 
-from trading_os.domain.execution.commands import CommandState, ExecutionCommand
+from trading_os.domain.execution.commands import ExecutionCommand
 from trading_os.domain.primitives import DomainModel
 
 # A day of stored ticks at one a second is 86 400 rows: the database summarises them, Python never holds them.
@@ -25,8 +25,8 @@ CAVEATS: tuple[str, ...] = (
     "Quote times come from the broker at one-second resolution and the core reads each symbol once a second: "
     "the receipt lag is known to about two seconds, and the stored ticks are the ones seen at that rate, not every tick.",
     "Percentiles are nearest rank (a value that occurred); the spread is in price units, the receipt lag in seconds.",
-    "Command durations come from the core's own clock (sent, acknowledged, completed) and leave out SIMULATED commands: "
-    "no broker order exists for those.",
+    "Command durations come from the core's own clock (sent, acknowledged, completed) and leave out the commands that never reached the broker "
+    "(refused before the send): no broker response exists for those.",
 )
 
 
@@ -85,7 +85,6 @@ class CommandMetrics(DomainModel):
     by_state: dict[str, int] = Field(default_factory=dict)
     reject_codes: dict[str, int] = Field(default_factory=dict)
     broker_retcodes: dict[str, int] = Field(default_factory=dict)
-    simulated: int = 0  # validated end to end, no broker order exists: left out of every duration below
     ack_s: Distribution  # sent to acknowledged: the round trip core, agent, core
     fill_s: Distribution  # acknowledged to completed: the broker's side
     total_s: Distribution  # created to completed
@@ -99,13 +98,15 @@ def _seconds(start: datetime | None, end: datetime | None) -> float | None:
 
 
 def command_metrics(commands: Sequence[ExecutionCommand]) -> CommandMetrics:
-    simulated = [c for c in commands if c.state is CommandState.SIMULATED]
-    real = [c for c in commands if c.state is not CommandState.SIMULATED]
     ack: list[float] = []
     fill: list[float] = []
     total: list[float] = []
     inconsistent = 0
-    for command in real:
+    for command in commands:
+        if (
+            command.sent_at is None
+        ):  # refused before the send (a mode that sends no order, a rule): no broker answer to time
+            continue
         measured = (
             (ack, _seconds(command.sent_at, command.acknowledged_at)),
             (fill, _seconds(command.acknowledged_at, command.completed_at)),
@@ -123,9 +124,8 @@ def command_metrics(commands: Sequence[ExecutionCommand]) -> CommandMetrics:
     return CommandMetrics(
         total=len(commands),
         by_state=dict(sorted(Counter(c.state.value for c in commands).items())),
-        reject_codes=dict(sorted(Counter(c.reject_code for c in real if c.reject_code).items())),
-        broker_retcodes=dict(sorted(Counter(c.broker_retcode for c in real if c.broker_retcode).items())),
-        simulated=len(simulated),
+        reject_codes=dict(sorted(Counter(c.reject_code for c in commands if c.reject_code).items())),
+        broker_retcodes=dict(sorted(Counter(c.broker_retcode for c in commands if c.broker_retcode).items())),
         ack_s=distribution(ack),
         fill_s=distribution(fill),
         total_s=distribution(total),
@@ -163,8 +163,10 @@ def not_measured(
     )
     if commands.total == 0:
         gaps.append("no command in the window: the broker's responses, rejections and fills are not measured")
-    elif commands.total == commands.simulated:
-        gaps.append("every command in the window was SIMULATED: no broker response exists to measure")
+    elif not (commands.ack_s.n or commands.fill_s.n):
+        gaps.append(
+            "no command in the window was sent to the agent or answered by it: no broker response exists to measure"
+        )
     gaps.append("slippage, real commission and swap: known only from filled deals, not measured here")
     return gaps
 

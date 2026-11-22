@@ -12,8 +12,6 @@ export const COMMAND_STATE_TONES: Record<CommandState, CommandTone> = {
   PENDING: "muted",
   SENT: "info",
   ACKNOWLEDGED: "info",
-  // Observe-mode outcome: deliberately NOT the "profit" fill tone.
-  SIMULATED: "accent",
   EXECUTED: "profit",
   RECONCILED: "profit",
   UNKNOWN: "warning",

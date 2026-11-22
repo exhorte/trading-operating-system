@@ -15,7 +15,8 @@ Read `context/product/tools/EA-05-agent-mql5.md`, `context/execution/{protocol,s
   close, partial close, cancel — goes through that one function; nothing else here can send, modify, close or delete.
 - **Mode is fixed at `OBSERVE`** for the whole lifetime of this build — a compile-time `const`, not an input, not settable by
   any message this agent handles (`control.set_mode` is logged and ignored). So the guard above can never pass and the
-  execution body is provably dead code: every accepted command still reports `SIMULATED` today.
+  execution body is provably dead code: since 1.15 (ADR 0041) every command that passes validation is **refused** with `AGENT_OBSERVE`
+  (acknowledgement `REJECTED`, "order NOT sent") — there is no simulated answer any more, and no paper mode.
 - **The path opens increment by increment.** The approvals of 2026-09-25/26 (ADR 0014 arming, EA-07, EA-08, ADR 0015
   autonomy) cover the study's I4 to I8 (`02_Plan_Projet/etude-connexion-pilotage-agent-2026-09-25.md`); each widening lands
   in its own increment, after its ADR or fiche. Not in this build.
@@ -26,9 +27,8 @@ Read `context/product/tools/EA-05-agent-mql5.md`, `context/execution/{protocol,s
 ## What this build does
 
 `connect` (with the core's agent token) → `hello` → `heartbeat` / `control.ping` → `receive` → idempotency check → **halt** →
-**identity** → account check → expiry check → `validate` (dead-man, then the local barriers) → `acknowledge` → then the mode
-fork: `execute` in `CONFIRM` (unreachable here, see Safety) or `report` `SIMULATED` in every other mode — which is every run of
-this build. EA-06 reconciliation and position scan run on every connect and heartbeat; final reports of the last hour are sent
+**identity** → account check → expiry check → `validate` (dead-man, then the local barriers) → **`AGENT_OBSERVE` refusal** (any mode
+but `CONFIRM`, which is every run of this build) → `acknowledge` → `execute` in `CONFIRM` (unreachable here, see Safety). EA-06 reconciliation and position scan run on every connect and heartbeat; final reports of the last hour are sent
 again on every connect.
 
 ### The five kinds of command (build 1.12, ADR 0029)
@@ -147,29 +147,30 @@ attached again).
 ## Verification procedure
 
 Steps 2 to 4 need a command to reach the agent, which the core sends only on the `CONFIRM` route (the ceiling `TRADING_MODE`
-and the autonomy state are the trader's decision; at `OBSERVE` or `PAPER` the core simulates the command itself and sends
-nothing). They are run **by the trader** from the cockpit — never by an assistant, never against a live agent. Even then this
-build answers `SIMULATED`: no order exists.
+and the autonomy state are the trader's decision; at `OFF`, `OBSERVE` or `HALTED` the core refuses the command itself —
+`MODE_NOT_PERMITTING` — and sends nothing). They are run by the trader from the cockpit, or — since ADR 0042 (2026-11-14) — by the development
+assistant on the **demo** account only, never on a real-money account. Even then this build refuses with `AGENT_OBSERVE`: no order exists.
 
 1. **Connection and heartbeat.** `GET http://127.0.0.1:8000/api/system/health` — `agentsConnected: 1`; the cockpit's *Agents &
    Audit* page shows the agent with its mode (`OBSERVE`), its build (`1.13`) and its capabilities (`ping`, `halt`, `dead_man`, `limit`, `modify`, `close`, `cancel`).
    The EA prints only its *first* connection failure — retries (every second) are silent, and so is success — so a quiet
    `Experts` tab proves nothing. About 12 heartbeats per minute at `InpHeartbeatSeconds=5` (twice that means two instances).
    An agent without the token is refused — the core's log says why.
-2. **Reception and acknowledgements.** A valid command: `ACCEPTED` then `SIMULATED` come back and appear in the cockpit's
-   execution feed.
+2. **Reception and acknowledgements.** A valid command: an acknowledgement `REJECTED` with `AGENT_OBSERVE` comes back (this build
+   sends no order) and appears in the cockpit's execution feed as a refused command with that code. A 1.14 agent still answers
+   `ACCEPTED` then `SIMULATED`; the core reads it as the same refusal.
 3. **Local validation.** A symbol outside `InpAllowedSymbolsCsv` (`SYMBOL_MISMATCH`), a volume above `InpMaxVolumePerOrder`
    (`VOLUME_LIMIT`), no stop (`STOP_MISSING`), a symbol without an `InpMaxSpreadCsv` entry (`SPREAD_LIMIT_MISSING`). Identity: set
    `InpAccountId` to another login — the agent stays attached, its hello says `identity: mismatch`, every command comes back
    `IDENTITY_REFUSED`. **Dead-man:** stop the core, restart it, and send a command within the first seconds, before its first
    ping — it comes back `DEAD_MAN`; a command sent once the pings flow is accepted.
 4. **Persistence.** Send a command, note its `commandId`. Kill the MT5 terminal process (not just the EA) and restart it. Replay
-   the exact same `commandId`. Confirm `DUPLICATE` with the **original** recorded result — never a fresh `SIMULATED`.
+   the exact same `commandId`. Confirm `DUPLICATE` with the **original** recorded result — never a fresh answer.
 5. **Halt.** Stop the core; click **HALT** on the chart; start the core: the heartbeat says `halted: true`; an opening and a stop move
-   come back `HALTED`, while a closing and a cancelling are accepted (`SIMULATED` in this build). Lift it on the chart (button + confirm).
+   come back `HALTED`, while a closing and a cancelling are not refused for the halt (they are still refused `AGENT_OBSERVE` in this build). Lift it on the chart (button + confirm).
 6. **Single instance.** Attach the EA to a second chart: it removes itself, the first keeps running.
 7. **The five kinds, end to end, with no order (build 1.12).** On the demo terminal, with the agent attached and a command sent for
-   each kind through the core's `CONFIRM` route: each valid command comes back `ACCEPTED` then `SIMULATED` (the position or order it
+   each kind through the core's `CONFIRM` route: each valid command comes back refused `AGENT_OBSERVE` (the position or order it
    names must exist, be this agent's, and be on the symbol the command says — otherwise `POSITION_NOT_FOUND`, `ORDER_NOT_FOUND`,
    `TARGET_NOT_OURS` or `SYMBOL_MISMATCH`); a `MODIFY` that loosens the stop comes back `STOP_LOOSENED`; a partial close of the whole
    volume comes back `VOLUME_INVALID`. Nothing leaves the terminal: the mode is compiled to `OBSERVE`.
@@ -205,6 +206,38 @@ and recompiled it himself on a **demo** account:
    and that every position is gone from `positions_get()` before the cockpit says the batch is complete. A position this agent did not place
    (another magic number, opened by hand) is refused with `TARGET_NOT_OURS`; the core does not even send it and tells the trader to close it
    in MT5. Lifting that is a separate agreement and a change to the one `OrderSend`: not done.
+
+## The Inputs tab as MT5 shows it (checked on a screenshot, 2026-11-13)
+
+MT5 labels each input with its **trailing `//` comment**, not with its variable name; an input without a comment shows its name. The rows come in the
+order of the declarations in `TradingOsAgent.mq5` (16 of them):
+
+| # | Variable | Label MT5 shows (start of the comment) | Value in the launcher's preset | What the trader sets for an order |
+|---|---|---|---|---|
+| 1 | `InpCoreHost` | « The Python core's host — loopback only… » | `127.0.0.1` | keep |
+| 2 | `InpCorePort` | « Must match EA_LINK_PORT of the Python core… » | `9765` | keep |
+| 3 | `InpAccountId` | « OPTIONAL since I1: the login this terminal is expected to be on » | the login | keep |
+| 4 | `InpMagicNumber` | « REQUIRED: unique per environment… » | `1001` | keep (the core closes only positions carrying it) |
+| 5 | `InpTradableLogins` | « I1: logins on which an order may EVER reach the broker (CONFIRM… » | **empty** | **the login** (empty = the agent never trades) |
+| 6 | `InpClosableLogins` | « I1: logins on which a close may EVER reach the broker (EA-08, I… » | **empty** | **the login** (empty = the agent never closes) |
+| 7 | `InpHeartbeatSeconds` | « InpHeartbeatSeconds » (no comment) | `5` | keep |
+| 8 | `InpMaxVolumePerOrder` | « lots — local barrier, last line of defense… » | `1.0` | keep or lower: an order above it is refused `VOLUME_LIMIT` |
+| 9 | `InpMaxOpenPositions` | « local barrier — counts ALL positions on this terminal… » | `3` | keep |
+| 10 | `InpMaxSpreadCsv` | « I1: maximum spread per symbol in PRICE units, e.g. "EURUSDm=0.0… » | **empty** | **`EURUSDm=0.00025`** or **`XAUUSDm=0.40`**: a symbol without an entry cannot be opened |
+| 11 | `InpAllowedSymbolsCsv` | « local whitelist — broker-side names… » | `XAUUSDm,EURUSDm` | keep (the readiness compares it with the declaration) |
+| 12 | `InpMaxSlippagePoints` | « EA-05 inc. 6: MqlTradeRequest.deviation… » | `10` | `10` on EURUSDm (1 pip), `100` on XAUUSDm (3 digits: 10 cents) |
+| 13 | `InpPendingMaxMinutes` | « 1.12: a pending (LIMIT) order always expires at the broker afte… » | `60` | keep |
+| 14 | `InpReconciliationLookbackDays` | « EA-06: how far back HistorySelect searches… » | `7` | keep |
+| 15 | `InpReportReplayMinutes` | « I1: final reports recorded this recently are sent again after a… » | `60` | keep |
+| 16 | `InpDeadManSeconds` | « Python-native core: a NEW order is refused (DEAD_MAN) when no c… » | `30` | keep |
+
+The launcher's `prepare` writes `InpTradableLogins` and `InpClosableLogins` **empty on purpose** (`launcher/mt5/preset.py`): the lists that let an agent send an order are
+only ever typed by the trader. Three presets that carry them, one per pair, sit in `MQL5\Presets` (read-only, loaded with **Load** in the Inputs tab):
+`TradingOS-CONFIRM-EURUSDm.set`, `TradingOS-CONFIRM-XAUUSDm.set` and `TradingOS-CONFIRM-BTCUSDm.set` (BTCUSDm read on the demo terminal on 2026-11-13: 2 digits,
+point 0.01, lot 0.01 to 200 step 0.01, 1 BTC per lot, constant spread 6.40, market execution, filling FOK/IOC; its preset allows only `BTCUSDm`, spread cap `10.00`,
+slippage `500` points = 5 USD, `InpMaxVolumePerOrder=0.50`). The first two differ only by `InpMaxSpreadCsv` and `InpMaxSlippagePoints`; a build compiled in
+`OBSERVE` ignores the two order lists. MT5 never changes a preset file by itself; it starts every attach from the compiled defaults, so **Load** is needed at
+each attach.
 
 ## Known limitations of this build
 

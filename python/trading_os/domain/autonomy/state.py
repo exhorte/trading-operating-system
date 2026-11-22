@@ -1,6 +1,6 @@
 """The autonomy ladder and its transitions (ADR 0014/0015, mission § 24).
 
-    OFF → OBSERVE → PAPER → CONFIRM → ARMED → AUTONOMOUS          (+ HALTED, reachable from anywhere)
+    OFF → OBSERVE → CONFIRM → ARMED → AUTONOMOUS                  (+ HALTED, reachable from anywhere)
 
 * **One rung up at a time**, never above the ceiling (``min(TRADING_MODE, account max_mode)``, default OBSERVE).
 * Going down is always allowed and immediate.
@@ -26,7 +26,6 @@ from trading_os.shared.errors import Forbidden, IllegalTransition
 class AutonomyMode(StrEnum):
     OFF = "OFF"
     OBSERVE = "OBSERVE"
-    PAPER = "PAPER"
     CONFIRM = "CONFIRM"
     ARMED = "ARMED"
     AUTONOMOUS = "AUTONOMOUS"
@@ -36,7 +35,6 @@ class AutonomyMode(StrEnum):
 LADDER: tuple[AutonomyMode, ...] = (
     AutonomyMode.OFF,
     AutonomyMode.OBSERVE,
-    AutonomyMode.PAPER,
     AutonomyMode.CONFIRM,
     AutonomyMode.ARMED,
     AutonomyMode.AUTONOMOUS,
@@ -61,14 +59,12 @@ class ExecutionRoute(StrEnum):
     """What happens to an approved intent in a given mode."""
 
     NONE = "none"  # recorded only (OFF, OBSERVE, HALTED)
-    PAPER = "paper"  # simulated fill in process, never MT5
     CONFIRM = "confirm"  # waits for a human, then goes to the execution agent
     AUTOMATIC = "automatic"  # goes to the execution agent without a per-order gesture
 
 
 def route_for(mode: AutonomyMode) -> ExecutionRoute:
     return {
-        AutonomyMode.PAPER: ExecutionRoute.PAPER,
         AutonomyMode.CONFIRM: ExecutionRoute.CONFIRM,
         AutonomyMode.ARMED: ExecutionRoute.AUTOMATIC,
         AutonomyMode.AUTONOMOUS: ExecutionRoute.AUTOMATIC,
@@ -95,7 +91,7 @@ class AutonomyState(DomainModel):
 
     @property
     def permits_entries(self) -> bool:
-        """Whether new entries may reach an executor at all (paper included)."""
+        """Whether new entries may reach an executor at all."""
         return route_for(self.mode) is not ExecutionRoute.NONE
 
 

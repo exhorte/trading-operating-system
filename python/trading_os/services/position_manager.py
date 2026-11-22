@@ -2,7 +2,7 @@
 
 * **It manages only what it opened.** A position counts when an OPEN command of the core names it (``for_position``); one opened by hand
   in MT5, or by anything else, is left alone. A resting limit order counts when it carries one of our traces.
-* **It acts only as far as the mode lets it.** OFF and HALTED: nothing. OBSERVE and PAPER: the plan is computed and *shown* (what the
+* **It acts only as far as the mode lets it.** OFF and HALTED: nothing. OBSERVE: the plan is computed and *shown* (what the
   manager would ask for), no command is created — nothing rests at a broker in those modes. CONFIRM, ARMED, AUTONOMOUS: each action is
   an ordinary ``ExecutionRequest`` through ``ExecutionService.submit`` — the same validation, the same mode routing, the same trace.
 * **It does not repeat itself.** A command already in flight is waited for; a command that ended without effect is asked again only
@@ -50,7 +50,7 @@ from trading_os.shared.time import Clock
 logger = logging.getLogger(__name__)
 
 ACTING_MODES = frozenset({AutonomyMode.CONFIRM, AutonomyMode.ARMED, AutonomyMode.AUTONOMOUS})
-SHOWING_MODES = frozenset({AutonomyMode.OBSERVE, AutonomyMode.PAPER})
+SHOWING_MODES = frozenset({AutonomyMode.OBSERVE})
 STALE_AFTER = timedelta(minutes=2)  # the manager did not run for this long while it should have
 
 
