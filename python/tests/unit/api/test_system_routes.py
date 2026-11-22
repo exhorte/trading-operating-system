@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from tests.support.api import ORIGIN, TOKEN, Api
+from tests.support.api import ORIGIN, TOKEN, Api, make_api
+from tests.support.harness import Harness
 from trading_os.shared.errors import Conflict
 
 pytestmark = pytest.mark.db
@@ -36,6 +39,27 @@ async def test_the_health_is_open_minimal_and_never_names_a_secret_or_an_account
     workers = body["mt5Workers"]
     assert set(workers) == {"spawned", "ended", "alive"}
     assert workers["alive"] == workers["spawned"] - workers["ended"] >= 0
+    # one fact about the pilot (ADR 0043), nothing else: whether it is at work. This core has no target, so it is not.
+    assert body["autopilot"] == {"active": False}
+
+
+async def test_the_health_says_whether_the_pilot_is_at_work_because_a_pilot_at_work_attaches_the_account(
+    h: Harness,
+) -> None:
+    """The launcher reads it before it closes MetaTrader (R16): a pilot at work attaches the account again, and a worker that finds the terminal
+    closed starts it again without the agent."""
+    api = await make_api(h, settings={"autopilot_target": "OBSERVE"})
+    try:
+        async with api.bare() as anonymous:
+            assert (await anonymous.get("/api/system/health")).json()["autopilot"] == {"active": True}
+        api.core.c.autopilot.pause("a person disarmed the system")
+        async with api.bare() as anonymous:
+            body = (await anonymous.get("/api/system/health")).json()
+        assert body["autopilot"] == {"active": False} and "disarmed" not in json.dumps(
+            body
+        )  # the reason stays behind the guard
+    finally:
+        await api.close()
 
 
 async def test_everything_else_needs_the_token_and_the_origin(api: Api) -> None:

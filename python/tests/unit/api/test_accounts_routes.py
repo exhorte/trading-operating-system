@@ -128,6 +128,106 @@ async def test_disconnecting_is_refused_while_risk_is_open_and_forcing_is_explic
     assert forced.status_code == 200 and forced.json()["status"] == "DISCONNECTED"
 
 
+# ------------------------------------------------------------------------------------------------------ the pilot (ADR 0043) and R16
+
+
+@pytest.fixture
+async def pilot_api(h: Harness) -> AsyncIterator[Api]:
+    """A ready core whose pilot is aimed at OBSERVE: it keeps the account attached — and would attach it again, at once, if it were let go of."""
+    instance = await make_api(h, settings={"autopilot_target": "OBSERVE"})
+    yield instance
+    await instance.close()
+
+
+async def let_the_pilot_pass(api: Api, passes: int = 4) -> None:
+    """The pilot's own pace: it looks again every few seconds."""
+    for _ in range(passes):
+        api.core.h.clock.advance(seconds=5)
+        await api.core.c.autopilot.tick()
+
+
+async def test_a_person_who_detaches_the_account_pauses_the_pilot_which_never_attaches_it_again(pilot_api: Api) -> None:
+    """R16 (ADR 0039) meets the pilot (ADR 0043). A worker that finds MetaTrader closed starts it again, without the agent — so the person detaches the
+    account before MetaTrader is restarted. A pilot that stayed on would attach it again within seconds: a person who detaches has stepped down, and
+    the pilot respects it as it respects a disarm."""
+    account = pilot_api.core.account
+    assert account is not None
+    pilot = pilot_api.core.c.autopilot
+    assert pilot.status().active
+    detached = await pilot_api.post(f"/api/accounts/{account.id}/disconnect")
+    assert detached.status_code == 200 and detached.json()["status"] == "DISCONNECTED"
+    status = pilot.status()
+    assert not status.active and "detached" in (status.paused_reason or "")
+    await let_the_pilot_pass(pilot_api)
+    assert not pilot_api.core.c.accounts.is_connected(account.id)  # nothing attaches it behind the person's back
+    pilot.resume()  # what « démarrer le système » does (ADR 0043)
+    await let_the_pilot_pass(pilot_api)
+    assert pilot_api.core.c.accounts.is_connected(account.id)
+
+
+async def test_the_pilot_is_put_to_rest_before_the_detach_not_after(
+    pilot_api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pilot's attach and the detach take the same lock: a pilot still at work when the detach begins would attach the account again the moment the
+    detach lets go — before the route could pause it. The order is the whole point."""
+    account = pilot_api.core.account
+    assert account is not None
+    seen: list[bool] = []
+    real = pilot_api.core.c.accounts.disconnect
+
+    async def watching(*args: object, **kwargs: object) -> object:
+        seen.append(pilot_api.core.c.autopilot.status().active)  # type: ignore[attr-defined]
+        return await real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(pilot_api.core.c.accounts, "disconnect", watching)
+    assert (await pilot_api.post(f"/api/accounts/{account.id}/disconnect")).status_code == 200
+    assert seen == [False]
+
+
+async def test_forcing_the_detach_is_the_same_gesture(pilot_api: Api) -> None:
+    account = pilot_api.core.account
+    assert account is not None
+    forced = await pilot_api.post(f"/api/accounts/{account.id}/disconnect", force="true")
+    assert forced.status_code == 200
+    assert not pilot_api.core.c.autopilot.status().active
+
+
+async def test_a_refused_detach_steps_nothing_down(pilot_api: Api) -> None:
+    account = pilot_api.core.account
+    assert account is not None
+    pilot_api.core.terminal.add_position(
+        identifier=777, symbol="EURUSDm", side=0, volume=0.05, price_open=1.1, sl=1.099, magic=0
+    )
+    await pilot_api.core.c.positions.poll(account.id)
+    refused = await pilot_api.post(f"/api/accounts/{account.id}/disconnect")
+    assert refused.status_code == 409 and refused.json()["code"] == "disconnect_refused"
+    assert (
+        pilot_api.core.c.autopilot.status().active
+    )  # the gesture failed: the account is still attached, the pilot still at work
+    # a pause that was already there (a disarm) is not replaced, nor lifted, by a gesture that failed
+    pilot_api.core.c.autopilot.pause("a person disarmed the system")
+    again = await pilot_api.post(f"/api/accounts/{account.id}/disconnect")
+    assert again.status_code == 409
+    assert pilot_api.core.c.autopilot.status().paused_reason == "a person disarmed the system"
+
+
+async def test_detaching_an_account_that_is_not_attached_steps_nothing_down(pilot_api: Api) -> None:
+    await create_second(pilot_api)  # registered, never attached: there is nothing to step down from
+    detached = await pilot_api.post("/api/accounts/exness-1000002/disconnect")
+    assert detached.status_code == 200 and detached.json()["status"] == "DISCONNECTED"
+    assert pilot_api.core.c.autopilot.status().active
+    assert (await pilot_api.post("/api/accounts/nope/disconnect")).status_code == 404
+    assert pilot_api.core.c.autopilot.status().active
+
+
+async def test_reconnecting_is_not_stepping_down(pilot_api: Api) -> None:
+    account = pilot_api.core.account
+    assert account is not None
+    reconnected = await pilot_api.post(f"/api/accounts/{account.id}/reconnect")
+    assert reconnected.status_code == 200 and reconnected.json()["status"] == "CONNECTED"
+    assert pilot_api.core.c.autopilot.status().active
+
+
 async def test_what_the_account_holds_is_served_from_the_cores_state(api: Api) -> None:
     account = api.core.account
     assert account is not None

@@ -140,9 +140,44 @@ def test_a_worker_of_the_core_attached_to_the_account_blocks_the_close_and_says_
     plan = controller.plan(machine.entry())
     (gate,) = [g for g in plan.gates if g.code == "CORE_WORKER_DETACHED"]
     assert not gate.ok and "détachez" in gate.detail.lower() and "ne détache ni ne rattache" in gate.detail
+    assert (
+        "pilote" in gate.detail and "pause" in gate.detail
+    )  # detaching is also what puts the pilot to rest (ADR 0043)
     with pytest.raises(StartRefused):
         controller.start(plan, confirmation=PHRASE)
     assert machine.closed_asked == []
+
+
+def test_a_pilot_at_work_blocks_the_close_even_before_it_has_attached_anything(tmp_path: Path) -> None:
+    """ADR 0043 meets R16: no worker is attached yet, but the pilot looks again every few seconds and would attach the account — and a worker that
+    finds MetaTrader closed starts it again, without the agent. A count of workers at one instant is not enough."""
+    machine = Machine(tmp_path, running=True)
+    machine.with_workers(alive=0, pilot=True)
+    controller = machine.controller()
+    plan = controller.plan(machine.entry())
+    assert next(g for g in plan.gates if g.code == "CORE_WORKER_DETACHED").ok
+    (gate,) = [g for g in plan.gates if g.code == "AUTOPILOT_PAUSED"]
+    assert not gate.ok and "pilote" in gate.detail and "ADR 0043" in gate.detail and "pause" in gate.detail
+    with pytest.raises(StartRefused) as refused:
+        controller.start(plan, confirmation=PHRASE)
+    assert any("AUTOPILOT_PAUSED" in problem for problem in refused.value.problems)
+    assert machine.closed_asked == []
+
+
+def test_a_pilot_that_is_off_or_paused_is_not_an_obstacle(tmp_path: Path) -> None:
+    machine = Machine(tmp_path, running=True)
+    machine.with_workers(alive=0, pilot=False)
+    plan = machine.controller().plan(machine.entry())
+    assert next(g for g in plan.gates if g.code == "AUTOPILOT_PAUSED").ok
+
+
+def test_a_core_that_does_not_say_whether_the_pilot_is_at_work_is_a_refusal(tmp_path: Path) -> None:
+    """An older core does not say. Unknown is not « off » (the same rule as for the workers)."""
+    machine = Machine(tmp_path, running=True)
+    machine.with_workers(alive=0, pilot=None)
+    plan = machine.controller().plan(machine.entry())
+    (gate,) = [g for g in plan.gates if g.code == "AUTOPILOT_PAUSED"]
+    assert not gate.ok and "ne dit pas" in gate.detail
 
 
 def test_a_core_that_is_up_but_does_not_say_how_many_workers_is_a_refusal(tmp_path: Path) -> None:
@@ -158,6 +193,7 @@ def test_a_core_that_is_down_is_not_an_obstacle(tmp_path: Path) -> None:
     machine = Machine(tmp_path, running=True)
     plan = machine.controller().plan(machine.entry())
     assert next(g for g in plan.gates if g.code == "CORE_WORKER_DETACHED").ok
+    assert next(g for g in plan.gates if g.code == "AUTOPILOT_PAUSED").ok  # no core, no pilot to attach the account
 
 
 def test_a_terminal_that_ignores_the_close_request_is_left_alone_never_killed(tmp_path: Path) -> None:

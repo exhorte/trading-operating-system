@@ -162,10 +162,54 @@ def test_the_wrappers_find_the_python_and_call_the_launcher_and_do_nothing_else(
     offenders = {
         f"{path.name}: {match.group(0)}"
         for path in WRAPPERS
-        for match in [forbidden.search(path.read_text(encoding="utf-8-sig"))]
+        for match in [forbidden.search(_commands_of(path))]
         if match
     }
     assert not offenders, offenders
+
+
+# ADR 0038, A11 — « Docker Desktop éteint » — taken the other way by Exhorte on 2026-11-22 (« le lancer »): the batch file may call ONE dedicated script, and
+# name the variable that skips it. Nothing else of Docker is allowed in the wrappers; the script has its own, narrower contract below.
+DOCKER_SCRIPT = REPO / "scripts" / "TradingOS.Docker.ps1"
+_DOCKER_STARTER_TOKENS = ("TradingOS.Docker.ps1", "TRADINGOS_NODOCKERSTART")
+
+
+def _commands_of(path: Path) -> str:
+    """What a wrapper *does*: its text without the comments of a batch file (``rem``) and without the two names that call and skip the Docker script."""
+    text = path.read_text(encoding="utf-8-sig")
+    if path.suffix.lower() == ".bat":
+        text = "\n".join(line for line in text.splitlines() if not re.match(r"\s*rem(\s|$)", line, re.IGNORECASE))
+        for token in _DOCKER_STARTER_TOKENS:
+            text = text.replace(token, "")
+    return text
+
+
+def test_the_batch_file_calls_the_docker_script_in_the_start_modes_only_and_the_launcher_wrapper_never_mentions_docker() -> (
+    None
+):
+    bat = (REPO / "TradingOS.bat").read_text(encoding="utf-8")
+    assert "TradingOS.Docker.ps1" in bat and "TRADINGOS_NODOCKERSTART" in bat
+    assert not re.search(r"docker", WRAPPERS[0].read_text(encoding="utf-8-sig"), re.IGNORECASE)
+
+
+def test_the_docker_script_starts_docker_desktop_and_does_nothing_else() -> None:
+    """It may launch the Docker Desktop executable it was given or found — once — and ask « docker info ». It ends nothing, removes nothing, reads and writes
+    no file, touches no container, no secret, no MetaTrader."""
+    raw = DOCKER_SCRIPT.read_text(encoding="utf-8-sig")
+    code = "\n".join(
+        line for line in re.sub(r"<#.*?#>", "", raw, flags=re.DOTALL).splitlines() if not line.lstrip().startswith("#")
+    )
+    forbidden = re.compile(
+        r"taskkill|Stop-Process|Stop-Service|Invoke-Expression|\biex\b|Remove-Item|\bdel\s|\brmdir\b|Get-Content|\.env\b|"
+        r"Set-ExecutionPolicy|Set-Content|Out-File|Add-Content|New-Item|netsh|schtasks|reg\s+add|"
+        r"terminal64|metaeditor|OrderSend|AllowLiveTrading|compose|\brm\b|\bkill\b|\bstop\b|\brun\b",
+        re.IGNORECASE,
+    )
+    match = forbidden.search(code)
+    assert match is None, match.group(0) if match else ""
+    launches = re.findall(r"Start-Process[^\n]*", code)
+    assert len(launches) == 1 and "$exe" in launches[0]  # one launch, of the Docker Desktop executable it resolved
+    assert re.findall(r"&\s*\$DockerCommand\s+(\w+)", code) == ["info"]  # the only thing it ever asks Docker
 
 
 def test_the_execution_policy_is_bypassed_for_the_process_only_never_changed() -> None:

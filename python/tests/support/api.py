@@ -94,10 +94,11 @@ async def make_api(
     top: AutonomyMode = AutonomyMode.OBSERVE,
     credentials: CredentialStore | None = None,
     calendar: bool = True,
+    settings: dict[str, Any] | None = None,
 ) -> Api:
     """A ready core (one connected account, one agent, a synced, quiet news calendar, a few cycles behind it) behind the
-    real application."""
-    core = await make_ready_core(h, top=top, credentials=credentials, calendar=calendar)
+    real application. ``settings``: the core's own settings (the pilot's target, for one)."""
+    core = await make_ready_core(h, top=top, credentials=credentials, calendar=calendar, settings=settings)
     core.c.settings.trading_os_cockpit_token = SecretStr(TOKEN)  # (read by alias only: assigned after construction)
     app = create_app(core.c.settings, container=core.c, start_engine=False)
     client = httpx.AsyncClient(

@@ -115,8 +115,11 @@ class Machine:
         if self.on_sleep:
             self.on_sleep()
 
-    def with_workers(self, alive: int) -> None:
-        self.health = FakeHealth(core_health(mt5_workers=Mt5WorkersFacts(spawned=alive, ended=0, alive=alive)))
+    def with_workers(self, alive: int, *, pilot: bool | None = False) -> None:
+        """A core that answers: ``alive`` MT5 workers attached, and a pilot (ADR 0043) at work, off or paused (``pilot``), or not said (``None``)."""
+        self.health = FakeHealth(
+            core_health(mt5_workers=Mt5WorkersFacts(spawned=alive, ended=0, alive=alive), autopilot_active=pilot)
+        )
 
     def controller(self) -> Mt5Controller:
         return Mt5Controller(

@@ -239,6 +239,7 @@ class TestHttp:
             "agentsConnected": 1,
             "mt5Workers": {"spawned": 15, "ended": 14, "alive": 1},
             "executionMode": "OFF",
+            "autopilot": {"active": True},
         }
         probe = self.probe(httpx.MockTransport(lambda request: httpx.Response(200, json=body)))
         health = probe.core_health("http://127.0.0.1:8000/x")
@@ -246,19 +247,36 @@ class TestHttp:
         assert health.agents_connected == 1
         assert health.mt5_workers == Mt5WorkersFacts(spawned=15, ended=14, alive=1)
         assert health.execution_mode == "OFF"
+        assert health.autopilot_active is True
 
     def test_a_core_that_does_not_report_them_gives_none_not_zero(self) -> None:
         probe = self.probe(httpx.MockTransport(lambda request: httpx.Response(200, json=self.HEALTH)))
         health = probe.core_health("http://127.0.0.1:8000/x")
         assert health is not None
-        assert (health.agents_connected, health.mt5_workers, health.execution_mode) == (None, None, None)
+        assert (health.agents_connected, health.mt5_workers, health.execution_mode, health.autopilot_active) == (
+            None,
+            None,
+            None,
+            None,
+        )
 
     @pytest.mark.parametrize(
         "extra",
         [
-            {"agentsConnected": "one", "mt5Workers": {"spawned": "a", "ended": 1, "alive": 1}, "executionMode": 3},
-            {"agentsConnected": True, "mt5Workers": [1, 2, 3], "executionMode": None},
-            {"agentsConnected": -1, "mt5Workers": {"spawned": 1, "ended": 0}, "executionMode": ""},
+            {
+                "agentsConnected": "one",
+                "mt5Workers": {"spawned": "a", "ended": 1, "alive": 1},
+                "executionMode": 3,
+                "autopilot": {"active": "yes"},
+            },
+            {"agentsConnected": True, "mt5Workers": [1, 2, 3], "executionMode": None, "autopilot": [True]},
+            {
+                "agentsConnected": -1,
+                "mt5Workers": {"spawned": 1, "ended": 0},
+                "executionMode": "",
+                "autopilot": {"active": 1},
+            },
+            {"autopilot": {}},
         ],
     )
     def test_values_of_the_wrong_kind_are_dropped_and_never_break_the_health(self, extra: dict[str, Any]) -> None:
@@ -266,6 +284,7 @@ class TestHttp:
         health = probe.core_health("http://127.0.0.1:8000/x")
         assert health is not None
         assert health.status == "ok"
+        assert health.autopilot_active is None  # a flag that is not exactly a boolean is not said: never « off »
         assert (health.agents_connected, health.mt5_workers, health.execution_mode) == (None, None, None)
 
     def test_a_connection_error_is_no_answer(self) -> None:

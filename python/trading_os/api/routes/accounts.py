@@ -35,7 +35,7 @@ from trading_os.domain.providers.loss_floors import ProviderLossState
 from trading_os.domain.providers.profile import AccountProfile
 from trading_os.domain.risk.effective import EffectiveRiskPolicy
 from trading_os.services.accounts import AccountCreate, RulesOverview
-from trading_os.shared.errors import NotFound
+from trading_os.shared.errors import NotFound, TradingOsError
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 active_router = APIRouter(prefix="/api/active-account", tags=["accounts"])
@@ -141,7 +141,21 @@ async def connect(account_id: str, c: Core, body: ConnectRequest | None = None) 
     "/{account_id}/disconnect", response_model=Account, summary="Detach the terminal (refused while risk is open)"
 )
 async def disconnect(account_id: str, c: Core, force: Annotated[bool, Query()] = False) -> Account:
-    return await c.accounts.disconnect(account_id, force=force)
+    if not c.accounts.is_connected(account_id):
+        return await c.accounts.disconnect(account_id, force=force)  # nothing is attached: nothing is stepped down from
+    # ADR 0043: a person who detaches the account has stepped down. The pilot would attach it again within seconds — and a worker that finds MetaTrader
+    # closed starts it again, without the agent (R16, ADR 0039). Paused *before* the detach, as a disarm is: the pilot's attach waits on the same lock
+    # as the detach and would run right after it. Put back as it was if the detach is refused: a gesture that failed stepped nothing down.
+    previous = c.autopilot.status().paused_reason
+    c.autopilot.pause("a person detached the account")
+    try:
+        return await c.accounts.disconnect(account_id, force=force)
+    except TradingOsError:
+        if previous is None:
+            c.autopilot.resume()
+        else:
+            c.autopilot.pause(previous)
+        raise
 
 
 @router.post("/{account_id}/reconnect", response_model=Account, summary="Detach and attach again")

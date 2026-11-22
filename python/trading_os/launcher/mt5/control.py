@@ -25,7 +25,7 @@ from pathlib import Path
 
 from trading_os.launcher.events import EventLog, EventSeverity, EventType, new_correlation_id
 from trading_os.launcher.lock import LauncherBusy
-from trading_os.launcher.model import LauncherConfig
+from trading_os.launcher.model import CoreHealth, LauncherConfig
 from trading_os.launcher.mt5.deploy import terminal_identity_problems
 from trading_os.launcher.mt5.discovery import key_of
 from trading_os.launcher.mt5.journal import StateJournal
@@ -421,13 +421,25 @@ class Mt5Controller:
                     f"le terminal est sur le login {snapshot.login or 'inconnu'}, le login déclaré est {expected}",
                 )
             )
-        gates.append(self._worker_gate())
+        gates.extend(self._core_gates())
         return gates
 
-    def _worker_gate(self) -> Gate:
+    def _core_gates(self) -> list[Gate]:
+        """What the core could do to the terminal once it is closed — read once, from the core's open health (ADR 0039 R16, ADR 0043).
+
+        A worker that finds MetaTrader closed starts it again, without the agent. Two things put a worker there: one already attached (the count), and the
+        pilot, which looks again every few seconds and attaches the account by itself — so a count of zero at one instant is not enough while it is at work.
+        A person who detaches the account puts the pilot to rest too (``POST /api/accounts/{id}/disconnect``); the launcher itself never detaches nor attaches one."""
         health = self._health.core_health(f"http://{self._config.api_host}:{self._config.api_port}/api/system/health")
         if health is None:
-            return Gate("CORE_WORKER_DETACHED", True, "le cœur ne répond pas : aucun worker ne peut rouvrir MetaTrader")
+            return [
+                Gate("CORE_WORKER_DETACHED", True, "le cœur ne répond pas : aucun worker ne peut rouvrir MetaTrader"),
+                Gate("AUTOPILOT_PAUSED", True, "le cœur ne répond pas : aucun pilote ne peut rattacher le compte"),
+            ]
+        return [self._worker_gate(health), self._pilot_gate(health)]
+
+    @staticmethod
+    def _worker_gate(health: CoreHealth) -> Gate:
         if health.mt5_workers is None:
             return Gate(
                 "CORE_WORKER_DETACHED",
@@ -439,9 +451,31 @@ class Mt5Controller:
                 "CORE_WORKER_DETACHED",
                 False,
                 f"{health.mt5_workers.alive} worker(s) MT5 du cœur sont attachés : s'il trouve MetaTrader fermé, il le relance sans l'agent (R16). "
-                "Détachez le compte dans le cockpit (Settings) avant — le lanceur ne détache ni ne rattache jamais un compte",
+                "Détachez le compte dans le cockpit (Settings) avant — cela met aussi le pilote automatique en pause (ADR 0043) ; "
+                "le lanceur ne détache ni ne rattache jamais un compte",
             )
         return Gate("CORE_WORKER_DETACHED", True, "aucun worker du cœur n'est attaché")
+
+    @staticmethod
+    def _pilot_gate(health: CoreHealth) -> Gate:
+        if health.autopilot_active is None:
+            return Gate(
+                "AUTOPILOT_PAUSED",
+                False,
+                "le cœur répond mais ne dit pas si le pilote automatique est actif (cœur plus ancien) : par prudence, redémarrez-le ou arrêtez-le "
+                "avant de fermer MetaTrader",
+            )
+        if health.autopilot_active:
+            return Gate(
+                "AUTOPILOT_PAUSED",
+                False,
+                "le pilote automatique est actif : il rattache le compte tout seul (ADR 0043) et, MetaTrader fermé, un worker le relancerait sans "
+                "l'agent (R16). Détachez le compte dans le cockpit (Settings) : cela met le pilote en pause jusqu'au prochain « démarrer le système » "
+                "ou redémarrage du cœur",
+            )
+        return Gate(
+            "AUTOPILOT_PAUSED", True, "le pilote automatique est éteint ou en pause : il ne rattachera pas le compte"
+        )
 
     # ------------------------------------------------------------------------------------------------ helpers
 

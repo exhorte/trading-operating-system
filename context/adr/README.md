@@ -49,6 +49,8 @@ Les décisions de la série 1 qui gouvernent encore ont été reprises et rééc
 | 0041 | Retirer le mode `PAPER` et l'issue `SIMULATED` ; `OBSERVE` gardé (refus `MODE_NOT_PERMITTING`, agent 1.15 : refus `AGENT_OBSERVE`) | **Accepté le 2026-11-13** ; construit, non commité |
 | 0042 | Feu vert général au développement : les restrictions propres à Claude sont retirées (démarrage, modes, ordres de test sur la démo) ; restent les décisions de produit, les barrières du code et les limites de Claude (jamais d'argent réel, jamais de vrai mot de passe) | **Accepté le 2026-11-14** (décision d'Exhorte) |
 | 0043 | Autonomie réelle au lancement : pilote automatique (`AUTOPILOT_TARGET`), S01 sur BTCUSD avec ses seuils, agent CONFIRM compilé par le lanceur, processus détachés, cockpit ramené de 13 à 6 écrans (algorithme de Musk) | **Accepté le 2026-11-14** (décision d'Exhorte) ; construit, système en `AUTONOMOUS` sur la démo |
+| 0044 | Un seul mode : `AUTONOMOUS` (et l'arrêt d'urgence `HALTED`) — `OFF`, `OBSERVE`, `CONFIRM`, `ARMED` et le plafond retirés ; limites de risque gardées | **Accepté le 2026-11-22** (décision d'Exhorte) ; **à construire** |
+| 0045 | Spécialisation sur XAUUSD : seuils de S01 pour l'or (posés comme ceux du BTC), purge des autres actifs | **Accepté le 2026-11-22** (décision d'Exhorte) ; étape 1 construite (seuils, `.env`, preset), purge à faire |
 
 Format : contexte, décision, conséquences. Un ADR ne se modifie pas — il se remplace par un ADR suivant qui le supersède.
 

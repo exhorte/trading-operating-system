@@ -219,9 +219,10 @@ async def make_ready_core(
     top: AutonomyMode = AutonomyMode.OBSERVE,
     credentials: CredentialStore | None = None,
     calendar: bool = False,
+    settings: dict[str, Any] | None = None,
 ) -> Core:
     """A core with a connected account, an agent, a few cycles behind it — and the autonomy ladder climbed to ``top``."""
-    core = await make_core(h, credentials=credentials, calendar=calendar)
+    core = await make_core(h, credentials=credentials, calendar=calendar, settings=settings)
     await core.add_account()
     await core.register_agent()
     for _ in range(2):

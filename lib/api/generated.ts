@@ -289,6 +289,10 @@ export interface AutopilotStatus {
   lastStep: string;
   lastStepAt: string | null;
 }
+/** Whether the pilot (ADR 0043) is at work — a target above OFF and not paused. One fact on the open endpoint, no account and no reason (they stay behind the guard, in ``GET /api/system/autopilot``): the launcher reads it before it closes MetaTrader, because a pilot at work attaches the account again, and a worker that finds the terminal closed starts it again without the agent (R16, ADR 0039). */
+export interface AutopilotView {
+  active: boolean;
+}
 export type Bias = "bullish" | "bearish" | "neutral";
 /** What the news gate reads. ``releases is None`` means *unknown* (never synced) — never an empty calendar. */
 export interface CalendarSnapshot {
@@ -1596,6 +1600,7 @@ export interface SystemHealthView {
   ticks: TickQueueView;
   websocket: WebSocketView;
   mt5Workers: Mt5WorkersView;
+  autopilot: AutopilotView;
   agentsConnected: number;
   jobs: JobView[];
   findings: Finding[];

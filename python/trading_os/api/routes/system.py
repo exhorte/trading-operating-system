@@ -14,6 +14,7 @@ from trading_os.api.schemas.system import (
     AuditView,
     AuthorizeAutomaticRequest,
     AuthorizeAutomaticResult,
+    AutopilotView,
     DatabaseView,
     EventRecord,
     JobView,
@@ -62,6 +63,7 @@ def build_health(c: Container, stream: CockpitStream | None) -> SystemHealthView
             closed_for_overflow=stats.closed_for_overflow if stats else 0,
         ),
         mt5_workers=Mt5WorkersView(spawned=WORKERS.spawned, ended=WORKERS.ended, alive=WORKERS.alive),
+        autopilot=AutopilotView(active=c.autopilot.status().active),
         agents_connected=len(c.execution.registered_logins()),
         jobs=[
             JobView(

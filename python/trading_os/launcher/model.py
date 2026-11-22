@@ -73,8 +73,8 @@ class Mt5WorkersFacts(DomainModel):
 class CoreHealth(DomainModel):
     """The few facts of ``GET /api/system/health`` the launcher needs — it answers « is it up », the readiness report answers the rest.
 
-    The three optional fields feed the diagnosis (ADR 0039, § 6). ``None`` means *the core did not say* (an older core, or a value of the wrong
-    kind): never zero, because « no agent connected » and « unknown » are not the same finding."""
+    The optional fields feed the diagnosis (ADR 0039, § 6) and the gates of a terminal's restart. ``None`` means *the core did not say* (an older core, or a
+    value of the wrong kind): never zero and never « off », because « no agent connected » and « unknown » are not the same finding."""
 
     status: str
     version: str
@@ -84,6 +84,8 @@ class CoreHealth(DomainModel):
     agents_connected: int | None = None
     mt5_workers: Mt5WorkersFacts | None = None
     execution_mode: str | None = None
+    # The pilot (ADR 0043) is at work: it attaches the account by itself. Read before MetaTrader is closed (R16).
+    autopilot_active: bool | None = None
 
 
 class EnvironmentFacts(DomainModel):

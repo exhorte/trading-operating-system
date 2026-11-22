@@ -104,6 +104,14 @@ def _workers(value: object) -> Mt5WorkersFacts | None:
     return Mt5WorkersFacts(spawned=spawned, ended=ended, alive=alive)
 
 
+def _pilot_active(value: object) -> bool | None:
+    """``autopilot.active`` of the core's health: exactly a boolean, or not said — never coerced (a « 1 » or a « yes » is not a fact)."""
+    if not isinstance(value, dict):
+        return None
+    active = value.get("active")
+    return active if isinstance(active, bool) else None
+
+
 _ENCODING = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8"
 
 _PROCESSES_SCRIPT = (
@@ -267,6 +275,7 @@ class HttpxProbe:
             agents_connected=_count(body.get("agentsConnected")),
             mt5_workers=_workers(body.get("mt5Workers")),
             execution_mode=mode if isinstance(mode, str) and mode else None,
+            autopilot_active=_pilot_active(body.get("autopilot")),
         )
 
     def http_status(self, url: str) -> int | None:

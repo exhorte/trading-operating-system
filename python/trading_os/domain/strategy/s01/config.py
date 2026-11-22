@@ -32,13 +32,21 @@ class SymbolScale(DomainModel):
 # spread measured on the demo (as 1 pip ≈ 1.25 × the EURUSD's 0.8-pip spread); levels rounded to the dollar.
 BTCUSD_SCALE = SymbolScale(equal_level_tolerance=18.0, min_fvg_size=6.0, spread_buffer=8.0, level_decimals=0)
 
+# XAUUSD (2026-11-22, Exhorte: « nous allons nous spécialiser sur le XAUUSD »; thresholds posed « comme le BTC »): read on the demo, XAUUSDm ≈ 3 540.18
+# and EURUSDm ≈ 1.09678, a ratio ≈ 3 228, so 3 pips → 0.97 → 1.0 USD and 1 pip → 0.32 → 0.3 USD; the spread buffer is 1.25 × the 0.24 USD XAUUSDm
+# spread read on the terminal (Sunday's last quote — to be read again on a trading day); levels kept to the cent, the original strategy's two
+# decimals (the analysis engine it was ported from was tuned for gold). Posed, not derived (ADR 0002): nothing searched.
+XAUUSD_SCALE = SymbolScale(equal_level_tolerance=1.0, min_fvg_size=0.3, spread_buffer=0.3, level_decimals=2)
+
 
 class S01Config(DomainModel):
     # S01 v1 was scoped to EURUSD (GBPUSD set aside on 2026-09-25, a user decision); BTCUSD joined it on 2026-11-14 (ADR 0043) with its own
-    # scale. XAUUSD stays out of scope until its thresholds are posed. The symbols are a setting: ``STRATEGY_S01_SYMBOLS``.
+    # scale, XAUUSD on 2026-11-22 (Exhorte specialises the platform on gold). The symbols are a setting: ``STRATEGY_S01_SYMBOLS``.
     symbols: tuple[SymbolCode, ...] = ("EURUSD",)
     # Thresholds in price units, per symbol, for symbols not on the EURUSD's scale: the fields below are the EURUSD's.
-    symbol_scales: dict[SymbolCode, SymbolScale] = Field(default_factory=lambda: {"BTCUSD": BTCUSD_SCALE})
+    symbol_scales: dict[SymbolCode, SymbolScale] = Field(
+        default_factory=lambda: {"BTCUSD": BTCUSD_SCALE, "XAUUSD": XAUUSD_SCALE}
+    )
     swing_lookback: int = Field(default=2, ge=1)
     equal_level_tolerance: float = Field(default=0.0003, ge=0)  # 3 pips
     min_fvg_size: float = Field(default=0.0001, gt=0)  # 1 pip

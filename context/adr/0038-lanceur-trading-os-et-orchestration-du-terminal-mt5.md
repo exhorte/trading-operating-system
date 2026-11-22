@@ -50,7 +50,7 @@ Le Trading OS décide, MT5 exécute, **le lanceur prépare et observe**. Il ne d
 Ordre, chaque maillon attendant la **santé réelle** du précédent :
 
 1. validation de l'environnement (venv, Node, Docker, ports, fichier `.env` présent — **sans en lire le contenu**, hors lecture de configuration par le lanceur lui-même) ;
-2. Docker Desktop **accessible** — s'il est éteint, message clair, **le lanceur ne le lance pas** *(A11 recommandé)* ;
+2. Docker Desktop **accessible** — s'il est éteint, message clair, **le lanceur ne le lance pas** *(A11 recommandé)* ; **A11 repris dans l'autre sens par Exhorte le 2026-11-22 (« le lancer »)** : `scripts/TradingOS.Docker.ps1`, appelé par `TradingOS.bat` avant `Full` et `Infrastructure` seulement, lance Docker Desktop s'il ne répond pas (une fois, jamais si son processus tourne déjà) et attend son moteur au plus 180 s ; il ne ferme rien, ne touche à aucun conteneur, ne lit ni n'écrit rien ; un échec ne change rien (le lanceur dit lui-même que Docker ne répond pas) ; `TRADINGOS_NODOCKERSTART=1` l'évite ; le lanceur Python, lui, ne lance toujours pas Docker Desktop ; l'invariant d'architecture est élargi à ce seul script (`test_launcher_invariants.py`, `test_docker_script.py`) ;
 3. base : conteneur `tradingos-timescaledb` (nom exact), `healthy` (90 s) ; un autre conteneur sur 5433 bloque, comme aujourd'hui ;
 4. schéma : `db migrate` (additif) ; **sauvegarde `pg_dump` avant toute migration en attente**, sinon rien ;
 5. cœur : lancé **avec le dossier courant `04_code\python`** ; `GET /api/system/health` `ok`, base `up` (60 s) ;

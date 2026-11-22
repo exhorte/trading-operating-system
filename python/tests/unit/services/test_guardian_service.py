@@ -119,9 +119,7 @@ async def test_the_first_cycle_after_the_start_writes_a_recovery_note(h: Harness
     assert report.ran and report.recovery is not None and "1 position(s) of the core" in report.recovery
     assert "1 without a stop" in report.recovery
     await core.c.guardian.run()
-    assert (
-        core.c.guardian.report(core.account.id).recovery == report.recovery
-    )  # kept, not rewritten  # type: ignore[union-attr]
+    assert core.c.guardian.report(core.account.id).recovery == report.recovery  # kept, not rewritten  # type: ignore[union-attr]
 
 
 async def test_nothing_happens_when_there_is_nothing_to_guard(h: Harness) -> None:
