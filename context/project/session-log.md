@@ -16,6 +16,8 @@ Demande d'Exhorte : après la réinstallation, réparer Docker, les dépendances
 - **Vérifié** : `launcher doctor`, vitest 232, `tsc`, `eslint`, `next build`, ruff, mypy 271 fichiers, `gen-types --check`, 14 tests MT5 réels en lecture seule, cœur lancé sous `OBSERVE` / `OFF` forcés (santé `ok`) puis arrêté ; **pytest complet : 3 855 passés, 15 ignorés (contrats MT5, lancés à part) en 13 min 34 s**, sur un serveur TimescaleDB jetable distinct de la vraie base.
 - **Perdu** : la base du 05 au 21/11 ; en base le plafond du compte est `OBSERVE` et les limites `configured: false` (réglages du 14/11 à refaire). Le `.env` a `AUTOPILOT_TARGET=AUTONOMOUS` : à décider avant `TradingOS.bat`.
 
+- **Suite du jour (décisions d'Exhorte)** : plafond `AUTONOMOUS` posé par l'API (`rules-e642a18a821e`, le cockpit ne règle pas ce champ), puis 20 trades par jour (`rules-2c2afadec6ce`) ; jeton de l'agent écrit à la main ; preset `TradingOS-XAUUSDm.set` complet ; système en `AUTONOMOUS` à 11:10 (clic « DÉMARRER LE SYSTÈME ») ; **ADR 0044** (un seul mode, à construire) et **ADR 0045** (XAUUSD seul : seuils de S01 et `.env` faits, purge à faire) ; commits `000efec` et `cd36007` (non poussés : pas d'identifiants GitHub) ; cœur redémarré à 12:14 sur XAUUSD après `pg_dump` — le pilote attend S01 (marché de l'or fermé).
+
 ---
 
 ## 2026-11-14 (suite : **ADR 0043 — le système est autonome une fois lancé ; S01 sur BTCUSD ; cockpit de 13 à 6 écrans**)
